@@ -72,6 +72,44 @@ par ailleurs. À faire en même temps que le reste du lot 9, pas avant.
 MinIO) — pattern Docker secrets déjà déprécié. Vérifier qu'aucun n'est référencé
 ailleurs avant suppression.
 
+## Trouvé en revue adversariale le 2026-08-24 — préexistant, à traiter au lot 9
+
+### `GET /review/me/stats` — une seconde définition de « ce que j'ai trié »
+
+`ml/serving/review_routes.py:197`. Elle compte les décisions dans les tables
+`decisions` / `review_items` du **tampon `review.db`** — celui que D1 fait
+mourir — pendant que `GET /me/review-stats` (accueil d'un ami) compte les mêmes
+décisions dans le canonique.
+
+Vérifié : `grep -r "review/me/stats\|review/me/items\|review/claim"` sur
+`admin/packages/studio-local/src` → **aucune occurrence**. La route n'a plus
+d'appelant, mais elle est toujours montée sur les deux serveurs. Ce n'est pas un
+bug aujourd'hui ; c'en devient un le jour où quelqu'un la rebranche et obtient un
+autre chiffre pour le même fait.
+
+Part avec le reste du tampon. Tout le bloc `/review/me/*`, `/review/claim`,
+`/review/items/*/decide|skip` est dans le même cas.
+
+### `_coin_helpers.canonical_obverse_url` — une TROISIÈME règle pour choisir une image canonique
+
+`ml/serving/_coin_helpers.py:13`. Elle alimente les `canonical_thumb_url` de
+l'écran de review (`serving/review_queue/repository.py`), et elle diverge des
+deux autres sur deux points :
+
+1. son `CASE` ne connaît que `numista_api` (1) et `bce_official` (2) — les tags
+   courts `numista`, `bce_comm`, `unknown` tombent tous dans `ELSE 9`, **non
+   départagés**, là où `_lookup_source` les ordonne explicitement ;
+2. elle ne lit qu'**une seule ligne** : si la mieux classée n'a ni `url` ni
+   `local_path`, elle rend `None` alors qu'une autre ligne porte peut-être une
+   image parfaitement chargeable. Les deux autres chemins parcourent tous les
+   candidats avant d'abandonner.
+
+`referential_routes` n'a plus qu'une règle depuis le 2026-08-24 (`_candidats` +
+`_cle_bucket`, partagés par la route qui SERT l'image et celle qui rend son
+ADRESSE). Celle-ci est la dernière qui reste à part. **Non touchée
+délibérément** : elle est dans le chemin chaud de l'écran de review, qui marche ;
+l'aligner mérite sa propre vérification, pas un passage en marge d'un autre lot.
+
 ## Ce qu'on NE supprime pas
 
 - `ml/review/peer_arbitration_routes.py` — **réutilisé** par le lot 8

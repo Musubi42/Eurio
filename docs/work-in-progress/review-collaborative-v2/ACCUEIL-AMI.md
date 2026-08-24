@@ -1,8 +1,9 @@
 # L'accueil d'un ami — ce qu'il voit en arrivant, et où vit l'aide
 
-> **Rien de ce document n'est implémenté.** C'est le brouillon de conception
-> issu de la discussion du 2026-08-24, à reprendre dans une session dédiée.
-> Le chantier technique, lui, est clos : cf. [`REPRISE.md`](REPRISE.md).
+> **Conception tranchée le 2026-08-24, et livrée le même jour** — back, accueil,
+> nav réduite, coach marks. Ce document reste la référence : ses §§ portent le
+> POURQUOI de chaque choix, et le code y renvoie nommément. L'état de
+> l'implémentation et ce qui reste sont dans [`REPRISE.md`](REPRISE.md).
 
 ## Le problème, tel qu'il se pose
 
@@ -293,18 +294,67 @@ Ce qui **disparaît de sa nav** :
 
 ⚠️ **Ne pas confondre entrée de nav et scope.** Retirer `coins:read` casserait la
 recherche libre `F` — son outil principal quand il contredit DINO — ET la vue
-Pièces qu'on garde. Retirer `lab:read` ferait disparaître `/besoin` par le
-filtre existant, ce qui est le bon mécanisme pour CELLE-LÀ ; pour les autres, il
-faut trancher entre un scope plus fin et un `hidden?: boolean` sur `NavItem`.
-**Question ouverte** — D3 dit « les scopes SONT le modèle de droits », donc un
-troisième axe serait une entorse à documenter, pas à glisser.
+Pièces qu'on garde.
 
-## 10. R1 s'applique
+> 🔴 **Réfuté le 2026-08-24, en écrivant le lot.** Ce paragraphe proposait de
+> masquer `/besoin` en retirant `lab:read` au rôle `reviewer`. C'est impossible :
+> **`GET /class-need` est gardé par `require_scope("lab:read")`**
+> (`class_need_routes.py:47`) — or l'accueil se bâtit entièrement dessus (§3).
+> Le lui retirer éteindrait la page qu'on vient de lui construire. Les trois
+> entrées tombent donc dans le même cas, et aucune ne se masque par retrait de
+> scope.
 
-Un panneau d'aide, une page d'accueil, des coach marks : **trois rendus visuels
-neufs**. Ils passent par le proto Vue (`admin/packages/proto/`) avant Compose ou
-studio-local — cf. `docs/design/_shared/parity-rules.md`. Ce n'est pas une
-formalité : c'est là que se décide à quoi ressemble « la première minute ».
+✅ **Tranché (PO, 2026-08-24) : `scope: 'review:arbitrate'` sur les trois
+entrées** — Besoin, Review queue, Pêche. Pas de troisième axe, pas de scope
+nouveau, pas de rôle touché : on change la VALEUR du champ existant, et le
+filtre de `AppLayout` ne bouge pas.
+
+Ce que ça déplace, et qu'il faut assumer : `NavItem.scope` répond désormais « à
+qui cette entrée s'adresse ? » et non « quel droit exige la page ? ». L'écart est
+réel — ces pages restent ouvertes en `lab:read` / `review:read`, et « Trier »
+mène droit à la pêche. Il est tenable parce que le champ était **déjà** chartré
+« du confort, pas une garde » (la vraie garde est serveur), et il est écrit noir
+sur blanc dans `nav.ts`.
+
+Trois raisons de préférer ça à un `hidden` :
+
+1. **`review:arbitrate` est déjà LE discriminant « ami vs opérateur »** de ce
+   front — `useHeavyGate.canArbitrate` (D11), la quarantaine (D7), l'entrée
+   Arbitrage. On n'en introduit pas un quatrième.
+2. **Ça reste dérivé d'un droit réel** : le jour où un ami est promu arbitre,
+   ses entrées réapparaissent seules. Un drapeau `hidden` aurait figé la règle.
+3. **D3 tient** : aucun second modèle de permissions n'apparaît.
+
+Écarté avec : un vrai scope fin (`review:browse`) qui distinguerait « tirer la
+file anonyme » de « tirer la file cadrée par une pièce ». Le plus fidèle à D3
+sur le papier, mais la MÊME route sert les deux cas, séparés par un query
+param — `require_scope` ne sait pas l'exprimer, il faudrait une garde
+conditionnelle dans la route. De la dette au sens R0, pour un gain qui reste du
+confort de nav.
+
+## 10. R1 ne s'applique PAS ici — mais son intention, si
+
+> 🔴 **Corrigé le 2026-08-24, par le PO.** Ce paragraphe disait « ils passent par
+> le proto Vue avant studio-local ». C'était une **mauvaise lecture de R1**, née
+> d'une formulation trop large dans `CLAUDE.md` — corrigée le même jour, aux
+> trois endroits qui la portaient.
+
+**R1 ne couvre que l'app finale**, celle qui part sur le Play Store. Le proto
+(`admin/packages/proto/`) est la PWA du *collectionneur* — `scan/`, `vault/`,
+`profile/`, `onboarding/` — et `scene-parity.md` mappe chacune de ses scènes vers
+une destination Compose. Un écran d'admin n'en a aucune. Y faire entrer l'Accueil
+polluerait la source de vérité du design de l'app avec une scène qui ne mappe
+vers rien, et lui donnerait le langage visuel du mauvais produit. Tout
+studio-local — Besoin, Pêche, Arbitrage — a d'ailleurs été construit sans ce
+détour.
+
+**Ce qui reste vrai, et qui était le fond du §10** : un panneau d'aide, une page
+d'accueil, des coach marks sont trois rendus visuels neufs, et c'est là que se
+décide à quoi ressemble « la première minute ». La discipline est donc
+**maquette d'abord dans studio-local** : les composants définitifs, alimentés par
+des fixtures (dont les états vide / chargement / erreur), regardés et tranchés
+AVANT d'être branchés sur la donnée. Ce qu'on valide est alors exactement ce
+qu'on aura — pas une traduction à rattraper.
 
 ## Ordre proposé
 
@@ -312,14 +362,14 @@ formalité : c'est là que se décide à quoi ressemble « la première minute �
    un `GET /me/review-stats` (effort + effet, comptés sur SES décisions, sans
    consulter l'arbitrage — §4). Tout le reste vient de `/class-need`, qui existe
    et abstrait déjà le rebuild (§3).
-2. **Proto** (R1) : l'Accueil, puis le panneau d'aide.
+2. **Maquette** dans studio-local (fixtures + états vides/erreur) : l'Accueil,
+   puis le panneau d'aide. Pas de détour par le proto — §10.
 3. **Implémenter** : l'Accueil + l'atterrissage, la nav réduite, puis les coach
    marks.
 4. **Les exemples tranchés en dernier** — c'est du contenu, pas du code, et il
    se choisit dans les crops déjà arbitrés.
 
-Une seule question reste ouverte : **par quel mécanisme masquer les entrées de
-nav** (scope plus fin, ou `hidden` sur `NavItem`) — §9.
+La question du mécanisme de nav est **tranchée** — §9.
 
 ## Ce qui est acquis, et n'a pas à être rediscuté
 
@@ -337,3 +387,7 @@ nav** (scope plus fin, ou `hidden` sur `NavItem`) — §9.
   pas de statut « en attente » collé à chaque décision. §8
 - Le **lexique** du §6 s'applique partout où un ami lit : pièce, image, trier.
 - `/besoin` : la **page** part, son **composant de liste** est réimporté. §9
+- Les entrées de nav se masquent par **`scope: 'review:arbitrate'`**, pas par un
+  troisième axe ni par un retrait de scope. §9
+- R1 (proto-first) **ne s'applique pas** à un écran d'admin — la maquette vit
+  dans studio-local. §10

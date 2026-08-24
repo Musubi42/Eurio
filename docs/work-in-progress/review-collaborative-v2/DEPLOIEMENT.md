@@ -163,7 +163,12 @@ Dans l'interface d'administration d'Authentik :
 Au premier login, `eurio-api` crée la ligne `users` et ses `user_roles` tout seul
 (`upsert_user_and_sync_roles`) — rien à faire côté base.
 
-**Ce que tu dois voir avec ce compte** : la nav réduite à Tableau de bord · Pièces ·
+> 🔁 **Depuis l'accueil (2026-08-24), la nav attendue a changé** : **Accueil ·
+> Pièces**, et rien d'autre. Besoin, Review queue et Pêche passent en
+> `review:arbitrate` (D12) — leurs PAGES restent ouvertes, c'est l'entrée de menu
+> qui part. Un ami entre par « Trier », depuis une pièce de son accueil.
+
+**Ce que tu devais voir avec ce compte AVANT l'accueil** : la nav réduite à Tableau de bord · Pièces ·
 Besoin · Review queue · Pêche, et les décisions qui atterrissent en quarantaine :
 
 ```bash

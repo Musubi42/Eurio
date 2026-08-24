@@ -63,7 +63,14 @@ sont marquées `heavy` alors que l'essentiel de ce qu'elles appellent est déjà
 le VPS. Le gel est plus large que sa cause.
 
 **Résultat.** Un `reviewer` voit **Tableau de bord, Pièces, Review, Besoin** — sans
-modifier un seul rôle, ses scopes actuels suffisent exactement. `/besoin` est déjà
+modifier un seul rôle, ses scopes actuels suffisent exactement.
+
+> 🔁 **Amendé par [D12](#d12--une-entrée-de-nav-dit-à-qui-elle-sadresse-pas-ce-que-la-page-exige)
+> (2026-08-24).** Cette nav-là était la bonne tant que `/` était un tableau de
+> bord et que l'ami entrait par une file. Depuis l'accueil, il entre par une
+> PIÈCE : sa nav se réduit à **Accueil · Pièces**, et Besoin / Review queue /
+> Pêche passent en `review:arbitrate`. Les deux axes de D4 ne bougent pas — c'est
+> la valeur portée par l'un d'eux qui change. `/besoin` est déjà
 non-`heavy` délibérément (`router.ts:72`), et sert d'objectif visible : reviewer à
 l'infini sans voir à quoi ça sert, c'est fatigant.
 
@@ -220,3 +227,122 @@ est donc ce qui restera local pour de bon : la DÉTECTION (auto-crop, re-détect
 sync crops, crop manuel), qui charge un modèle. La décision ne perd pas son objet
 en devenant plus étroite — elle gagne en précision : on masque ce qui n'arrivera
 jamais, on ne masque pas ce qui n'est pas encore arrivé.
+
+---
+
+## D12 — Une entrée de nav dit à QUI elle s'adresse, pas ce que la page exige
+
+**Décision.** Les entrées **Besoin**, **Review queue** et **Pêche** portent
+`scope: 'review:arbitrate'` dans `nav.ts`. Leurs pages, elles, ne bougent pas :
+elles restent servies en `lab:read` / `review:read`, et `/review/peche?class=…`
+est même la destination du bouton « Trier » de l'accueil.
+
+**Pourquoi pas un retrait de scope** — c'était le plan d'`ACCUEIL-AMI.md` §9, et
+il est **réfuté par le §3 du même document** : `GET /class-need` est gardé par
+`require_scope("lab:read")`, or l'accueil d'un ami se bâtit entièrement dessus.
+Retirer `lab:read` au rôle `reviewer` éteindrait la page qu'on venait de lui
+construire.
+
+**Pourquoi pas un troisième axe** (`hidden`, `audience` sur `NavItem`). D3 dit
+« les scopes SONT le modèle de droits » ; un drapeau de plus serait une entorse
+à documenter. Et surtout il **figerait** la règle : `review:arbitrate` est déjà
+le discriminant « ami vs opérateur » du front (`useHeavyGate.canArbitrate`,
+D11) et de la quarantaine (D7) — s'y adosser fait réapparaître les entrées toutes
+seules le jour où un ami est promu arbitre, sans une ligne de code.
+
+**Ce que ça écarte.** Un vrai scope fin `review:browse`, qui séparerait « tirer
+la file anonyme » de « tirer la file cadrée par une pièce ». Le plus fidèle à D3
+sur le papier — mais la MÊME route sert les deux cas, distingués par un query
+param, ce que `require_scope` ne sait pas exprimer. Il faudrait une garde
+conditionnelle dans la route : de la dette au sens R0, pour un gain qui reste du
+confort de nav.
+
+**Ce que ça coûte, et qui est écrit dans `nav.ts`.** `NavItem.scope` répond
+désormais « à qui cette entrée s'adresse ? » et non « quel droit exige la
+page ? ». Tenable parce que le champ était **déjà** chartré « du confort, pas une
+garde » — la vraie garde est serveur (`require_scope`, lot 4b). Un ami qui devine
+l'URL de `/besoin` obtient la page, et c'est voulu : on ne lui cache rien, on
+cesse de la lui **proposer**.
+
+---
+
+## D13 — R1 (proto-first) ne couvre que l'app finale
+
+**Constaté le 2026-08-24.** `ACCUEIL-AMI.md` §10 affirmait que l'accueil devait
+passer par `admin/packages/proto/` avant studio-local. C'était une mauvaise
+lecture, née d'une formulation trop large dans `CLAUDE.md`.
+
+**Décision (PO).** R1 s'applique à **l'app qui part sur le Play Store**, et à
+elle seule — ni aux fronts admin, ni aux outils de test ou de recette. Corrigé
+aux trois endroits qui portaient la règle : `CLAUDE.md` §R1 et §Interdictions,
+`docs/design/_shared/parity-rules.md` (bloc Portée), `ACCUEIL-AMI.md` §10.
+
+**Pourquoi.** Le proto est la PWA du *collectionneur* (`scan/`, `vault/`,
+`profile/`, `onboarding/`), et `scene-parity.md` mappe chacune de ses scènes vers
+une destination Compose. Un écran d'admin n'en a aucune : l'y faire entrer
+polluerait la source de vérité du design de l'app avec une scène qui ne mappe
+vers rien, et donnerait à cet écran le langage visuel du mauvais produit. Tout
+studio-local — Besoin, Pêche, Arbitrage — a d'ailleurs été construit sans ce
+détour.
+
+**Ce que ça NE dispense pas de faire.** L'intention de R1 reste : « c'est là que
+se décide à quoi ressemble la première minute ». Pour un écran d'admin, elle
+prend la forme d'une **maquette dans le front où il vivra** — composant
+définitif, fixtures, états vide / chargement / erreur, regardés et tranchés avant
+d'être branchés (`/accueil/maquette`). Ce qu'on valide est alors exactement ce
+qu'on livre, sans traduction à rattraper.
+
+---
+
+## D14 — Les écritures de l'entonnoir passent en `review:arbitrate`
+
+**Trouvé en revue adversariale le 2026-08-24, et c'était ouvert en production.**
+
+`serving/funnel_writes.py` porte cinq routes qui écrivent le canonique EN
+DIRECT — `decide_lot`, et les quatre `/lab/assets/{id}/…` (accept-training,
+reopen-review, training-eligible, reassign). Elles étaient gardées par
+`review:write`, **le scope de tout ami** (D7). Elles ont été écrites pour
+l'entonnoir (C2a, Direction A) *avant* la quarantaine du lot 3, et personne
+n'est repassé dessus quand elle est arrivée : le mot `arbitrate` n'apparaissait
+pas une fois dans le fichier.
+
+Ce n'était pas théorique — le sélecteur « unité / lot » de la pêche, l'écran où
+un ami travaille, n'était gaté par rien. Mesuré, jeton de reviewer, API lean :
+
+```
+POST /review-queue/lots/{lot}/decide      → 200 {"done":1}
+  review_queue.status         open → done
+  image_assets.training_eligible  0 → 1
+  decided_by                  = 'admin'   ← la traçabilité ment, même pour le PO
+  peer_review_decisions       18 → 18     ← AUCUNE quarantaine
+
+POST /lab/assets/{id}/training-eligible   → 200, 0 → 1, sans quarantaine
+```
+
+**Décision (PO, 2026-08-24).** La garde passe à `review:arbitrate`. Le
+sélecteur de mode de `PecheBar` ne rend l'onglet « en lots » que pour un
+arbitre, et `PechePage` referme le chemin de l'URL tapée à la main — sans quoi
+un ami aurait un onglet qui lui rend 403, exactement le bouton mort que D11
+interdit.
+
+**Ce que ça écarte, et qui reste juste sur le fond** : mettre les lots en
+quarantaine comme les décisions unitaires. C'est la vraie réponse — le tri par
+lot est le geste le plus efficace sur une annonce multi-pièces, et un ami le
+garderait. Mais c'est un LOT de travail (N lignes pendantes par décision,
+l'index unique 0012 à tenir sur chacune, la vue d'arbitrage à apprendre à
+grouper par annonce), et le trou était ouvert **maintenant**. Fermer par le
+scope se déploie le jour même et se rouvre le jour où on instruit le sujet.
+
+**Ce que ça coûte** : un ami ne trie plus de lots. Rien ne change pour
+l'arbitre — vérifié : son `decide_lot` répond toujours 200.
+
+⛔ **Ne pas remettre `review:write` dans ce fichier** sans avoir posé la
+quarantaine dans `decide_lot`. Ces routes n'ont pas de jumeau gardé ailleurs :
+ce `Depends` est la seule chose qui les sépare du canonique. Verrouillé par
+`ml/tests/test_funnel_writes_arbitrate.py` (7 tests, mutation vérifiée).
+
+**Reste à traiter, hors de ce lot** : `apply_lot_decide` écrit
+`decided_by = 'admin'` en dur. Le lot 2 a signé `decide`/`reject`/`restore` et
+n'est jamais passé par là. La traçabilité du tri par lot est donc fausse pour
+tout le monde, arbitre compris.
+

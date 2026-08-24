@@ -3,6 +3,13 @@
 > Règles de conformité visuelle et structurelle entre le prototype HTML (`docs/design/prototype/`) et l'app Android Compose (`app-android/`). Session du 2026-04-16.
 >
 > **Règle d'or** : le proto est la source de vérité du design. L'app Android porte le proto. Tout nouveau design doit d'abord exister dans le proto.
+>
+> ⚠️ **Portée** : ce document ne couvre que **l'app finale** (`app-android/`), celle
+> qui part sur le Play Store. Il ne couvre **ni les fronts admin**
+> (`admin/packages/studio-local`) **ni les outils de test ou de recette** — le proto
+> est la PWA du *collectionneur*, et `scene-parity.md` mappe chaque scène vers une
+> destination Compose. Un écran d'admin n'a aucune destination Compose : il se
+> maquette dans le front où il vivra, pas ici. Cf. `CLAUDE.md` §R1.
 
 ## Les 6 règles
 

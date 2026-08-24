@@ -87,13 +87,29 @@ et son **item nav** `heavy: true`. Elle marche en local et se grise automatiquem
 (`hasLocalMlApi` faux) — `AppLayout` rend `LocalOnlyNotice`. Ne réintroduis **pas** un second
 package front. Spec : `docs/work-in-progress/model-b/README.md` §Front.
 
-### R1. Proto-first design (STRICT)
+### R1. Proto-first design (STRICT) — **pour l'app Android, et elle seule**
 
-**Tout nouveau design doit d'abord exister dans le prototype** (`admin/packages/proto/`, Vue+Pinia PWA — source de vérité du design) avant d'être implémenté en Compose Android. _(L'ancien proto HTML `docs/design/prototype/` est archivé sous `docs/archive/design/prototype/`.)_
+⚠️ **Portée, avant tout le reste.** R1 ne s'applique qu'à **l'app finale**, celle
+qui part sur le Play Store (`app-android/`). Elle ne s'applique **ni aux fronts
+admin** (`admin/packages/studio-local`), **ni aux outils de test ou de recette**.
+Le proto est la PWA du *collectionneur* — ses scènes sont `scan/`, `vault/`,
+`profile/`, `onboarding/` — et `scene-parity.md` mappe chacune vers une
+destination Compose. Y faire entrer un écran d'admin polluerait la source de
+vérité du design de l'app avec une scène qui ne mappe vers rien, et donnerait à
+cet écran le langage visuel du mauvais produit.
+
+Pour un écran d'admin, la discipline est **maquette d'abord dans le front où il
+vivra** (fixtures, états vides/erreur, validé à l'œil avant d'être branché) —
+c'est l'intention de R1, sans le détour par le proto.
+
+**Tout nouveau design de l'app Android doit d'abord exister dans le prototype**
+(`admin/packages/proto/`, Vue+Pinia PWA — source de vérité du design de l'app)
+avant d'être implémenté en Compose. _(L'ancien proto HTML
+`docs/design/prototype/` est archivé sous `docs/archive/design/prototype/`.)_
 
 - Cela inclut : nouvelles scènes, nouveaux composants visuels, nouveaux layouts, nouveaux états (empty/loading/error).
 - Cela n'inclut pas : adaptations techniques Android (back gesture, permission dialog), ni les deltas systémiques documentés dans `docs/design/_shared/parity-rules.md` §R6.
-- Si Claude se retrouve à inventer un rendu visuel côté Android sans équivalent proto, il **doit s'arrêter et demander** à ajouter d'abord la scène proto.
+- Si Claude se retrouve à inventer un rendu visuel **côté Android** sans équivalent proto, il **doit s'arrêter et demander** à ajouter d'abord la scène proto.
 
 Spec complète : `docs/design/_shared/parity-rules.md`.
 
@@ -332,7 +348,7 @@ ci-dessus s'applique.
 ## Interdictions
 
 - ❌ Éditer `Color.kt`, `Shape.kt`, `Spacing.kt` à la main
-- ❌ Coder un écran Android sans scène proto correspondante
+- ❌ Coder un écran **de l'app Android** sans scène proto correspondante (R1 ne porte pas sur les fronts admin)
 - ❌ Hardcoder des couleurs dans du Compose (toujours passer par `MaterialTheme.colorScheme.*` ou les vals générées)
 - ❌ Créer des `TODO:` dans le code (la dette est explicite via docs ou tasks, pas enfouie dans le code)
 - ❌ Utiliser `git add -A` ou `git add .` (staging explicite par fichier pour éviter les fuites de secrets)
