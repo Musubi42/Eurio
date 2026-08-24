@@ -126,7 +126,7 @@ Page régie : `https://eurio-review.musubi.dev/admin` (coller le
 > ⚠️ **Cette section décrivait le Modèle B comme un cap À VENIR (vocabulaire chunks
 > C1-C8, read-sync via MinIO, Mac-writer-via-lease). Le cutover est FAIT (2026-06-29).**
 > L'état courant + la roadmap restante (R1 fusion front, R2 réplique←VPS + retrait
-> MinIO-DB) sont dans [`../work-in-progress/model-b/README.md`](../work-in-progress/model-b/README.md).
+> MinIO-DB) sont dans [`../adr/009-direction-a-writer-canonique-unique.md`](../adr/009-direction-a-writer-canonique-unique.md).
 > Le « read-sync » et le lease ci-dessous **ne s'appliquent plus** (le Mac n'est plus
 > writer). Gardé comme trace.
 

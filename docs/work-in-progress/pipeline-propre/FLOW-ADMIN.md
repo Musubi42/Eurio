@@ -73,7 +73,7 @@ qu'on a payé l'appel eBay. À ~15 appels par exemplaire gagné, la moitié de c
 coût est dépensée sur des images qui ne produiront jamais rien.
 
 ✅ **Corrigé le 2026-08-21** — c'est **bien** le chantier
-[`crop-recovery`](../crop-recovery/README.md) (même diagnostic, même jeu D2), on
+[`crop-recovery`](../../archive/crop-recovery/README.md) (même diagnostic, même jeu D2), on
 **a** regardé les images (60 au hasard : **70 % sont une pièce seule, propre,
 plein cadre**, que YOLO ne voit pas), et le remède livré (`score_recover`,
 OFF par défaut) en rattrape **76 %**. Au grain **annonce** — l'unité de coût

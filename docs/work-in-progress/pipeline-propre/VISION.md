@@ -128,7 +128,7 @@ correction agrandit le gisement au lieu de le réduire :
   une pièce qui remplit le cadre** (0 bbox ≥ 60 % du petit côté sur les 60) ; il
   ne trouve que des cercles intérieurs (`r/short` 0,02–0,09 →
   `radius_too_small` / `gated_fragment`). C'est **exactement** le diagnostic
-  du chantier [`crop-recovery`](../crop-recovery/VISION.md) (« la détection se
+  du chantier [`crop-recovery`](../../archive/crop-recovery/VISION.md) (« la détection se
   rabat sur le motif central », jeu D2 = 341 `zero_crops`).
 - **Le remède existe et ne tourne pas** : `vision/score_recover.py`
   (stratégie A, 86 % au banc) est **OFF par défaut** (`EURIO_CENSUS_RECOVER`),

@@ -168,5 +168,5 @@ hors dépôt, et en CI le jour où il y en aura une.
 
 - [components-parity.md](components-parity.md) — table de parité composants
 - [scene-parity.md](scene-parity.md) — table de parité scènes (inventaire actuel)
-- [../prototype/_shared/DECISIONS.md](../prototype/_shared/DECISIONS.md) — décisions design antérieures
+- [../../archive/design/prototype/OPEN-QUESTIONS.md](../../archive/design/prototype/OPEN-QUESTIONS.md) — décisions design antérieures
 - [../../app-implem-phases/README.md](../../app-implem-phases/README.md) — plan d'implémentation phases 0-5

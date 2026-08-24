@@ -170,7 +170,7 @@ CREATE TABLE sets_audit (
 );
 ```
 
-Alimentée par l'admin (cf. [`docs/design/admin/README.md`](../admin/README.md)) et par le bootstrap script Python.
+Alimentée par l'admin (cf. [`docs/design/admin/README.md`](../../archive/design/admin/README.md)) et par le bootstrap script Python.
 
 ### 4.4 RLS
 
@@ -448,7 +448,7 @@ Condition d'existence : le bootstrap doit avoir posé `issue_type='commemo-commo
 
 ## 12. Voir aussi
 
-- [`docs/design/admin/README.md`](../admin/README.md) — outil admin futur pour gérer ces sets
+- [`docs/design/admin/README.md`](../../archive/design/admin/README.md) — outil admin futur pour gérer ces sets
 - [`docs/design/_shared/data-contracts.md`](./data-contracts.md) — contrats data Room ↔ Supabase
 - [`docs/design/_shared/offline-first.md`](./offline-first.md) — stratégie offline
 - [`docs/research/data-referential-architecture.md`](../../research/data-referential-architecture.md) — architecture référentiel `coins`

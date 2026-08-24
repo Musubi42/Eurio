@@ -78,7 +78,7 @@ Le détecteur (`vision/normalize_snap.py::detect_circles_multi`) est
 
 Les `detections_json` du run du 2026-08-16 disent la même chose sur 433 images :
 `radius_too_small` 1 584, `gated_fragment` 1 149, 43 images sans aucun cercle.
-**C'est le diagnostic du chantier [`crop-recovery`](../../crop-recovery/VISION.md)**
+**C'est le diagnostic du chantier [`crop-recovery`](../../../archive/crop-recovery/VISION.md)**
 (« la détection se rabat sur le motif central », jeu D2 = 341 `zero_crops`) —
 la première version de ce document disait le contraire, à tort.
 

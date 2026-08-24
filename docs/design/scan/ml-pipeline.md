@@ -32,7 +32,7 @@ Frame CameraX (ARGB_8888)
 
 | Brique | État | Note |
 |---|---|---|
-| CoinDetector | POC en place (YOLOv8n tenté, faux positifs massifs) | À retravailler ou remplacer. Voir [`docs/research/yolo-detection-findings.md`](../../research/yolo-detection-findings.md) si existe. |
+| CoinDetector | POC en place (YOLOv8n tenté, faux positifs massifs) | À retravailler ou remplacer. Voir [`docs/research/yolo-detection-findings.md`](../../research/detection-pipeline-unified.md) si existe. |
 | CoinEmbedder | Phase 1 classification bridge en cours (Phase 2A) | Bloquant pour le scan utilisateur réel. |
 | Modèle ArcFace 500+ classes | **Pas encore entraîné** (Phase 2B) | Bloquant pour le matching multi-classes. |
 | EmbeddingMatcher | Scaffold Kotlin en place | Nécessite `coin_embeddings.npy` pré-calculé. |
