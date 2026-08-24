@@ -218,8 +218,11 @@ Sans normalisation, la vérification signalait **1 651 fausses divergences** sur
 `coin_price.sampled_at`. Un contrôle qui crie au loup finit par ne plus être lu.
 
 ⚠️ `AppCoreBootstrapper.kt` gate le rechargement sur `APP_CORE_VERSION`, **constante
-codée en dur, valeur 1, jamais incrémentée**. Un `app_core.db` au contenu neuf sans
-incrément ⇒ l'app **skippe le bootstrap en silence**.
+codée en dur** (`:227`, valeur **2** au 2026-08-25) **qu'aucun outillage n'écrit** :
+`grep APP_CORE_VERSION` ne rend rien dans `Taskfile.yml`, `ml/tasks.yml` ni
+`build_app_core.py`. Un `app_core.db` au contenu neuf sans incrément manuel ⇒ l'app
+**skippe le bootstrap en silence**. Le piège n'est pas la valeur, c'est que personne ne
+la dérive du contenu.
 
 ## Trois mécanismes de déploiement d'assets — dont un mort-vivant
 
@@ -238,18 +241,19 @@ Aucun des deux n'a de sha ni de meta, donc **on ne peut pas le savoir en l'état
 
 - **Aucune CI.** Pas de `.github/workflows`, pas de hook git. `go-task tokens:check`
   existe mais n'est lancé que localement ou par un agent (`actions.yml`).
-- **Aucune tâche « lancer toute la suite de tests ».** Seulement 3 invocations pytest ciblées.
+- **Aucune tâche « lancer toute la suite de tests ».** Seulement 5 invocations pytest ciblées.
 - **Aucun générateur de types** ml ↔ front. Les types TS sont retapés à la main.
   `ml/swagger.yaml` est la spec **de Numista**, pas d'Eurio, et n'est référencée nulle part.
 - **`supabase/types/database.ts` n'a aucun import** — c'est de la doc de schéma.
 
-## Corrections à porter dans `CLAUDE.md`
+## ~~Corrections à porter dans `CLAUDE.md`~~ — portées
 
-`CLAUDE.md` fait autorité sur les règles, mais deux de ses affirmations factuelles sont
-périmées — ce fichier-ci est à jour, `CLAUDE.md` ne l'est pas :
-
-| `CLAUDE.md` dit | Réalité |
-|---|---|
-| snapshot catalogue = `app-android/src/main/assets/catalog_snapshot.json` | Ce fichier **n'existe plus** : c'est `app_core.db` depuis P6 |
-| « Schéma de vérité : `supabase/types/database.ts` (généré) » | **Aucun import, aucun générateur.** C'est de la doc de schéma, pas une source |
-| `infra/review/` « sera supprimé à C9 » | C9 n'existe plus (`auth-redesign/ROADMAP.md`). Le sujet vivant est **K2**, qui porte sur `admin/packages/review/` |
+> ✅ **Section close, re-vérifiée le 2026-08-25.** Elle listait trois affirmations
+> périmées de `CLAUDE.md` : le snapshot `catalog_snapshot.json`, `supabase/types/database.ts`
+> présenté comme « généré », et `infra/review/` « supprimé à C9 ». **Les trois y sont
+> corrigées** — `CLAUDE.md` dit aujourd'hui `app_core.db`, dit que `database.ts` n'est ni
+> généré ni importé, et dit K2 tranché.
+>
+> Gardée en trace, vidée de son contenu : une section de correction qui survit à sa
+> correction fait douter d'un fichier juste. C'est une erreur au même titre que celles
+> qu'elle signalait.

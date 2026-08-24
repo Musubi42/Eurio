@@ -27,7 +27,7 @@ Eurio/
 │   ├── minio/                         # MinIO assets (eurio-s3.musubi.dev)
 │   └── backup/                        # Chaîne de sauvegarde — VPS UNIQUEMENT (cf. §Sauvegarde)
 ├── docs/
-│   ├── adr/                           # 15 ADR — le SEUL journal de décisions
+│   ├── adr/                           # 16 ADR — le SEUL journal de décisions
 │   ├── architecture/                  # état réel : par stockage, par geste, par artefact
 │   ├── work-in-progress/              # 13 chantiers VIVANTS (index dans son README.md)
 │   ├── archive/                       # livré ou abandonné — traçabilité, jamais pilotage
@@ -85,7 +85,7 @@ Jamais de shortcut qui crée de la dette. Construire proprement depuis le POC. S
 
 ### R0bis. Front unique — gater le lourd, pas le séparer
 
-Il n'y a **qu'un** front (`admin/packages/studio-local`). Avant d'ajouter une feature qui
+Il n'y a **qu'un** front à faire vivre : `admin/packages/studio-local`. *(`admin/packages/review/` existe encore, est tracké et buildé par `infra/review/` — c'est la pile en doublon que le **lot 9** de `review-collaborative-v2` fait tomber. N'y ajoute rien.)* Avant d'ajouter une feature qui
 appelle le ML API local (`http://127.0.0.1:8042`) : marque sa **route** `meta: { heavy: true }`
 et son **item nav** `heavy: true`. Elle marche en local et se grise automatiquement en hébergé
 (`hasLocalMlApi` faux) — `AppLayout` rend `LocalOnlyNotice`. Ne réintroduis **pas** un second
@@ -275,7 +275,7 @@ Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant 
 
 ### Sauvegarde — tourne sur le VPS, jamais sur Mac/PC
 
-Chantier `backup-pipeline`, lots 0 à 5 livrés. **Hub :
+Chantier `backup-pipeline` : lots 0 à 4 livrés, **lot 5 🟡** (code fait, monitors à créer), lot 6 clos. Synthèse : [ADR-014](docs/adr/014-sauvegarde-duplicati-et-anneaux.md). **Hub :
 `docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md`** (état, pièges, chiffres
 de référence) ; les décisions et ce qu'elles écartent sont dans `DECISIONS.md` (32
 entrées) ; leur synthèse est [ADR-014](docs/adr/014-sauvegarde-duplicati-et-anneaux.md).
@@ -310,13 +310,13 @@ absents sur Mac/PC. Ne pas tenter de les lancer ailleurs ni de « réparer » le
 
 ### ML pipeline
 
-Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-nano + OpenCV Hough en parallèle → merge IoU → rerank ArcFace spread-based → consensus buffer 5/3 sticky.
+Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : **YOLOv8-nano** (`ml/training/train_detector.py:46` : `YOLO("yolov8n.pt")` — le « YOLO11 » écrit ici depuis avril était faux) + OpenCV Hough en parallèle → merge IoU → rerank ArcFace spread-based → consensus buffer 5/3 sticky.
 
 ## Documents à lire avant d'attaquer un changement
 
 | Tu touches à… | Lis d'abord… |
 |---|---|
-| **N'importe quoi de structurant** | [`docs/adr/README.md`](docs/adr/README.md) — 15 ADR, une ligne chacune. Tu lis l'index, puis **une seule** |
+| **N'importe quoi de structurant** | [`docs/adr/README.md`](docs/adr/README.md) — 16 ADR, une ligne chacune. Tu lis l'index, puis **une seule** |
 | **« Qu'est-ce qui reste à faire ? »** | [`docs/BACKLOG.md`](docs/BACKLOG.md) (chantiers archivés) et [`docs/work-in-progress/README.md`](docs/work-in-progress/README.md) (chantiers vivants) |
 | Nav shell / FAB / bottom bar | `docs/app-implem-phases/research-02-nav-patterns.md` |
 | UX décisions produit | `docs/app-implem-phases/README.md` (14 décisions) |
@@ -328,7 +328,7 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 | **Sauvegarde / restauration** | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
 | **File de review scopée par la prédiction (« pêche »)** | `docs/work-in-progress/peche-dino/CONSTAT.md` |
 | **Banque d'ancres DINO, seuils, choix d'encodeur** | la skill `eurio-banque` d'abord ; puis la **note d'état en tête de `docs/work-in-progress/scan-sans-retrain/PREREQUIS.md`** (où on en est, ce qui attend le PO, dans quel ordre) et `docs/work-in-progress/banque-dino/CONSTAT.md` |
-| **Auto-validation de la review / temps humain de review** | `docs/work-in-progress/review-autovalidation/PROBLEME.md` — problème posé, rien d'implémenté |
+| **Auto-validation de la review / temps humain de review** | `docs/work-in-progress/review-autovalidation/` — **`MESURE-2026-08-25.md` d'abord** (le geste zéro est joué, et il dément deux prémisses de `PROBLEME.md`), puis `REPRENDRE-ICI.md` (ce qui est déployé), puis `PROBLEME.md` |
 | **Corpus de scan : où sont les photos, comment ne pas les perdre** | `docs/work-in-progress/scan-quality/DURABILITE-CORPUS.md`, puis `docs/work-in-progress/scan-sans-retrain/PROTOCOLE-CAPTURE.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
 

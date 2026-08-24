@@ -12,7 +12,9 @@
 
 - **58 findings confirmés** : 4 critical · 21 high · 33 medium. + **19 low** confirmés. 1 réfuté (écarté).
 - **12 corrigés directement** par la session d'audit (working tree, non committés) — voir colonne *Traitement* = `corrige`.
-- **46 restants** cadrés dans **8 fiches de remédiation** auto-portées (`F01`…`F08`), prêtes à dispatcher.
+- **46 restants** cadrés dans **9 fiches de remédiation** auto-portées (`F01`…`F09`), prêtes à dispatcher.
+
+> 🔴 **Ces chiffres datent du 2026-07-04. Lis [`ETAT-2026-08-25.md`](ETAT-2026-08-25.md) avant les fiches** : sur les 46, **26 sont tombés tout seuls** depuis, 2 sont sans objet, et **36 tiennent** — la re-vérification a été faite au code, finding par finding.
 
 ## ⚠️ Action P0 utilisateur (hors périmètre agent)
 
@@ -25,7 +27,7 @@ par l'audit, MAIS :
 2. **Purger l'historique** des 2 remotes (`git-filter-repo`) + force-push — le `git rm` ne suffit pas.
 3. Détail et suivi : `docs/operations/secrets-followup.md` (bandeau d'alerte mis à jour).
 
-## Les 8 fiches de remédiation
+## Les 9 fiches de remédiation
 
 | # | Fiche | Cœur |
 |---|---|---|

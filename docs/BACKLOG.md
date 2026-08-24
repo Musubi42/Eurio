@@ -20,7 +20,7 @@
 |---|---|---|---|
 | B1 | ~~Un `.env` en clair traîne à la racine~~ | ✅ **Fait le 2026-08-25.** Vérifié avant suppression : les 5 valeurs vivantes étaient déjà dans SOPS à l'identique, sa `NUMISTA_API_KEY` était `MUSUBI00`, et sa `ROBOFLOW_API_KEY` n'était ni dans SOPS ni lue par aucun code (`setup_detection_dataset.py` n'existe plus dans l'arbre). Supprimée avec le fichier ; régénérable sur app.roboflow.com si besoin | [ADR-015](./adr/015-secrets-sops-age.md) |
 | B2 | ⚠️ **Roter `NUMISTA_API_KEY_MUSUBI00` et `NUMISTA_API_KEY_MUSUBI01`** | **Geste PO, sur numista.com.** Mesuré le 2026-08-25 : ces deux valeurs sont **inchangées depuis leur fuite** et lisibles en clair dans `.envrc copy` au commit `f7dd22f7` (2026-06-15), accessible depuis `github/repo-cleanup` sur un dépôt **public**. Tout le reste a bien été roté — Supabase, eBay, les 6 autres clés Numista : 0 commit. Elles sont 8 en rotation, roter deux d'entre elles ne coûte rien et **referme la porte sans attendre le remaster** ([ADR-005](./adr/005-remaster-historique-git.md)) | [ADR-005](./adr/005-remaster-historique-git.md) §Correction mesurée |
-| B3 | **36 findings de robustesse, re-datés** | L'audit du 2026-07-04 comptait 46 non traités. Re-vérifiés un par un sur le code le 2026-08-25 : **26 sont tombés tout seuls**, 2 sont sans objet, **36 tiennent encore** (dont 6 `high`). État et priorités : [`hardening-2026-07/ETAT-2026-08-25.md`](./work-in-progress/hardening-2026-07/ETAT-2026-08-25.md) — **à lire avant les 9 fiches** | [`work-in-progress/hardening-2026-07/`](./work-in-progress/hardening-2026-07/) |
+| B3 | **36 findings de robustesse, re-datés** | L'audit du 2026-07-04 comptait 46 non traités. Re-vérifiés un par un sur le code le 2026-08-25 : **26 sont tombés tout seuls**, 2 sont sans objet, **36 tiennent encore** (6 `high`, 21 `medium`, 9 `low`). État et priorités : [`hardening-2026-07/ETAT-2026-08-25.md`](./work-in-progress/hardening-2026-07/ETAT-2026-08-25.md) — **à lire avant les 9 fiches** | [`work-in-progress/hardening-2026-07/`](./work-in-progress/hardening-2026-07/) |
 
 ## Données et stockage
 
@@ -30,7 +30,7 @@
 | D2 | **546 `source_images` legacy sur chemins FS absolus** | BCE 475 + JO 71 → backfill ciblé vers `enrichment-raws` | `archive/harmonisation-images/` |
 | D3 | **`ml/state/training.db` fantôme** | Existe encore sur disque, plus aucun écrivain identifié. À supprimer après vérification | `archive/data-harmonization/` |
 | D4 | **Chunk 5 — migration d'identité** | Le seul chunk non livré du design canonique verrouillé : driver de migration (journal `eurio_id_migrations` → propagation vers `image_assets`/cohortes/bench), re-pin du bench gold, replay des ~28 entrées BE 2017, re-jugement de 17 gold 2017, i18n de 147 pièces générées | `archive/data-harmonization/architecture.md` |
-| D5 | **Bucket MinIO `eurio-db`** | Legacy, remplacé par `db_routes.py`. Plus aucune référence dans `ml/` au 2026-08-24 — **le retrait est peut-être déjà faisable**, à confirmer côté VPS avant de supprimer le bucket | [`architecture/README.md`](./architecture/README.md) |
+| D5 | **Bucket MinIO `eurio-db`** | Legacy, remplacé par `db_routes.py`. Aucune référence dans le code **vivant** de `ml/` — 3 subsistent, toutes sous `ml/archive/`. ⚠️ Le bucket est encore dans `MIRROR_BUCKETS` (`infra/backup/eurio-backup.sh:74`) : le retirer touche la chaîne de sauvegarde, cf. [ADR-014](./adr/014-sauvegarde-duplicati-et-anneaux.md). À confirmer côté VPS avant toute suppression | [`architecture/README.md`](./architecture/README.md) |
 
 ## Modèle, entraînement, scan
 
@@ -42,7 +42,7 @@
 | M4 | **Outillage de review manuelle pour la traîne** | Les ~8 % que l'algo rate n'ont pas d'écran pour être repris à la main | `archive/crop-quality-overhaul/` |
 | M5 | **Rollout `design_group` aux autres pays** | Le pilote BE est livré (chunks 1-5). Reste le chunk 6, le gate parseur derive-then-diff, la validation vision LLM par pays | `archive/design-groups-standards/` |
 | M6 | **Gros run PC ArcFace 16 classes** | Jamais lancé. Et `05-ebay-standards` : les standards ne sont pas scrapables (`v_ebay_freshness_groups` filtre `is_commemorative=1`) | `archive/lab-streamline/` |
-| M7 | **`coin_confusion_map` vers `eurio.db`** | Migration différée | `archive/lab-streamline/` |
+| ~~M7~~ | ~~`coin_confusion_map` vers `eurio.db`~~ | ✅ **Déjà fait** — vérifié le 2026-08-25 : `ml/serving/server.py:1526` lit la table dans `eurio.db`, `confusion_routes.py` la sert. L'item avait été recopié d'un chantier archivé sans relire le code. *(La table est vide : elle n'a pas été recalculée depuis — c'est autre chose.)* | `archive/lab-streamline/` |
 
 ## Sources et référentiel
 
@@ -57,7 +57,7 @@
 | # | Item | Détail | Source |
 |---|---|---|---|
 | Q1 | **Suite de tests AI-first** | Cadrage solide (catégories A-F, dashboard, 7 questions à trancher), **0 % démarré depuis avril**. Le doc note que la review auto-validation du 2026-05-05 a saigné ~70 % de faux positifs faute de tests vérifiables. Gros levier, jamais pris | `archive/handoffs-2026/ai-first-test-suite.md` |
-| Q2 | **Refacto de `ml/`** | God-node `state/store.py` (2705 lignes, 176 arêtes au graphe), un seul process FastAPI, ~106 scripts. Cadrage écrit en juin 2026, **jamais engagé**. Sa décision « jobs détachés » est passée dans le code depuis, par ailleurs | `archive/refacto-ml/` |
+| Q2 | **Refacto de `ml/`** | ⚠️ **Le diagnostic de juin est périmé, et je l'avais recopié tel quel.** `ml/state/store.py` — le god-node à 2 705 lignes — **n'existe plus** : `store` est un package de 30+ modules, 8 162 lignes au total, le plus gros à 865. Le découpage a eu lieu, et « jobs détachés » aussi. Reste du cadrage d'origine : un seul process FastAPI, ~106 scripts. **À re-cadrer avant d'engager quoi que ce soit** | `archive/refacto-ml/` |
 | Q3 | **Parité proto ↔ Android : les flows manquants** | 16 flows Maestro pour ~26 scènes. Manquent onboarding (×5), coin-detail, vault-catalog-country, profile-unlock. **Les screenshots Android datent du 2026-04-17** — l'app a beaucoup changé, il faut re-runner avant de conclure quoi que ce soit d'une capture | `archive/parity/` |
 | Q4 | **Pont Maestro ↔ Playwright** | Rejouer les *steps* yaml comme assertions Playwright, pas seulement en screenshot. C'est la vraie partie différée du chantier parité | `archive/parity/` |
 | Q5 | **Recette d'un PAT réel bout en bout** (F4) | Génération + collage + appel authentifié, jamais joué en vrai | `archive/auth-redesign/PAT-WORKFLOW.md` |

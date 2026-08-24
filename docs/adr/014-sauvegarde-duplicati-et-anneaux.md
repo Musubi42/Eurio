@@ -1,7 +1,8 @@
 # ADR-014 — Sauvegarde : Duplicati comme moteur unique, staging applicatif, et cinq anneaux
 
 - **Statut** : ✅ Acceptée
-- **Date** : 2026-08-14 · lots 0 à 5 livrés, sur le VPS uniquement
+- **Date** : 2026-08-14 · lots 0 à 4 livrés et le lot 6 clos ; **le lot 5 reste 🟡**
+  (code fait, monitors à créer — cf. `backup-pipeline/ROADMAP.md`). VPS uniquement
 - **Supersède** : `archive/operations/backup-strategy.md` et `archive/operations/backup-pcloud.md`
   (le chemin parallèle `eurio-backup.sh` → pCloud via `rclone crypt`, qui n'a jamais tourné)
 
@@ -81,7 +82,11 @@ par les 10 autres jobs : c'est le livrable le plus transférable du chantier.
   ~15,3 Go, sur 85 Go libres).
 - ⚠️ **`infra/backup/staging/` contient 6,6 Go de DONNÉES gitignorées sur le VPS.**
   Un `git clean -xdf` les détruit.
-- Rien du parcours d'entraînement n'est sauvegardé (tout gitignoré, backup = VPS only).
+- Le parcours d'entraînement n'est sauvegardé **qu'en partie**. Les artefacts publiés le
+  sont — `model-artifacts` est dans `MIRROR_BUCKETS` (`infra/backup/eurio-backup.sh:74`),
+  donc `best.pt` et le dataset de détection y entrent depuis [ADR-004](./004-artefacts-binaires-hors-git.md).
+  Ce qui reste hors filet, c'est le **calcul local** : bakes, manifestes d'itération,
+  logs de run, tout ce qui vit sur le disque du Mac ou du PC et n'est jamais publié.
 - Anomalie ouverte : `eurio-review` tourne avec les identifiants **root** de MinIO.
 - Les `403 Forbidden` du miroir MinIO sont du bruit Cloudflare — c'est écrit pour que
   personne ne les prenne pour une panne.

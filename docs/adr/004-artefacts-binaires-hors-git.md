@@ -1,10 +1,17 @@
 # ADR-004 — Artefacts binaires hors de git, fetchés au build
 
 **Date :** 2026-08-14
-**Statut :** ✅ **Acceptée et appliquée** (2026-08-16) pour les **modèles de l'APK**.
-Les 4 assets sont hors git, fetchés par le `preBuild` Gradle. `best.pt` et le dataset
-de détection (étape 3 de §Décision) restent dans git : le transport Mac→PC n'est pas
-touché, donc **rien ne peut casser le PC**.
+**Statut :** ✅ **Acceptée et appliquée intégralement** (2026-08-16).
+
+> **Correction du 2026-08-25.** Ce statut affirmait que `best.pt` et le dataset de
+> détection « restent dans git ». **C'est faux depuis le 2026-08-16.** L'étape 3 a été
+> jouée le même jour : `git ls-files | grep '\.pt$'` → **0**,
+> `git ls-files ml/datasets/detection | wc -l` → **0**. Ils vivent dans
+> `model-artifacts` sous le préfixe `training/`, épinglés par
+> `shared/training-assets.json`, rapatriés par `go-task ml:training-assets:fetch`
+> (`ml/tasks.yml`). Le transport Mac→PC **a** changé, et la rassurance « rien ne peut
+> casser le PC » ne tient plus : un PC hors ligne sans cache d'artefacts n'a plus de
+> poids.
 
 ## Contexte
 
@@ -60,9 +67,13 @@ revient sur cette décision — sujet distinct.
 
 ## Exécution (2026-08-14) — mécanisme livré, bascule en attente
 
-Périmètre arbitré par le PO : **modèles de l'APK uniquement**. `best.pt` reste dans git
-(le transport Mac→PC n'est pas touché, donc **rien ne peut casser le PC**), et
-`app_core.db` reste committé (§Décision).
+Périmètre arbitré ce jour-là : **modèles de l'APK uniquement**. `app_core.db` reste
+committé (§Décision).
+
+> **Élargi le 2026-08-16** : les artefacts d'entraînement (`best.pt`, dataset de
+> détection) ont leur propre chaîne — préfixe `training/` dans `model-artifacts`,
+> manifeste `shared/training-assets.json`, tâches `ml:training-assets:{publish,fetch,status}`.
+> Le paragraphe ci-dessus les disait « restés dans git » ; ils n'y sont plus.
 
 | Livré | Détail |
 |---|---|

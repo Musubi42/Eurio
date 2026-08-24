@@ -18,7 +18,7 @@ Tailles = `ls -lh` sur disque. **Tracké** ou non indiqué explicitement.
 | ⚠️ `assets/models/test_model.tflite` | **19 Mo** | **non** | **inconnu** | **inconnu** (aucun consommateur identifié) | ❓ **À qualifier** — c'est le plus gros fichier des assets, daté du 2026-04-09, jamais documenté. Résidu de spike ? |
 | `assets/data/coin_embeddings.json` | 61 ko | **non** *(MinIO, ADR-004)* | `ml/training/compute_embeddings.py` | `EmbeddingMatcher.kt` | 🟢 idem — c'est la table de centroïdes du run promu |
 | `assets/data/model_meta.json` | 958 o | **non** *(MinIO, ADR-004)* | `ml/training/export_tflite.py` | `CoinEmbedder.kt` | 🟢 couplé au `.tflite`, publié avec lui |
-| `assets/app_core.db` | 3,2 Mo | oui | `ml/export/build_app_core.py` (**lit Supabase**) | `AppCoreBootstrapper.kt` | 🟢 `go-task ml:build-app-core` |
+| `assets/app_core.db` | 3,2 Mo | oui | `ml/export/build_app_core.py` (**ne lit plus Supabase** depuis le 2026-08-16 : il dérive du canonique par les mêmes builders que la projection ; seul `--verify` interroge PostgREST) | `AppCoreBootstrapper.kt` | 🟢 `go-task ml:build-app-core` |
 | `src/qa/assets/app_core.db` | 147 ko | non | `ml/export/build_app_core_qa.py` | variante QA | 🟢 |
 | `assets/shared_reverse/reverse_2eur_v{1,2}.webp` | 186 ko | oui | `ml/export/build_shared_reverse_assets.py` (re-télécharge + ré-encode) | `CoinRepository.kt` | 🟢 |
 | `assets/capture_coins.csv` | 1,5 ko | oui | édité à la main | app | 🔴 donnée primaire |
@@ -66,7 +66,7 @@ généralisation.
 |---|---|---|
 | Les 1878 images Roboflow | 🟢 | Dans l'artefact. Re-téléchargeables par ailleurs, mais ⚠️ **le script de re-fetch a été retiré du repo** — seule l'URL du `data.yaml` reste |
 | Les **30 `negative_*.jpg`** (2,5 Mo) | 🟢 | ~~🔴~~ Nos images sans pièce, pour réduire les faux positifs. Elles étaient sur **un seul disque** (leurs labels dans git, pas elles) ; elles sont maintenant dans l'artefact MinIO, donc dans la chaîne de sauvegarde |
-| Les **3788** `.txt` de labels | 🟢 | Dans l'artefact, avec les images qu'ils annotent. Encore trackés dans git en double — le `git rm` attend une vérification depuis le PC |
+| Les **3788** `.txt` de labels | 🟢 | Dans l'artefact, avec les images qu'ils annotent. ~~Encore trackés dans git en double~~ — **détrackés le 2026-08-16** (`244f5a2d`). Vérifié le 2026-08-25 : `git ls-files ml/datasets/detection \| wc -l` → **0** |
 
 🔴 **Sauvegarde des 30 négatifs** : `eurio-detection-negatives-20260814.tar.gz`
 (2,5 Mo, sha256 `85ba18d584c929c361b822d8852647170b52ab2cc54562bf00861aa0b4cd98a6`),

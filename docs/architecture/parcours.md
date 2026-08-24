@@ -17,7 +17,7 @@
 | 2 | Crop → crops MinIO + `image_assets` | à écrire |
 | 3 | Review / décision humaine → `review_queue` | à écrire |
 | **4** | **Cohorte → itération → bake → entraînement** | **✅ ci-dessous (2026-08-16)** |
-| **5** | **Promotion d'un modèle → MinIO → APK** | **🚧 tracé et mesuré (2026-08-16), jamais exécuté — cf. §5 en bas** |
+| **5** | **Promotion d'un modèle → MinIO → APK** | **✅ tracé, mesuré ET exécuté** — la première promotion du dépôt a eu lieu, `ml/prod/current/` existe (cf. §Exercice #3) |
 | 6 | Export catalogue → Supabase → `app_core.db` | à écrire (décrit partiellement dans `README.md`) |
 | 7 | Fetch référentiel (Numista / Wiki) | à écrire |
 | 8 | Scan dans l'app → coffre Room | à écrire |
@@ -327,13 +327,13 @@ itérations au canonique, et 209 fichiers dans `ml/state/job_logs/`. Rien ne les
 purge. Le rail `jobs/` actuel, lui, ne connaît que 3 lignes dans
 `eurio.local.db` — l'écart mesure l'accumulation d'avant sa mise en place.
 
-### ⑦ Un message d'aide qui pointe un module inexistant
+### ⑦ Un message d'aide qui pointait un module inexistant — ✅ corrigé
 
-`vision/sync_eval_real.py` et plusieurs messages d'erreur
-(`prepare_dataset.py:331`, `train_embedder.py:814`) disent de lancer
-`python -m scan.sync_eval_real`. **Il n'y a pas de package `ml/scan/`.** La bonne
-commande est `go-task ml:eval-real:sync -- <debug_pull_dir>` (qui appelle
-`vision.sync_eval_real`).
+Plusieurs messages d'erreur (`prepare_dataset.py:331`, `train_embedder.py:814`) disaient
+de lancer `python -m scan.sync_eval_real`, alors qu'il n'y a pas de package `ml/scan/`.
+**Corrigé** : ils disent `python -m vision.sync_eval_real`, et un test de non-régression
+le tient (`ml/tests/test_tasks_coherence.py:204`). La commande recommandée reste
+`go-task ml:eval-real:sync -- <debug_pull_dir>`.
 
 ## Le parcours a été déroulé en entier — exercice #1, 2026-08-16
 
@@ -491,8 +491,12 @@ cesseraient de l'être. Ce n'est pas un bug : c'est le contrat du script. C'est 
 
 ## Le second piège : promouvoir écrit en production, sans option
 
-`promote()` appelle `_push_supabase()` **inconditionnellement** (hors `--dry-run`,
-qui ne fait rien du tout). Il n'existe aucun `--no-supabase`. Conséquence : on ne
+> ✅ **Corrigé depuis.** `--no-supabase` existe (`promote_iteration.py:638`, gardé aux
+> lignes 549 et 578) — c'est le §Exercice #3 plus bas qui raconte son ajout. Le constat
+> d'origine est conservé parce qu'il dit *pourquoi* l'option a été créée.
+
+`promote()` appelait `_push_supabase()` **inconditionnellement** (hors `--dry-run`,
+qui ne faisait rien du tout). Il n'existait aucun `--no-supabase`. Conséquence : on ne
 peut pas exercer la chaîne locale — copier vers `prod/current`, vérifier les sha,
 rafraîchir les assets — **sans écrire dans la base que consomme l'app en prod**.
 C'est le même couplage que celui qui faisait échouer `build-app-core` quand
@@ -510,8 +514,8 @@ répéter à blanc.
    couverte.
 
 ⚠️ Et un détail qui mordra à l'étape 3 : `AppCoreBootstrapper.kt` gate le
-rechargement du catalogue sur `APP_CORE_VERSION`, **constante codée en dur jamais
-incrémentée** (cf. `README.md`). Ça concerne `app_core.db`, pas les embeddings,
+rechargement du catalogue sur `APP_CORE_VERSION`, **constante codée en dur qu'aucun
+outillage n'écrit** (elle vaut 2 au 2026-08-25 — cf. `README.md`). Ça concerne `app_core.db`, pas les embeddings,
 mais c'est le même genre de piège dans la même étape.
 
 ## Exercice #3 — la chaîne locale, parcourue pour la première fois (2026-08-16)

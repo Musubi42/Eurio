@@ -51,15 +51,17 @@ le front hébergé.** Pas de tampon, pas de base locale chez lui, pas de PWA.
 | Tampon `review.db` + publish/reconcile (design de juin) | ❌ Recopie la donnée d'un serveur vers lui-même sous Direction A. Deux schémas à tenir synchronisés pour rien |
 | PWA + base locale chez l'ami | ❌ Un lot pèse ~3,9 Mo. Le hors-ligne n'est pas le besoin ; le besoin est « ça marche sur son PC sans rien installer » |
 | Crop en Canvas côté client | ❌ Faisable en dix lignes, et **silencieusement faux** : `canvas.drawImage` ne rééchantillonne pas comme `INTER_AREA`, et pas pareil selon le navigateur et le GPU. On obtiendrait des crops qui diffèrent selon la machine de l'ami — une pollution muette du jeu d'entraînement, alors que ces pixels nourrissent l'entraînement |
-| Conteneur DINO CPU sur le VPS | ⏸️ Gardé en réserve. 0 crop sur 21 223 n'a de prédiction persistée : le fallback lourd ne s'allume jamais |
+| Conteneur DINO CPU sur le VPS | ⏸️ Gardé en réserve. **Zéro crop SANS prédiction persistée** sur les 21 223 comptés par le chantier le 2026-08-23 : le fallback lourd ne s'allume jamais. *(Le compte porte sa date — la population bouge ; rejouer avant de citer.)* |
 | DINO dans le navigateur | ❌ La banque passerait (7,8 Mo) mais elle est encodée en `vitl14` (~300 M paramètres). Le seul modèle navigable, `vits14`, mesure 41,6-45,5 % contre 77,8 %. On servirait aux amis un DINO deux fois moins bon |
 | Quarantaine par rôle | ❌ Par scope, le PO se forge un PAT restreint et recette toute l'expérience « ami » depuis son propre compte, sans créer un seul compte Authentik |
 | Un second système de permissions | ❌ Deux vérités qui divergent. Les scopes existants suffisent ([ADR-010](./010-authentik-oidc-et-pat.md)) |
 
 ## Conséquences
 
-**Bonnes.** La boucle est fermée et parcourue en production : 12 décisions signées par
-un compte non-admin sont arrivées en quarantaine, canonique intact, relues en lot.
+**Bonnes.** La boucle est fermée et parcourue en production : les 12 premières décisions
+signées par un compte non-admin (2026-08-23) sont arrivées en quarantaine, canonique
+intact, relues en lot. `peer_review_decisions` en comptait **39** le 2026-08-25 — le
+mécanisme sert, il ne dort pas.
 Inviter quelqu'un coûte une création de compte.
 
 **Mauvaises, et assumées.**

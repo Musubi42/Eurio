@@ -36,7 +36,8 @@ Extraire `loan/` dans son propre dépôt, sous un dossier parent commun avec Eur
 
 Deux ruptures à traiter :
 1. **La ligne de CSS** — vendorer `tokens.css`, ou consommer le futur package
-   `@eurio/tokens` ([ADR-007](./007-pas-de-split-eurio-avant-artefacts.md)).
+   `@eurio/shared` ([ADR-007](./007-pas-de-split-eurio-avant-artefacts.md)) — le package
+   a été livré sous ce nom, pas sous `@eurio/tokens` qui n'a jamais existé.
 2. **L'alimentation en données** — basculer de Supabase vers **MinIO**, conformément à la
    cible « la donnée va sur MinIO ».
 
@@ -55,7 +56,7 @@ Nouvelle topographie : `bizz/EurioProject/` contient `Eurio/` et `loan/` côte �
 | Fait | Détail |
 |---|---|
 | `loan/` détracké et déplacé | 116 fichiers ; `EurioProject/loan`, dépôt git autonome (`ef98288`) |
-| Couplage de code coupé | `shared/tokens.css` **vendoré** dans `loan/src/styles/tokens.css`, avec bandeau de provenance. À remplacer par `@eurio/tokens` le jour où [ADR-007](./007-pas-de-split-eurio-avant-artefacts.md) est livrée |
+| Couplage de code coupé | `shared/tokens.css` **vendoré** dans `loan/src/styles/tokens.css`, avec bandeau de provenance. À remplacer par `@eurio/shared` (livré ; le nom `@eurio/tokens` de la rédaction d'origine n'existe pas) |
 | 4 tâches `loan:*` retirées | `Taskfile.yml` d'Eurio, remplacées par un commentaire pointant la doc de migration |
 | `CLAUDE.md` mis à jour | la mention Vercel renvoie désormais au dépôt séparé |
 | Secrets | `.env.local` et `.vercel/` suivent le dossier sur disque, **jamais dans git** (vérifié avant le premier commit) |
