@@ -331,3 +331,31 @@ def test_une_etape_ratee_remonte_sa_CAUSE_pas_sa_commande(tmp_path, monkeypatch)
     assert "la réplique est read-only" in message, (
         "la cause doit voyager avec l'échec, pas rester dans un fichier de log")
     assert "(3)" in message, "le code de sortie reste utile pour trier"
+
+
+def test_le_job_enregistre_son_propre_pid(tmp_path, monkeypatch):
+    """Le processus est le seul à savoir qu'il existe — donc c'est à lui de le dire.
+
+    🔴 Vécu le 2026-08-24. Le pid était posé par l'APPELANT (la route, après
+    `Popen`). Une ligne de job créée autrement n'en avait donc jamais, et
+    `reap_orphan_rebuilds` l'a marquée `failed` passé le délai de grâce —
+    pendant que le rebuild tournait toujours. La carte annonçait un échec sur un
+    processus bien vivant, et la garde 409 rouvrait la porte à un doublon.
+
+    Le correctif ne consiste pas à allonger la grâce (ça ne fait que déplacer la
+    fenêtre) mais à supprimer la dépendance : le runner écrit `os.getpid()` dès
+    qu'on lui donne un `--job-id`.
+    """
+    import ast
+
+    src = (ML_DIR / "scripts/rebuild_dino_bank.py").read_text()
+    arbre = ast.parse(src)
+    appels = [
+        n for n in ast.walk(arbre)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "rebuild_set_pid"
+    ]
+    assert appels, "le runner doit enregistrer son propre pid"
+    assert any(
+        isinstance(a, ast.Call) and getattr(a.func, "attr", "") == "getpid"
+        for appel in appels for a in appel.args
+    ), "le pid enregistré doit être CELUI DU RUNNER (os.getpid()), pas un argument"

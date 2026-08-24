@@ -23,6 +23,7 @@ commande, c'est à toi de le faire.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,7 +37,11 @@ from shared.verdict_scope import (  # noqa: E402
     VERDICT_ENCODER_VERSION_FOR_KIND,
 )
 from store import local_state_store  # noqa: E402
-from store.dino_rebuild_jobs import rebuild_finish, rebuild_step  # noqa: E402
+from store.dino_rebuild_jobs import (  # noqa: E402
+    rebuild_finish,
+    rebuild_set_pid,
+    rebuild_step,
+)
 
 
 #: Combien de lignes de sortie remonter dans le message d'erreur.
@@ -82,9 +87,22 @@ def main() -> int:
     conn = local_state_store()._connection() if args.job_id else None  # noqa: SLF001
     py = sys.executable
 
+    if conn is not None:
+        # 🔴 Le job enregistre SON PROPRE pid, tout de suite.
+        #
+        # Il était posé par l'appelant (la route, après `Popen`). Deux trous :
+        # une ligne créée hors de la route n'avait jamais de pid, et même par la
+        # route il existait une fenêtre. Or `reap_orphan_rebuilds` fauche les
+        # jobs sans pid passé le délai de grâce — il a marqué `failed` un
+        # rebuild qui tournait, pendant que la carte annonçait un échec sur un
+        # processus bien vivant. Vécu le 2026-08-24.
+        #
+        # Le processus est le seul à savoir qu'il existe : c'est donc à lui de
+        # le dire. La pose par l'appelant reste, en ceinture.
+        rebuild_set_pid(conn, args.job_id, os.getpid())
+        rebuild_step(conn, args.job_id, step="anchors")
+
     try:
-        if conn is not None:
-            rebuild_step(conn, args.job_id, step="anchors")
         _run([py, "-m", "scripts.build_dino_anchors", "-v",
               "--kind", args.kind, "--force"])
 
