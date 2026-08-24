@@ -106,25 +106,29 @@ def main() -> int:
         _run([py, "-m", "scripts.build_dino_anchors", "-v",
               "--kind", args.kind, "--force"])
 
-        # Le build_id fraîchement produit, relu depuis le CANONIQUE (le build
-        # vient de l'y écrire). On le stocke pour que l'écran puisse dire QUELLE
-        # banque il a produite — sans ça, deux rebuilds successifs sont
-        # indiscernables dans l'historique.
+        # Le build_id fraîchement produit, relu par HTTP sur le CANONIQUE.
+        #
+        # 🔴 Il était relu dans la base LOCALE, via `resolve_db_path` — donc
+        # dans la réplique, que le devShell désigne. Or sous Direction A la
+        # trace du build part au canonique par `POST /ingest/dino-references` et
+        # ne redescend qu'au prochain `pull-replica` : la lecture locale rendait
+        # l'AVANT-DERNIER build. Mesuré le 2026-08-24 sur le premier vrai
+        # rebuild — job enregistré `a55e6594 / 1909 ancres` alors que le
+        # canonique portait déjà `53d22c38 / 2062`. Un numéro parfaitement
+        # plausible, et faux : la carte aurait annoncé « rebuild OK » en citant
+        # la banque d'AVANT.
+        #
+        # `GET /dino/drift` fait exactement cette requête, sur le canonique.
         build_id, n_anchors = None, None
         try:
-            from store import Store, resolve_db_path
+            from client.http import get_json
 
-            c = Store(resolve_db_path(_ML / "state" / "eurio.db"))._connection()  # noqa: SLF001
-            row = c.execute(
-                "SELECT build_id, n_rows FROM dino_anchor_builds "
-                " WHERE anchors_kind=? AND encoder_version=? "
-                " ORDER BY datetime(built_at) DESC LIMIT 1",
-                (args.kind, encoder),
-            ).fetchone()
-            if row is not None:
-                build_id, n_anchors = row["build_id"], row["n_rows"]
+            d = get_json(
+                f"/dino/drift?anchors_kind={args.kind}&encoder_version={encoder}")
+            build_id, n_anchors = d.get("build_id"), d.get("n_rows")
         except Exception as exc:  # noqa: BLE001 — traçabilité, jamais fatale
-            print(f"[rebuild] build_id non relu : {exc}", file=sys.stderr)
+            print(f"[rebuild] build_id non relu au canonique : {exc}",
+                  file=sys.stderr)
 
         if conn is not None:
             rebuild_step(conn, args.job_id, step="predictions",

@@ -359,3 +359,32 @@ def test_le_job_enregistre_son_propre_pid(tmp_path, monkeypatch):
         isinstance(a, ast.Call) and getattr(a.func, "attr", "") == "getpid"
         for appel in appels for a in appel.args
     ), "le pid enregistré doit être CELUI DU RUNNER (os.getpid()), pas un argument"
+
+
+def test_le_build_id_est_relu_au_CANONIQUE_pas_dans_la_replique():
+    """Sous Direction A, la trace d'un build ne passe pas par la base locale.
+
+    🔴 Mesuré le 2026-08-24 sur le premier vrai rebuild. Le runner relisait
+    `dino_anchor_builds` via `resolve_db_path` — donc dans la RÉPLIQUE, que le
+    devShell désigne. Mais la trace part au canonique par
+    `POST /ingest/dino-references` et n'y redescend qu'au prochain
+    `pull-replica` : le job a enregistré `a55e6594 / 1909 ancres` pendant que le
+    canonique portait `53d22c38 / 2062`. La carte aurait annoncé « rebuild OK »
+    en citant la banque d'AVANT — un chiffre plausible, stable, et faux.
+
+    C'est le piège n°1 du dépôt (`eurio-data-writes`) sous une forme LECTURE :
+    on lit le miroir en croyant lire la source.
+    """
+    import ast
+
+    arbre = ast.parse((ML_DIR / "scripts/rebuild_dino_bank.py").read_text())
+    noms = {
+        n.func.id for n in ast.walk(arbre)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    } | {
+        n.func.attr for n in ast.walk(arbre)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+    }
+    assert "get_json" in noms, "la trace se relit au canonique, par HTTP"
+    assert "resolve_db_path" not in noms, (
+        "relire la trace dans la base locale rend l'avant-dernier build")
