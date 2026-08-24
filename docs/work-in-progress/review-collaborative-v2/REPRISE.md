@@ -303,6 +303,84 @@ docker exec -it eurio-api python -m serving.auth create-pat \
 Le rig complet (API lean locale + front sur port mort) est décrit dans
 [`ROADMAP.md`](ROADMAP.md) §« Le rig de vérification ».
 
+## Passation — état au 2026-08-24 (soir), tout est déployé
+
+Six commits, `9b61f1a5..a01d699f`, backend et front en production, recette jouée
+par le PO. Ce qui a été livré ce jour-là, et ce qu'il reste.
+
+### Déployé et vérifié en production
+
+| Ce que c'est | Preuve |
+|---|---|
+| L'accueil d'un ami, sa nav, ses coach marks, le tuto en modale | recette PO : « la pêche, trop cool, ça fonctionne » |
+| `GET /me/review-stats` | 200 ; compte égal au SQL fait à la main |
+| `referential` réparé | `canonical-index` 500 → **200**, thumb 500 → **302** |
+| Quarantaine fermée (D14) | garde dans l'image, arbitre en 404 (pas 403) sur un asset bidon |
+| Pêche en lots réparée | `need_only=true` : **0 → 3** sur la classe du PO |
+| Pastille d'enrichissement | 0 → la vraie valeur, sur toute la grille |
+| Déconnexion complète | 302 vers `end_session` + `Max-Age=0` dans la même réponse |
+
+### Ce qui reste, par ordre de valeur
+
+1. **`decided_by = 'admin'` en dur** dans `apply_lot_decide` (`store/decisions`).
+   Le lot 2 a signé `decide`/`reject`/`restore` et n'est jamais passé là : la
+   traçabilité du tri par LOT est fausse **pour tout le monde, arbitre compris**.
+   C'est la dette la moins chère à solder et la plus gênante à laisser.
+
+2. **La quarantaine des lots** — D14 a fermé par le scope faute de mieux. Un ami
+   ne trie plus de lots. Le rouvrir demande N lignes pendantes par décision,
+   l'index unique 0012 tenu sur chacune, et une vue d'arbitrage qui sait grouper
+   par annonce. À instruire seulement si le tri par lot manque vraiment aux amis.
+
+3. **La question DINO du PO, non résolue.** Il a vu un crop servi pour une classe
+   alors que DINO le reconnaissait — correctement — comme une autre pièce.
+   Mesuré : les deux écrans lisent la MÊME banque (`2eur_all`/vitl14), donc ce
+   n'est PAS le piège des deux banques. `dino_rank=3` cadre sur « la classe
+   apparaît dans les 3 premières positions » (7 crops à rang 1, 9 à rang 3 sur
+   sa classe, les 2 de plus étant les litigieux) — mais **son URL portait
+   `dino_rank=1`**. Hypothèse restante, non vérifiée : en mode LOT on sert
+   l'annonce entière, donc aussi les crops voisins, qui n'ont aucune raison
+   d'être de la classe pêchée. Testable maintenant que la file n'est plus vide.
+
+4. **Un état « premier utilisateur », basculable** (demande du PO). Pour
+   travailler l'onboarding, il faut pouvoir revoir l'accueil comme quelqu'un qui
+   arrive : compteurs à zéro, aide jamais ouverte, coach marks jamais vus.
+   Aujourd'hui ça suppose un compte neuf. Deux pistes, à trancher :
+   - `/accueil/maquette` porte DÉJÀ l'état « Sa toute première visite » sur
+     fixtures — suffisant pour le visuel, insuffisant pour le parcours (les
+     liens « Trier » y sont morts) ;
+   - un vrai bouton « rejouer ma première fois » qui remet à zéro ce qui est
+     stocké côté navigateur. ⚠️ Aujourd'hui l'accueil ne stocke RIEN : ni « aide
+     déjà ouverte », ni « coach marks déjà vus » (choix délibéré, §7 — pas de
+     tour imposé). Il n'y a donc rien à remettre à zéro **tant qu'on n'a pas
+     ajouté d'état** : la question à trancher d'abord est « qu'est-ce qu'on
+     mémorise d'une première visite ? », pas « comment le rejouer ».
+
+5. **studio-local n'a aucun lanceur de tests** (pas de vitest dans son
+   `package.json`). Toute la logique front — le filtre `bottleneck === 'review'`,
+   `have + accepted_pending`, la cible 5 ou 8, le dédoublonnage des lots de
+   vignettes — n'est tenue que par la maquette et le contrôle au navigateur. En
+   ajouter un est une décision de chaîne d'outils, pas un détail de lot.
+
+6. Les deux dettes préexistantes inscrites dans [`NETTOYAGE.md`](NETTOYAGE.md) :
+   `/review/me/stats` (route morte, second compte du même fait) et
+   `_coin_helpers.canonical_obverse_url` (troisième règle de choix d'image).
+
+### Ce que cette journée a appris, et qui vaut au-delà d'elle
+
+**Trois des cinq défauts trouvés étaient invisibles depuis l'écran.** Un routeur
+mort en prod dont les tests d'import passaient au vert ; un ordre de paramètres
+SQL inversé qui rendait zéro ligne sans lever d'erreur ; un compteur à zéro
+parfaitement crédible parce qu'un gate n'avait pas suivi une migration. Aucun ne
+levait d'exception. Tous ont été trouvés en MESURANT, jamais en relisant.
+
+**Et deux défauts sont nés d'un changement de valeur par défaut**, pas d'un
+changement de code : `need_only` devenu le défaut de la pêche a réveillé un bug
+d'ordre d'arguments qui dormait depuis toujours. Chercher la régression dans le
+diff du jour n'aurait rien donné.
+
+## Dettes ouvertes
+
 ## Dettes ouvertes
 
 - **Le front ne dit pas à l'ami que sa décision attend un arbitrage** — choix
