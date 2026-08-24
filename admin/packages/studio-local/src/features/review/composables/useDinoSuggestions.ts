@@ -153,26 +153,35 @@ async function fetchOrNull(path: string): Promise<DinoSuggestionsResponse | null
 }
 
 // Kind par défaut = banque large commémo + courantes (suggestions review).
-// Fallback sur la banque historique 2eur_commemo si la banque 2eur_all n'est
-// pas bâtie sur la machine qui sert l'API (404 propre → on retente).
+//
+// ⛔ Le repli vers `2eur_commemo` sur 404 a été RETIRÉ le 2026-08-24.
+//
+// Il paraissait prudent : « si la banque large n'est pas bâtie, retente sur
+// l'ancienne ». En pratique il faisait la pire chose possible — servir des
+// scores calculés par un AUTRE encodeur (vits14 contre vitl14), dont les
+// similarités ne sont pas sur la même échelle, dans un panneau où le reviewer
+// les compare à des seuils calibrés sur la première. Deux crops voisins
+// pouvaient ainsi être jugés sur deux banques, et rien à l'écran ne disait
+// laquelle. Depuis la bascule du verdict, ce serait en plus une liste et une
+// pastille en désaccord par construction.
+//
+// Un 404 signifie « pas de prédiction pour ce crop », et le panneau sait déjà
+// l'afficher. C'est la même leçon que les trois pannes du chantier pêche : un
+// échec qui élargit ou qui invente est pire qu'un échec qui s'arrête.
 const DEFAULT_ANCHORS_KIND = '2eur_all'
-const FALLBACK_ANCHORS_KIND = '2eur_commemo'
 
-async function fetchWithKindFallback(
+async function fetchWithKind(
   pathFor: (kind: string) => string,
   anchorsKind?: string,
 ): Promise<DinoSuggestionsResponse | null> {
-  const kind = anchorsKind ?? DEFAULT_ANCHORS_KIND
-  const first = await fetchOrNull(pathFor(kind))
-  if (first || anchorsKind || kind === FALLBACK_ANCHORS_KIND) return first
-  return fetchOrNull(pathFor(FALLBACK_ANCHORS_KIND))
+  return fetchOrNull(pathFor(anchorsKind ?? DEFAULT_ANCHORS_KIND))
 }
 
 export async function fetchDinoSuggestionsByReviewId(
   reviewId: string,
   opts: { anchorsKind?: string } = {},
 ): Promise<DinoSuggestionsResponse | null> {
-  return fetchWithKindFallback(
+  return fetchWithKind(
     (kind) =>
       `/review-queue/${encodeURIComponent(reviewId)}/dino-suggestions?anchors_kind=${kind}`,
     opts.anchorsKind,
@@ -183,7 +192,7 @@ export async function fetchDinoSuggestionsByAssetId(
   assetId: string,
   opts: { anchorsKind?: string } = {},
 ): Promise<DinoSuggestionsResponse | null> {
-  return fetchWithKindFallback(
+  return fetchWithKind(
     (kind) =>
       `/review-queue/asset/${encodeURIComponent(assetId)}/dino-suggestions?anchors_kind=${kind}`,
     opts.anchorsKind,
@@ -193,7 +202,7 @@ export async function fetchDinoSuggestionsByAssetId(
 /** Force un recalcul Dino (POST) sur un crop puis renvoie la réponse fraîche.
  *  Contrairement au GET, ce POST ENCODE le crop (torch) : il reste donc sur le
  *  ML LOCAL et n'existe pas sur le VPS. Le bouton qui l'appelle est dans une vue
- *  `heavy`, grisée en hébergé. Même fallback de banque que les lectures. */
+ *  `heavy`, grisée en hébergé. Même banque que les lectures. */
 async function postOrNull(path: string): Promise<DinoSuggestionsResponse | null> {
   try {
     const resp = await fetch(`${ML_API}${path}`, { method: 'POST' })
@@ -214,12 +223,14 @@ export async function recomputeDinoSuggestionsByAssetId(
   assetId: string,
   opts: { anchorsKind?: string } = {},
 ): Promise<DinoSuggestionsResponse | null> {
-  const pathFor = (kind: string) =>
-    `/review-queue/asset/${encodeURIComponent(assetId)}/dino-suggestions/recompute?anchors_kind=${kind}`
   const kind = opts.anchorsKind ?? DEFAULT_ANCHORS_KIND
-  const first = await postOrNull(pathFor(kind))
-  if (first || opts.anchorsKind || kind === FALLBACK_ANCHORS_KIND) return first
-  return postOrNull(pathFor(FALLBACK_ANCHORS_KIND))
+  // Pas de repli de banque ici non plus — recalculer sur une AUTRE banque que
+  // celle affichée serait encore moins lisible que sur une lecture : le
+  // reviewer vient d'appuyer sur un bouton et attend un résultat comparable.
+  return postOrNull(
+    `/review-queue/asset/${encodeURIComponent(assetId)}`
+    + `/dino-suggestions/recompute?anchors_kind=${kind}`,
+  )
 }
 
 // ─── Visual tier helpers ────────────────────────────────────────────────

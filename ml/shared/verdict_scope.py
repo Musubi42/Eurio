@@ -13,17 +13,46 @@ Ce module est **sans dépendance** (stdlib pure) exprès : il est importé par
 l'image lean du VPS, où `training.foundation` (numpy + torch) n'existe pas.
 `training/foundation/anchors.py` le ré-exporte pour garder une seule valeur.
 
-⚠️ Défaut historique : `2eur_commemo` / `dinov2-vits14`.
-Cette banque d'ancres ne contient **aucune** étiquette de pièce standard
-(0 / 446 le 2026-08-17 ; `2eur_all` en a 18 / 378). Conséquence mesurée :
-aucun crop de pièce courante ne peut être `auto_candidate` — le LEFT JOIN ne
-ramène rien, et la règle 1 du verdict le classe `unknown`. Les prédictions
-existent pourtant, sous `2eur_all` (66/66 sur `fr-2euro-standard-t1`).
+✅ **Basculé sur `2eur_all` / `dinov2-vitl14` le 2026-08-24**, après mesure.
+L'ancien défaut `2eur_commemo` / `dinov2-vits14` ne contenait **aucune**
+étiquette de pièce standard : tout crop de pièce courante tombait en `unknown`
+par la règle 1 du verdict, faute de ligne à joindre — alors que la prédiction
+existait, sous `2eur_all`. La moitié de la file de review n'avait donc pas de
+verdict du tout : **4 237 items ouverts sur 8 496 avaient une prédiction sous
+`2eur_commemo`, contre 8 495 sous `2eur_all`** (réplique, 2026-08-24 18:10).
 
-Basculer `VERDICT_ANCHORS_KIND` sur `2eur_all` allumerait le verdict pour les
-standards — mais c'est une **décision produit**, pas un correctif : les seuils
-C0–C5 (`training/foundation/thresholds.py`) sont calibrés sur les sims vits14
-de `2eur_commemo`, et `2eur_all` tourne en vitl14. Re-replay gold requis.
+Ce qui a autorisé la bascule — les deux banques rejouées sur le MÊME gold, dans
+le même processus, base identique (`scripts/verdict_gold.py`, gold de 1009
+entrées dont 811 labellisées) :
+
+| gold labellisé, hors banque (464) | `2eur_commemo`/vits14 | `2eur_all`/vitl14 |
+|---|---:|---:|
+| auto-accepts produits | 104 | **185** |
+| dont justes | 104 | 184 |
+| précision | 100 % | **99,5 %** |
+| top-1 exact (in-scope) | 58,2 % | **92,6 %** |
+
+« Hors banque » = crops qui ne sont pas eux-mêmes des ancres (347 des 811 le
+sont ; les inclure surestimerait `2eur_all`).
+
+⚠️ **Les seuils n'ont PAS été recalibrés, et la mesure dit que ce n'est pas
+nécessaire.** `shared/dino_threshold_defaults.py` sert les mêmes nombres aux
+deux couples ; ceux du verdict (`top1_country_sim_min` 0,55,
+`country_spread_min` 0,05) viennent de la confusion map vits14. L'unique
+auto-accept faux se situe à **spread = 0,1036**, en plein milieu de la
+distribution — 30 auto-accepts ont un spread PLUS BAS et sont tous justes.
+Le supprimer demanderait un seuil ≥ 0,15, qui coûte 41 % du volume (185 → 110)
+pour racheter une erreur. Les seuils hérités sont donc à un bon point de
+fonctionnement, pas grossièrement mal placés. Une calibration propre reste
+souhaitable ; elle n'est pas un prérequis.
+
+⛔ Trois modules rebrodaient le littéral hors de portée de ce point unique, et
+ont été corrigés le même jour — `review/validation/experts.py` (le chemin de
+routage **LIVE** : `sources/_base/steps/enqueue.py` l'appelle sans kwargs puis
+écrit la lane), `review/validation/replay.py`, et
+`training/foundation/anchors.py::CONSENSUS_ANCHORS_KIND`. Sans eux la bascule
+aurait été à moitié faite, en silence. Ils sont désormais dans le paramétrage de
+`tests/test_verdict_anchors_scope.py`.
 
 Le défaut est verrouillé par `tests/test_verdict_anchors_scope.py`.
 """
@@ -33,7 +62,7 @@ from __future__ import annotations
 from typing import Final
 
 #: `anchors_kind` de la prédiction DINO que lit le verdict de review.
-VERDICT_ANCHORS_KIND: Final[str] = "2eur_commemo"
+VERDICT_ANCHORS_KIND: Final[str] = "2eur_all"
 
 #: Encodeur correspondant. Miroir de
 #: `training.foundation.anchors.ENCODER_VERSION_FOR_KIND` — le couple doit

@@ -69,6 +69,30 @@ def _endpoint_url(host: str, use_ssl_default: str = "true", ssl_var: str = "MINI
     return f"{'https' if use_ssl else 'http'}://{host}"
 
 
+# ─── Timeouts : échouer vite plutôt que pendre ───────────────────────────────
+#
+# Sans ces trois valeurs, botocore applique ses défauts — 60 s de connexion,
+# 60 s de lecture, 5 tentatives — et `local_cache.local_path` empile PAR-DESSUS
+# sa propre échelle de 6 tentatives. Le pire cas se compte alors en MINUTES,
+# pendant lesquelles l'appelant n'a aucun moyen de savoir que rien n'avance :
+# la modale de recadrage reste sur son spinner, et l'opérateur attend.
+#
+# Mesuré le 2026-08-24 : le chemin nominal est à p50 = 0,08 s / p90 = 0,17 s
+# (40 `crop-edit-context` sur des items ouverts au hasard), et les raws pèsent
+# 0,36 Mo en médiane. Un read qui dépasse 20 s n'est donc pas « lent », c'est
+# une panne — autant la dire.
+#
+# `read_timeout` est un délai PAR LECTURE de socket, pas un plafond de
+# transfert : un upload d'artefact de plusieurs centaines de Mo n'est pas
+# concerné tant que les octets circulent.
+#
+# Les trois sont surchargeables par env pour les machines de calcul, qui lisent
+# des objets bien plus gros sur des liens plus lents.
+_CONNECT_TIMEOUT = float(os.environ.get("EURIO_S3_CONNECT_TIMEOUT", "5"))
+_READ_TIMEOUT = float(os.environ.get("EURIO_S3_READ_TIMEOUT", "20"))
+_MAX_ATTEMPTS = int(os.environ.get("EURIO_S3_MAX_ATTEMPTS", "2"))
+
+
 def _build_client(endpoint: str):
     import boto3
     from botocore.client import Config
@@ -78,9 +102,14 @@ def _build_client(endpoint: str):
         endpoint_url=endpoint,
         aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
         aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-        # Force path-style addressing — virtual-host style requires a
-        # wildcard cert per bucket-host, which we don't set up.
-        config=Config(s3={"addressing_style": "path"}),
+        config=Config(
+            # Force path-style addressing — virtual-host style requires a
+            # wildcard cert per bucket-host, which we don't set up.
+            s3={"addressing_style": "path"},
+            connect_timeout=_CONNECT_TIMEOUT,
+            read_timeout=_READ_TIMEOUT,
+            retries={"max_attempts": _MAX_ATTEMPTS, "mode": "standard"},
+        ),
     )
 
 

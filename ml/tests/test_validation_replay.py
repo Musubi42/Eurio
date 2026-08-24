@@ -5,7 +5,7 @@ Verrouille les invariants du relabel mix-zone-17 :
   c'était le bug « standards non mesurables ») ;
 - les assets mix-zone-17 non décidés-admin = **diff-only** (ground_truth None) et
   apparaissent dans la worklist de relabel ;
-- ``dino_in_scope`` reflète la présence d'une prédiction 2eur_commemo.
+- ``dino_in_scope`` reflète la présence d'une prédiction dans la banque du VERDICT.
 
 ``_snapshot`` est monkeypatché (le verdict lui-même est testé ailleurs) → on isole
 la logique de sélection/étiquetage.
@@ -26,6 +26,10 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from review.validation import replay  # noqa: E402
+from shared.verdict_scope import (  # noqa: E402
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
 from review.validation.replay import MIX_ZONE_17, build_gold, relabel_worklist  # noqa: E402
 
 _SCHEMA = ML_DIR / "state" / "schema.sql"
@@ -38,7 +42,7 @@ def conn(monkeypatch) -> sqlite3.Connection:
     # _snapshot isolé : le verdict réel est couvert par test_validation_consensus.
     monkeypatch.setattr(
         replay, "_snapshot",
-        lambda conn, aid: ("unknown", "manual", {"text": "absent"}, []),
+        lambda conn, aid, **_: ("unknown", "manual", {"text": "absent"}, []),
     )
     return c
 
@@ -65,8 +69,8 @@ def _dino(c, aid):
     c.execute(
         "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind, "
         " anchors_count, top_k_json, computed_at) "
-        "VALUES (?, 'dinov2-vits14', '2eur_commemo', 1, '[]', 't')",
-        (aid,),
+        "VALUES (?, ?, ?, 1, '[]', 't')",
+        (aid, VERDICT_ENCODER_VERSION, VERDICT_ANCHORS_KIND),
     )
 
 

@@ -26,7 +26,18 @@ from dataclasses import dataclass
 from review.validation.experts import Signal, collect_signals
 from training.foundation.auto_validate import compute_auto_validate_view
 
-RULE_VERSION = 1
+# 1 → 2 le 2026-08-24 : la RÈGLE n'a pas changé, ses ENTRÉES si. Le verdict de
+# consensus est calculé sur la prédiction DINO du couple `shared/verdict_scope`,
+# passé de `2eur_commemo`/vits14 à `2eur_all`/vitl14 — mesuré sur le gold hors
+# banque : 104 auto-accepts à 100 % contre 185 à 99,5 %.
+#
+# Le bump n'est pas décoratif : la clé primaire de `consensus_verdicts` est
+# `(image_asset_id, rule_version)`. Recalculer sous la version 1 aurait ÉCRASÉ
+# les 12 618 verdicts d'avant, donc effacé le seul point de comparaison
+# disponible le jour où quelqu'un se demandera ce que la bascule a changé.
+# Les deux versions coexistent ; les lecteurs prennent `ORDER BY rule_version
+# DESC LIMIT 1` (cf. `serving/review_queue/repository.py`).
+RULE_VERSION = 2
 
 _CROP_BAD = {"too_tilted", "low_quality"}
 

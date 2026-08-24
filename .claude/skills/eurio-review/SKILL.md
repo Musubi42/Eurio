@@ -92,7 +92,7 @@ résous-le, et regarde d'où il vient :
 cd ml && ./.venv/bin/python -c "
 import sqlite3, store.dino_thresholds as dt
 c = sqlite3.connect('file:state/eurio.replica.db?mode=ro', uri=True)
-r = dt.resolve(c, anchors_kind='2eur_commemo', encoder_version='dinov2-vits14')
+r = dt.resolve(c, anchors_kind='2eur_all', encoder_version='dinov2-vitl14')
 print(r.values); print(r.source)"
 # {'top1_country_sim_min': 0.55, 'country_spread_min': 0.05, 'spread_uncertain_max': 0.02,
 #  'spread_confident_min': 0.05, 'spread_auto_accept_min': 0.1, 'min_exemplars': 1}
@@ -128,7 +128,12 @@ Le palier tient donc **mieux** sur ce que la banque n'a jamais vu : il n'est pas
 un artefact du fait que 858 des 1958 crops du gold soient eux-mêmes des ancres.
 La requête complète est dans **`eurio-banque`** §4 — recopie-la, pas le nombre.
 
-### ⛔ Le piège qui invalide tout le reste : la review est AVEUGLE sur les standards
+### ⛔ ~~Le piège qui invalide tout le reste : la review est AVEUGLE sur les standards~~ — RÉSOLU le 2026-08-24
+
+> **Lis ce bloc comme de l'histoire, pas comme l'état courant.** Il décrit
+> pourquoi la bascule ci-dessous a eu lieu. La jointure ne porte plus
+> `'2eur_commemo'` en dur : elle interpole `VERDICT_ANCHORS_KIND`, qui vaut
+> `2eur_all`. Un crop de pièce standard PEUT désormais être `auto_candidate`.
 
 `repository.py::fetch_verdict_signal_rows` (l. 1091) joint **en dur** :
 
@@ -174,6 +179,41 @@ faux à 0,855 » ne s'applique pas puisqu'aucun score n'est affiché.
 ⚠️ Les prédictions existent (`2eur_all`, 66/66) — c'est la jointure qui les
 ignore.
 
+### ✅ La bascule est FAITE — `2eur_all` / `dinov2-vitl14` depuis le 2026-08-24
+
+**Tout ce qui précède décrivait l'état d'avant.** Le verdict lit désormais la
+même banque que les suggestions. Ce qui a autorisé la bascule — les deux banques
+rejouées sur le MÊME gold, même base, même processus (`scripts/verdict_gold.py`,
+1009 entrées / 811 labellisées, dont 464 **hors banque** c'est-à-dire qui ne
+sont pas elles-mêmes des ancres) :
+
+| gold labellisé hors banque (464) | `2eur_commemo`/vits14 | `2eur_all`/vitl14 |
+|---|---:|---:|
+| auto-accepts produits | 104 | **185** |
+| dont justes | 104 | 184 |
+| précision | 100 % | **99,5 %** |
+| top-1 exact (in-scope) | 58,2 % | **92,6 %** |
+
+Et sur la file ouverte (réplique, 2026-08-24 18:10) : **4 237 items sur 8 496
+avaient une prédiction sous `2eur_commemo`, 8 495 en ont une sous `2eur_all`**.
+La moitié de la file tombait en `unknown` par la règle 1 — pas parce que le
+modèle hésitait, mais parce que le JOIN cherchait dans la mauvaise banque.
+
+⚠️ **Les seuils n'ont pas été recalibrés.** `top1_country_sim_min` (0,55) et
+`country_spread_min` (0,05) viennent de la confusion map vits14 ; ils tiennent
+sur vitl14 (les 99,5 % ci-dessus). L'unique faux est à spread 0,1036, au milieu
+de la distribution — 30 auto-accepts justes ont un spread plus bas. Le racheter
+demanderait un seuil ≥ 0,15, qui coûte 41 % du volume. Calibration souhaitable,
+pas urgente.
+
+⛔ **Trois modules rebrodaient le littéral hors du point de bascule** et ont été
+corrigés le même jour : `review/validation/experts.py` (le pire — c'est le
+chemin de routage LIVE, `sources/_base/steps/enqueue.py` l'appelle sans kwargs
+puis écrit la lane), `review/validation/replay.py`, et
+`training/foundation/anchors.py::CONSENSUS_ANCHORS_KIND`. Ils sont désormais
+dans le paramétrage de `tests/test_verdict_anchors_scope.py`. Si tu ajoutes un
+site qui lit la prédiction du verdict, ajoute-le à `VERDICT_MODULES`.
+
 ### Le point de bascule est unique depuis le 2026-08-18
 
 `ml/shared/verdict_scope.py` — **stdlib pure**, parce que l'image lean du VPS
@@ -182,8 +222,8 @@ y mettre la constante aurait fait disparaître une route du VPS en silence, son
 montage étant dans un `try/except`).
 
 ```python
-VERDICT_ANCHORS_KIND     = "2eur_commemo"      # défaut historique
-VERDICT_ENCODER_VERSION  = "dinov2-vits14"
+VERDICT_ANCHORS_KIND     = "2eur_all"          # basculé le 2026-08-24
+VERDICT_ENCODER_VERSION  = "dinov2-vitl14"
 ```
 
 Les **10 sites** du chemin du verdict l'importent (repository lean, jumeau lourd
@@ -195,40 +235,38 @@ Les **10 sites** du chemin du verdict l'importent (repository lean, jumeau lourd
 `dinov2-vits14`**. Basculer le seul kind donne un JOIN à **zéro ligne** — donc
 tout en `unknown`, sans la moindre erreur. Ne touche jamais l'un sans l'autre.
 
-### Ce que coûterait la bascule — mesuré le 2026-08-17, **à remesurer**
+### Ce que la bascule a coûté — mesuré le 2026-08-24, le jour où elle a été faite
 
-⚠️ **Les chiffres qui suivent datent d'AVANT le rebuild du 2026-08-19 16:36.**
-La banque `2eur_all` est passée de 1250 à **1533 ancres** et de 125 à **182
-classes à exemplaires**, et les 12454 prédictions ont été recalculées dessus
-(`build 23c637d93b43`). Les comptes ci-dessous sont donc **périmés** : ils
-restent utiles pour l'**ordre de grandeur** et pour le raisonnement, pas comme
-mesure. Toute décision de bascule les remesure. Cf. **`eurio-banque`**.
+> Les chiffres de l'estimation du 2026-08-17 (« 2221 items changent, 130 faux
+> positifs sur les crops non labellisés ») **ne sont plus la référence** : ils
+> datent d'avant deux rebuilds de banque. Ce qui suit est la mesure réelle.
 
-Sur 6899 items ouverts, verdict recalculé par la vraie fonction :
+Protocole : les DEUX banques rejouées sur le même gold, la même base, dans le
+même processus (`scripts/verdict_gold.py`, 1009 entrées / 811 labellisées).
+La seule variable est le périmètre — on ne compare pas au `before_level` figé
+en juin, qui mélangerait la bascule et trois mois de dérive.
 
-| verdict | `2eur_commemo` | `2eur_all` |
+| gold labellisé **hors banque** (464 crops) | `2eur_commemo` | `2eur_all` |
 |---|---:|---:|
-| `auto_candidate` | 230 | **930** |
-| `unknown` | 3165 | 2268 |
+| auto-accepts produits | 104 | **185** |
+| dont justes | 104 | 184 |
+| précision | 100 % | **99,5 %** |
 
-**2221 items changent de verdict (32 %).** Les standards passent de
-**0 → 74** `auto_candidate` et de **849 → 0** `unknown`.
+Sur les 1009 entrées, **283 changent** de verdict ou de lane, dont 182
+promotions vers `auto_accept` (92 depuis `partial`, 90 depuis `divergent`) et
+4 rétrogradations.
 
-Le risque, mesuré contre les items déjà tranchés par un humain : concordance
-**495/496** (dont **0 faux sur 31 standards**) — mais sur les crops que l'humain
-avait **refusé** de labelliser, les `auto_candidate` passent de 27 à **130**.
+**Ce que la mesure ne couvre PAS, et qu'il faut garder en tête** : elle porte
+sur les crops **labellisés par un humain**. L'estimation du 2026-08-17
+s'inquiétait des crops que l'humain avait *refusé* de labelliser — là, aucune
+vérité terrain n'existe, donc aucune précision n'est mesurable. La surveillance
+de cette population reste ouverte.
 
-⚠️ **La bascule n'est pas un correctif** : les seuils
-(`top1_country_sim_min 0,55` / `country_spread_min 0,05`) sont calibrés sur les
-sims **vits14**. Les 130 faux positifs sont plausiblement un artefact de seuil.
-Avant de basculer : re-replay du gold sous vitl14, **re-calibrage de
-`country_spread_min`**, et bump de `_ENGINE_VERSION` pour distinguer l'avant de
-l'après.
-
-⛔ **Le repli « `2eur_commemo` puis `2eur_all` si vide » est la pire option** :
-le scope deviendrait dépendant de l'item, deux crops voisins seraient jugés sur
-deux banques et deux encodeurs avec des seuils calibrés sur un seul, et
-`decision_engine_version` ne tracerait plus rien.
+⛔ **Le repli « `2eur_commemo` puis `2eur_all` si vide » aurait été la pire
+option** : le scope serait devenu dépendant de l'item, deux crops voisins jugés
+sur deux banques et deux encodeurs avec des seuils calibrés sur un seul, et
+`decision_engine_version` n'aurait plus rien tracé. C'est aussi pour ça que
+cette chaîne porte désormais la banque et l'encodeur, pas seulement les seuils.
 
 ### La marge, quand elle s'applique (classes commémoratives)
 

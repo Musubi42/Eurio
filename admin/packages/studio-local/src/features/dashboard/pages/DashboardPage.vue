@@ -8,6 +8,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 import { useEurioSession } from '@/stores/eurio-session'
+import DinoBankCard from '../components/DinoBankCard.vue'
 import { statsApi, type StatsOverview } from '../api/stats'
 
 const session = useEurioSession()
@@ -124,6 +125,13 @@ onUnmounted(() => {
         Aucune métrique disponible pour tes scopes.
       </p>
     </div>
+
+    <!-- L'état de la machinerie, sous les KPI produit. Sa lecture est légère
+         (SQL sur le canonique) : la carte s'affiche Mac éteint, seul son bouton
+         se grise. Cf. DinoBankCard. -->
+    <div class="machinerie">
+      <DinoBankCard />
+    </div>
   </section>
 </template>
 
@@ -208,5 +216,11 @@ h2 {
 .empty {
   grid-column: 1 / -1;
   color: var(--text-secondary);
+}
+
+/* La carte machinerie n'entre pas dans la grille des KPI : elle porte un geste,
+   pas un chiffre, et sa hauteur varie avec ce qu'elle a à dire. */
+.machinerie {
+  margin-top: 1.25rem;
 }
 </style>

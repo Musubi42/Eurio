@@ -59,11 +59,16 @@ ML_DIR = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ML_DIR / "state"
 DATASETS_DIR = ML_DIR / "datasets"
 
-# Kind par défaut pour les SUGGESTIONS review (banque large commémo +
-# courantes). Le consensus / les lanes restent sur ``2eur_commemo`` — la
-# règle C0–C5 a été calibrée sur ce scope, ne pas la déplacer sans re-replay.
+# Kind par défaut pour les SUGGESTIONS review (banque large commémo + courantes).
 SUGGESTIONS_ANCHORS_KIND = "2eur_all"
-CONSENSUS_ANCHORS_KIND = "2eur_commemo"
+
+# Le consensus et les lanes lisent la banque du VERDICT — et ce n'est PAS une
+# valeur de plus : c'est un alias du point de bascule unique. Elle portait son
+# propre littéral `"2eur_commemo"` jusqu'au 2026-08-24, hors de portée du test
+# qui verrouille le scope, alors que `review_queue_routes` et
+# `sources/_base/steps/auto_validate` s'en servent en production. Deux
+# constantes pour une seule décision, c'est une divergence programmée.
+CONSENSUS_ANCHORS_KIND = _VERDICT_ANCHORS_KIND
 
 # Banque revers commun 2€ (C7 pilier face) : exactement 2 designs (carte v1
 # ≤2006, v2 ≥2007), packagés dans l'APK. Sert à détecter qu'un crop montre le
@@ -86,8 +91,15 @@ _REVERSE_WILD_FILE = STATE_DIR / "face_bench" / "reverse_wild_anchors.jsonl"
 # Encodeur par kind : les suggestions tournent sur vitl14 (+22 pts recall@1,
 # bench Phase 2.4 dino-suggestions) ; le consensus reste sur vits14 (seuils
 # C0–C5 calibrés sur ses sims — re-replay gold requis avant toute bascule).
+# ⛔ Cette table dit un FAIT sur chaque banque (avec quel encodeur elle a été
+# construite), pas un CHOIX de périmètre. Ses clés sont donc des littéraux, et
+# `2eur_commemo` y reste même quand le verdict ne la lit plus : les 7 780
+# prédictions déjà en base sous cette paire restent lisibles. La remplacer par
+# `CONSENSUS_ANCHORS_KIND` ferait disparaître une entrée de la table le jour où
+# le verdict bascule — et `encoder_version_for_kind('2eur_commemo')` rendrait
+# alors vits14 par le défaut, par accident plutôt que par décision.
 ENCODER_VERSION_FOR_KIND = {
-    CONSENSUS_ANCHORS_KIND: DEFAULT_ENCODER_VERSION,
+    "2eur_commemo": DEFAULT_ENCODER_VERSION,
     SUGGESTIONS_ANCHORS_KIND: SUGGESTIONS_ENCODER_VERSION,
     "2eur_standard": DEFAULT_ENCODER_VERSION,
     REVERSE_ANCHORS_KIND: SUGGESTIONS_ENCODER_VERSION,

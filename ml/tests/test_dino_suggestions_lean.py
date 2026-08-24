@@ -164,19 +164,27 @@ def test_le_detail_n_avale_pas_la_route_asset(rig):
 
 
 def test_verdict_et_abstention_accompagnent_la_reponse(rig):
+    """Une SEULE prédiction nourrit la liste ET la pastille.
+
+    Jusqu'au 2026-08-24 ce test semait DEUX lignes — une par banque — parce que
+    les suggestions lisaient `2eur_all`/vitl14 et le verdict
+    `2eur_commemo`/vits14. À l'écran, la liste et la pastille ne parlaient donc
+    pas de la même mesure, et la moitié de la file n'avait aucun verdict faute
+    de ligne à joindre. Depuis la bascule il n'y a qu'une banque : deux
+    `INSERT` violeraient la clé primaire, et c'est très bien ainsi.
+    """
     conn, client = rig
     _, [aid], _ = _seed_listing(conn, item_id="D3")
     _seed_coin(conn, "fr-2015-2eur-paix")
-    # Suggestions (2eur_all/vitl14) : spread net → « confident ».
-    _seed_prediction(
-        conn, aid, kind=SUGGESTIONS_ANCHORS_KIND, encoder=SUGGESTIONS_ENCODER_VERSION,
-        top_k=[{"eurio_id": "fr-2015-2eur-paix", "sim": 0.9}], spread=0.30,
-    )
-    # Verdict (2eur_commemo/vits14) : top1 == la cible du listing, sim et spread
-    # au-dessus des seuils.
+    assert SUGGESTIONS_ANCHORS_KIND == VERDICT_ANCHORS_KIND
+    assert SUGGESTIONS_ENCODER_VERSION == VERDICT_ENCODER_VERSION
     _seed_prediction(
         conn, aid, kind=VERDICT_ANCHORS_KIND, encoder=VERDICT_ENCODER_VERSION,
-        top_k=[], top1_country_eurio_id="fr-2015-2eur-paix",
+        # Ce que lit la LISTE : un spread net → « confident ».
+        top_k=[{"eurio_id": "fr-2015-2eur-paix", "sim": 0.9}], spread=0.30,
+        # Ce que lit la PASTILLE : top1 == la cible du listing, sim et spread
+        # au-dessus des seuils.
+        top1_country_eurio_id="fr-2015-2eur-paix",
         top1_country_sim=0.80, country_spread=0.20,
     )
 

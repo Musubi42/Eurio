@@ -18,6 +18,12 @@ services:
       # Canonique eurio.db (SQLite WAL) — bind-mount gitignoré. Le serveur en est
       # le writer unique ; seedé depuis MinIO au 1er boot (entrypoint).
       - ./data:/var/lib/eurio
+      # Cache read-through des objets MinIO (`shared/storage/local_cache`).
+      # Sans ce volume il vivait dans la couche d'écriture du conteneur : REMIS À
+      # ZÉRO à chaque `up --build`, donc chaque ouverture de la modale de
+      # recadrage re-téléchargeait son raw. Mesuré le 2026-08-24, deux heures
+      # après un redéploiement : 5,7 Mo de cache pour 16 021 assets.
+      - ./cache:/var/cache/eurio
     environment:
       # Secrets injectés depuis l'env du process docker-compose.
       # Source unique : ../../secrets/dev.env (SOPS+age).
@@ -28,6 +34,13 @@ services:
 
       # Config non-sensible (peut rester en clair ici).
       EURIO_DB_PATH: /var/lib/eurio/eurio.db
+      # Le cache d'images vit sur le volume ci-dessus, et il est PLAFONNÉ.
+      # Défaut du code : "0" = illimité — ce qui, sur un VPS, finit par remplir
+      # le disque en silence (`local_cache._max_gb`). 5 Go suffisent largement :
+      # les raws pèsent 0,36 Mo en médiane (mesuré sur 25 raws de la file
+      # ouverte, 2026-08-24), l'éviction est LRU par atime.
+      EURIO_CACHE_ROOT: /var/cache/eurio
+      EURIO_CACHE_MAX_GB: "5"
       # Origine machine (R3) : le conteneur a un hostname = ID Docker aléatoire.
       # On force `vps` pour que /whoami soit lisible (le canonique ne stampe jamais
       # created_on lui-même, mais l'info reste cohérente).

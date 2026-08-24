@@ -54,6 +54,20 @@ class CropEditContext(BaseModel):
     suggested_circle: dict | None = None
 
 
+class CropSuggestion(BaseModel):
+    """Réponse du second appel de la modale : le cercle proposé, seul.
+
+    `circle` est `null` quand il n'y a rien à proposer — source multi-crops,
+    raw injoignable, ou cercle jugé aberrant par `_plausible_suggestion`.
+    `reason` dit lequel des trois, pour que l'écran puisse le DIRE au lieu de
+    laisser croire que le détecteur n'a rien vu.
+    """
+
+    asset_id: str
+    circle: dict | None = None
+    reason: str | None = None
+
+
 class ManualCropPayload(BaseModel):
     cx: float = Field(ge=0)
     cy: float = Field(ge=0)

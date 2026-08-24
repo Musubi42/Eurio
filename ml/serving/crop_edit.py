@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -182,9 +183,8 @@ def _plausible_suggestion(suggested: dict | None, hint: dict | None) -> dict | N
     return suggested
 
 
-def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
-    """Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id."""
-    conn = store._connection()  # noqa: SLF001
+def _context_row(conn, asset_id: str):
+    """Raw + bbox de l'asset. 404/410 si l'éditeur n'a rien sur quoi dessiner."""
     row = conn.execute(
         """
         SELECT a.id AS asset_id, a.bbox_json,
@@ -202,18 +202,29 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
         raise HTTPException(status_code=404, detail="Asset not found.")
     if not row["raw_storage_path"]:
         raise HTTPException(status_code=410, detail="Raw image unavailable.")
+    return row
 
-    # Cercle dominant proposé — UNIQUEMENT pour les sources mono-pièce. Sur un
-    # lot (plusieurs crops sur le même raw), un Hough global sauterait sur la
-    # plus grosse pièce, pas celle qu'on édite : on garde alors le hint bbox
-    # (bon depuis le bridage rim-refine). Coût Hough ~ acceptable (action manuelle).
-    n_crops = conn.execute(
-        "SELECT COUNT(*) FROM image_assets WHERE source_image_id = ?",
-        (row["source_image_id"],),
-    ).fetchone()[0]
+
+def load_crop_edit_context(
+    store: Store, asset_id: str, *, with_suggestion: bool = True,
+) -> CropEditContextData:
+    """Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id.
+
+    ``with_suggestion=False`` rend le contexte **sans** toucher au raw : que du
+    SQL, donc quelques millisecondes garanties. C'est ce que demande la modale
+    de recadrage, qui veut s'ouvrir tout de suite ; elle réclame ensuite le
+    cercle proposé par `compute_crop_suggestion` dans un second appel.
+
+    Pourquoi ce découpage (2026-08-24) : le cercle proposé exige le RAW, donc un
+    `local_path` qui peut le télécharger. Mesuré, ce chemin est rapide (p50
+    0,08 s / p90 0,17 s sur 40 items ouverts), mais il n'a aucun plafond
+    naturel — un objet lent bloquait l'OUVERTURE de l'éditeur, pas seulement la
+    suggestion. Une aide facultative ne doit pas retenir le geste qu'elle aide.
+    """
+    conn = store._connection()  # noqa: SLF001
+    row = _context_row(conn, asset_id)
     hint = _hint_from_bbox(row["bbox_json"])
-    suggested = _dominant_circle(row["raw_storage_path"]) if n_crops <= 1 else None
-    suggested = _plausible_suggestion(suggested, hint)  # rejette le cercle coincard aberrant
+    suggested = _suggestion_for(conn, row, hint)[0] if with_suggestion else None
 
     return CropEditContextData(
         asset_id=row["asset_id"],
@@ -226,6 +237,60 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
         hint=hint,
         suggested=suggested,
     )
+
+
+def _suggestion_for(conn, row, hint: dict | None) -> tuple[dict | None, str | None]:
+    """Cercle proposé pour cet asset, ou None — avec le détail de son coût.
+
+    UNIQUEMENT pour les sources mono-pièce. Sur un lot (plusieurs crops sur le
+    même raw), un Hough global sauterait sur la plus grosse pièce, pas celle
+    qu'on édite : on garde alors le hint bbox (bon depuis le bridage rim-refine).
+
+    ⚠️ Le résultat n'est **jamais persisté** : c'est une proposition, que seul
+    un POST `manual-crop` transforme en cadrage. Fermer l'éditeur la perd.
+
+    Le log est là parce que cette panne-ci est muette : quand aucune suggestion
+    ne sort, l'opérateur voit « le cadre n'a pas bougé cette fois » sans savoir
+    si c'est un lot, un raw injoignable ou un cercle jugé aberrant. Mesuré le
+    2026-08-24 sur 40 items ouverts au hasard : 3 suggestions rendues, dont 3
+    sur les 11 mono-crops.
+    """
+    n_crops = conn.execute(
+        "SELECT COUNT(*) FROM image_assets WHERE source_image_id = ?",
+        (row["source_image_id"],),
+    ).fetchone()[0]
+    if n_crops > 1:
+        logger.info("[crop-edit] asset=%s pas de suggestion : lot (%d crops)",
+                    row["asset_id"], n_crops)
+        return None, "lot"
+
+    t0 = time.perf_counter()
+    raw = _dominant_circle(row["raw_storage_path"])
+    dt_ms = (time.perf_counter() - t0) * 1000
+    suggested = _plausible_suggestion(raw, hint)  # rejette le cercle coincard aberrant
+    if suggested is not None:
+        reason = None
+    elif raw is None:
+        # `_dominant_circle` rend None pour DEUX causes qu'il ne distingue pas :
+        # raw injoignable, ou aucun cercle au bon calibre. Le nom le dit.
+        reason = "aucun_cercle"
+    else:
+        reason = "cercle_aberrant"
+    logger.info(
+        "[crop-edit] asset=%s suggestion=%s (%.0f ms)",
+        row["asset_id"], reason or "oui", dt_ms,
+    )
+    return suggested, reason
+
+
+def compute_crop_suggestion(
+    store: Store, asset_id: str,
+) -> tuple[dict | None, str | None]:
+    """Le cercle proposé seul, avec la raison de son absence — second appel de
+    la modale. C'est lui qui porte le coût du RAW ; l'ouverture ne l'attend plus."""
+    conn = store._connection()  # noqa: SLF001
+    row = _context_row(conn, asset_id)
+    return _suggestion_for(conn, row, _hint_from_bbox(row["bbox_json"]))
 
 
 def apply_manual_crop(

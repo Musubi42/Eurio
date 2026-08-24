@@ -151,6 +151,13 @@ app.include_router(db_routes.router)
 # la workstation la sert depuis sa réplique, le VPS depuis le canonique.
 from serving.class_need_routes import router as class_need_router  # noqa: E402
 app.include_router(class_need_router)
+from serving.dino_drift_routes import router as dino_drift_router  # noqa: E402
+app.include_router(dino_drift_router)
+# Le GESTE, lui, est lourd : torch + la banque + 6 Go d'images à réencoder.
+# Monté ICI SEULEMENT — le VPS porte l'image lean. La carte de l'accueil lit
+# l'écart partout ; son bouton se grise en hébergé (`hasLocalMlApi`).
+from serving.dino_rebuild_routes import router as dino_rebuild_router  # noqa: E402
+app.include_router(dino_rebuild_router)
 from serving.me_review_stats_routes import router as me_review_stats_router  # noqa: E402
 app.include_router(me_review_stats_router)
 

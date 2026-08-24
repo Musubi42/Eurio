@@ -877,7 +877,11 @@ CREATE TABLE IF NOT EXISTS review_queue (
   --
   -- Format ``decision_engine_version`` :
   --   'human@v1'                            décision admin
-  --   'auto_dino@s{sim_min}-d{spread_min}'  ex: 'auto_dino@s0.55-d0.05'
+  --   'auto_dino@{banque}/{encodeur}/s{sim_min}-d{spread_min}'
+  --     ex: 'auto_dino@2eur_all/dinov2-vitl14/s0.55-d0.05'
+  --   (la banque est entrée dans la chaîne le 2026-08-24 : sans elle, deux
+  --    calibrations distinctes portaient la même trace. Ancien format, encore
+  --    en base sur les décisions d'avant : 'auto_dino@s0.55-d0.05')
   --   'claude-sonnet-4-6'                   ack d'un verdict Claude
   --
   -- Format ``decision_metadata_json`` (libre, JSON validé côté code) :
@@ -2109,6 +2113,39 @@ CREATE INDEX IF NOT EXISTS idx_training_scans_cohort
   ON cohort_training_scans(cohort_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_training_scans_running
   ON cohort_training_scans(status) WHERE status = 'running';
+
+-- ─── Rebuild de la banque d'ancres DINO, lancé depuis l'accueil admin ──────
+--
+-- Bookkeeping LOCAL (même casier que cohort_training_scans) : l'état d'un job
+-- lancé depuis l'écran doit rester inscriptible même sous le flip Direction A,
+-- où le canonique local est une réplique read-only. Il ne voyage PAS au VPS —
+-- c'est l'état d'UNE machine de calcul, pas un fait du référentiel.
+--
+-- Deux ÉTAPES dans un seul job, et c'est voulu : rebâtir la banque sans
+-- recalculer les prédictions laisse la base dans un état pire qu'avant (12 454
+-- prédictions qui répondent sur une banque qui n'existe plus, et rien ne le
+-- dit). Les exposer comme deux boutons inviterait à n'en presser qu'un.
+CREATE TABLE IF NOT EXISTS dino_rebuild_jobs (
+  id               TEXT PRIMARY KEY,                -- uuid hex
+  status           TEXT NOT NULL DEFAULT 'running'
+                   CHECK (status IN ('running','done','failed')),
+  step             TEXT NOT NULL DEFAULT 'anchors'  -- où en est le job
+                   CHECK (step IN ('anchors','predictions','done')),
+  anchors_kind     TEXT NOT NULL,
+  encoder_version  TEXT NOT NULL,
+  build_id         TEXT,                            -- dino_anchor_builds.build_id produit
+  n_anchors        INTEGER,
+  n_predictions    INTEGER,
+  started_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at      TEXT,
+  error            TEXT,
+  log_path         TEXT,                            -- pour aller lire ce qui a raté
+  pid              INTEGER                          -- subprocess détaché (reaper)
+);
+CREATE INDEX IF NOT EXISTS idx_dino_rebuild_started
+  ON dino_rebuild_jobs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dino_rebuild_running
+  ON dino_rebuild_jobs(status) WHERE status = 'running';
 
 -- Verdict par crop du scan (REPLACE au re-scan via PK (scan_id, asset_id)).
 -- `margin` = sim(top-1 classe cohorte) − sim(classe assignée) : > 0 quand Dino

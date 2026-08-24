@@ -17,10 +17,13 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, Loader2, X } from 'lucide-vue-next'
 import {
   fetchAssetCropEditContext,
+  fetchAssetCropSuggestion,
   fetchCropEditContext,
+  fetchCropSuggestion,
   manualCrop,
   manualCropAsset,
   type CropEditContext,
+  type CropSuggestion,
 } from '../composables/useReviewApi'
 import { addLotCrop, type LotCrop } from '../composables/useLotReview'
 
@@ -57,6 +60,53 @@ const MARGIN_FRAC = 0.02
 
 const ctx = ref<CropEditContext | null>(null)
 const loadError = ref<string | null>(null)
+
+// ─── Le cercle proposé, en second temps ────────────────────────────────────
+//
+// Il exige le RAW côté serveur ; l'éditeur, lui, n'a besoin que de la bbox.
+// Les séparer garantit que la modale s'ouvre à la vitesse du SQL, quoi qu'il
+// arrive à MinIO. Cf. `serving/crop_edit.py::compute_crop_suggestion`.
+const suggestion = ref<CropSuggestion | null>(null)
+const suggesting = ref(false)
+/** Vrai dès que l'humain a bougé le cadre : la suggestion ne l'écrase plus. */
+const circleTouched = ref(false)
+
+/** Requête en vol, annulable. Un `E` / `Esc` / `E` rapide, ou le crop suivant,
+ *  ne doit pas laisser deux chargements se courir après — le dernier arrivé
+ *  gagnerait, et ce n'est pas forcément le bon. */
+let inflight: AbortController | null = null
+
+/** Ce que l'écran dit du cercle proposé. `null` = rien à dire (add-crop). */
+const suggestionLabel = computed<
+  { text: string; tone: 'ok' | 'muet' | 'alerte' } | null
+>(() => {
+  if (isAddMode.value) return null
+  if (suggesting.value) return { text: 'recherche du cadrage…', tone: 'muet' }
+  const s = suggestion.value
+  if (!s) return null
+  if (s.circle) {
+    return circleTouched.value
+      ? { text: 'cadrage proposé disponible — tu as repris la main', tone: 'muet' }
+      : { text: 'cadrage proposé appliqué', tone: 'ok' }
+  }
+  return {
+    text: {
+      lot: 'pas de cadrage proposé : plusieurs pièces sur cette photo',
+      aucun_cercle: 'pas de cadrage proposé : aucune pièce nette détectée',
+      cercle_aberrant: 'cadrage proposé écarté : trop loin du crop actuel',
+      erreur: 'cadrage proposé indisponible (le serveur n\'a pas répondu)',
+    }[s.reason ?? 'aucun_cercle'],
+    tone: s.reason === 'erreur' ? 'alerte' : 'muet',
+  }
+})
+
+/** Un abandon volontaire n'est pas une erreur à montrer. */
+function signalAborted(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === 'AbortError')
+    || (err instanceof Error && err.name === 'AbortError')
+  )
+}
 const saving = ref(false)
 
 // Cercle courant en px NATIFS du raw.
@@ -86,6 +136,8 @@ const svgEl = ref<SVGSVGElement | null>(null)
 const rawImg = ref<HTMLImageElement | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const imgLoaded = ref(false)
+/** Le RAW n'a pas chargé (403 présignature expirée, objet absent, réseau). */
+const imgError = ref(false)
 
 // Box rendue de l'<img> (relative au stage positionné) → le SVG se cale dessus.
 const imgBox = ref({ left: 0, top: 0, width: 0, height: 0 })
@@ -119,7 +171,13 @@ const uiScale = computed(() => {
 const handleR = computed(() => 10 * uiScale.value)
 
 async function load() {
+  inflight?.abort()
+  inflight = new AbortController()
   loadError.value = null
+  imgError.value = false
+  suggestion.value = null
+  suggesting.value = false
+  circleTouched.value = false
   try {
     // Add-crop : pas de fetch, on construit le contexte depuis le raw du lot
     // (déjà connu côté front) — l'asset n'existe pas encore.
@@ -144,13 +202,15 @@ async function load() {
       }
       return
     }
+    const signal = inflight!.signal
     const c = props.assetId
-      ? await fetchAssetCropEditContext(props.assetId)
-      : await fetchCropEditContext(props.reviewId!)
+      ? await fetchAssetCropEditContext(props.assetId, { signal })
+      : await fetchCropEditContext(props.reviewId!, { signal })
     ctx.value = c
-    // Démarre sur le cercle dominant détecté (source mono-pièce, crop souvent
-    // sous-dimensionné) quand présent, sinon sur le crop actuel (hint bbox).
-    const start = c.suggested_circle ?? c.hint
+    // On démarre TOUJOURS sur le crop actuel (hint bbox) : c'est du SQL, donc
+    // immédiat. Le cercle proposé, qui exige le raw, arrive après et ne
+    // remplace celui-ci que si personne n'y a encore touché (cf. `loadSuggestion`).
+    const start = c.hint
     if (start) {
       cx.value = start.cx
       cy.value = start.cy
@@ -160,8 +220,50 @@ async function load() {
       cy.value = (c.raw_height ?? 0) / 2
       r.value = Math.min(c.raw_width ?? 0, c.raw_height ?? 0) * 0.3
     }
+    void loadSuggestion(signal)
   } catch (err) {
+    if (signalAborted(err)) return   // modale refermée / crop suivant : rien à dire
     loadError.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+/** Va chercher le cercle proposé, une fois l'éditeur DÉJÀ à l'écran.
+ *
+ * Deux règles, et elles comptent autant l'une que l'autre :
+ *
+ * 1. **Elle n'applique rien si l'humain a bougé.** La suggestion arrive en
+ *    différé ; déplacer le cadre sous la main de quelqu'un qui vient de le
+ *    poser serait pire que de ne rien proposer.
+ * 2. **Elle DIT pourquoi quand elle n'a rien.** Mesuré le 2026-08-24 : la
+ *    suggestion ne sort que 3 fois sur 40, et 65 % des crops ouverts sont sur
+ *    une source multi-pièces où elle est refusée par construction. L'opérateur
+ *    voyait « le cadre n'a pas bougé cette fois » sans jamais savoir si c'était
+ *    normal. C'est exactement la panne muette que ce repo fabrique en série.
+ */
+async function loadSuggestion(signal: AbortSignal) {
+  suggestion.value = null
+  suggesting.value = true
+  try {
+    const s = props.assetId
+      ? await fetchAssetCropSuggestion(props.assetId, { signal })
+      : await fetchCropSuggestion(props.reviewId!, { signal })
+    if (signal.aborted) return
+    suggestion.value = s
+    if (s.circle && !circleTouched.value) {
+      cx.value = s.circle.cx
+      cy.value = s.circle.cy
+      r.value = s.circle.r
+    }
+  } catch (err) {
+    if (signalAborted(err)) return
+    // 🔴 Corrigé en revue le 2026-08-24. On posait ici `aucun_cercle`, donc un
+    // 500, un 401 ou un délai dépassé s'affichaient comme « aucune pièce nette
+    // détectée » — une panne serveur maquillée en verdict de détecteur, dans le
+    // composant dont c'est justement le rôle de ne plus rien taire.
+    // `erreur` est une raison À PART, avec son propre libellé.
+    suggestion.value = { asset_id: '', circle: null, reason: 'erreur' }
+  } finally {
+    if (!signal.aborted) suggesting.value = false
   }
 }
 
@@ -171,6 +273,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKey, true)
 })
 onBeforeUnmount(() => {
+  inflight?.abort()   // la modale se referme : plus personne n'attend ces réponses
   window.removeEventListener('resize', syncOverlay)
   window.removeEventListener('keydown', onKey, true)
   ro?.disconnect()
@@ -192,7 +295,19 @@ const dragMode = ref<DragMode>(null)
 let moveOffsetX = 0
 let moveOffsetY = 0
 
+/** Borne le cercle dans le raw — ET note que l'humain y a touché.
+ *
+ * Le marquage vit ICI parce que TOUTES les façons de bouger le cadre passent
+ * par cette fonction : glisser, molette, curseur, flèches, boutons ±. Le poser
+ * sur chaque appelant, c'est se condamner à en oublier un le jour où on en
+ * ajoute un — et l'oubli serait muet : la suggestion différée déplacerait le
+ * cadre sous la main de l'opérateur, une fois de temps en temps.
+ *
+ * `loadSuggestion` écrit cx/cy/r SANS passer par ici, exprès : elle ne doit
+ * pas se marquer elle-même comme un geste humain.
+ */
 function clampCircle() {
+  circleTouched.value = true
   cx.value = Math.max(0, Math.min(natW.value, cx.value))
   cy.value = Math.max(0, Math.min(natH.value, cy.value))
   r.value = Math.max(8, Math.min(rMax.value, r.value))
@@ -283,6 +398,7 @@ function drawPreview() {
 }
 
 function onImgLoad() {
+  imgError.value = false
   imgLoaded.value = true
   syncOverlay()
   if (rawImg.value && !ro) {
@@ -290,6 +406,13 @@ function onImgLoad() {
     ro.observe(rawImg.value)
   }
   drawPreview()
+}
+
+/** Le RAW n'a pas chargé. On le DIT — l'éditeur restait sinon ouvert sur un
+ *  fond noir avec un cercle invisible, et l'opérateur croyait à une lenteur. */
+function onImgError() {
+  imgLoaded.value = false
+  imgError.value = true
 }
 
 watch([cx, cy, r, imgLoaded], drawPreview)
@@ -376,6 +499,23 @@ function onKey(e: KeyboardEvent) {
           Clavier : <span class="font-mono">+ −</span> rayon, <span class="font-mono">↑ ↓ ← →</span> déplacer
           (<span class="font-mono">Maj</span> = pas large), <span class="font-mono">⏎</span> valider.
         </p>
+        <!-- Le cercle proposé arrive après l'ouverture. Cette ligne existe pour
+             qu'il ne soit JAMAIS muet : ni quand il s'applique, ni surtout
+             quand il n'y a rien à proposer. -->
+        <p
+          v-if="suggestionLabel"
+          class="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider"
+          :style="{
+            color: suggestionLabel.tone === 'ok'
+              ? 'var(--success)'
+              : suggestionLabel.tone === 'alerte'
+                ? 'var(--gold-600)'
+                : 'var(--ink-400)',
+          }"
+        >
+          <Loader2 v-if="suggesting" class="h-2.5 w-2.5 animate-spin" />
+          {{ suggestionLabel.text }}
+        </p>
       </div>
       <button
         type="button"
@@ -397,6 +537,7 @@ function onKey(e: KeyboardEvent) {
       <!-- Raw + cercle (le SVG se cale sur la box rendue de l'img) -->
       <div ref="stageEl" class="relative flex min-h-0 min-w-0 flex-1 items-center justify-center">
         <img
+          v-show="!imgError"
           ref="rawImg"
           :src="canvasRawSrc"
           alt="raw"
@@ -404,7 +545,18 @@ function onKey(e: KeyboardEvent) {
           class="block max-h-full max-w-full select-none rounded-lg"
           draggable="false"
           @load="onImgLoad"
+          @error="onImgError"
         />
+        <!-- Sans ce cas, un raw qui ne charge pas laissait l'éditeur ouvert sur
+             un fond noir, cercle invisible, aperçu vide — et pas un mot. -->
+        <p
+          v-if="imgError"
+          class="max-w-sm text-center text-sm"
+          style="color: var(--danger);"
+        >
+          La photo d'origine n'a pas pu être chargée. Le recadrage est
+          impossible sur ce crop — passe au suivant, et signale-le.
+        </p>
         <svg
           ref="svgEl"
           class="absolute"

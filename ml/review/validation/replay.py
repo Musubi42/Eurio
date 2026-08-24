@@ -32,6 +32,7 @@ from pathlib import Path
 
 from review.review_lanes import verdict_to_lane
 from review.validation.experts import collect_signals
+from shared.verdict_scope import VERDICT_ANCHORS_KIND, VERDICT_ENCODER_VERSION
 from training.foundation.auto_validate import compute_auto_validate_view
 
 _ML_ROOT = Path(__file__).resolve().parents[2]
@@ -51,21 +52,48 @@ class GoldEntry:
     dino_in_scope: bool = False  # a une prédiction DINO 2eur_commemo (défaut: charge anciens golds)
 
 
-def _dino_scope(conn: sqlite3.Connection) -> set[str]:
+def _dino_scope(
+    conn: sqlite3.Connection, *, anchors_kind: str = VERDICT_ANCHORS_KIND,
+) -> set[str]:
+    """Les assets qui ONT une prédiction dans cette banque.
+
+    Portait `'2eur_commemo'` en dur jusqu'au 2026-08-24 : rejouer le gold sous
+    une autre banque mesurait alors l'ANCIEN périmètre et rendait un diff
+    rassurant qui ne disait rien. Le paramètre existe pour que le replay puisse
+    comparer deux banques dans le même processus.
+    """
     return {
         r[0]
         for r in conn.execute(
             "SELECT asset_id FROM image_asset_dino_predictions "
-            "WHERE anchors_kind='2eur_commemo'"
+            "WHERE anchors_kind = ?",
+            (anchors_kind,),
         )
     }
 
 
-def _snapshot(conn: sqlite3.Connection, asset_id: str):
-    """(level, lane, {expert: label}, signals) — verdict + experts actuels."""
-    view = compute_auto_validate_view(conn, asset_id)
+def _snapshot(
+    conn: sqlite3.Connection,
+    asset_id: str,
+    *,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+):
+    """(level, lane, {expert: label}, signals) — verdict + experts actuels.
+
+    ⛔ Les DEUX appels doivent recevoir le même couple. `compute_auto_validate_view`
+    le prenait déjà ; `collect_signals` non — il retombait sur ses littéraux, et
+    le snapshot mélangeait alors deux banques sans rien dire.
+    """
+    view = compute_auto_validate_view(
+        conn, asset_id,
+        encoder_version=encoder_version, anchors_kind=anchors_kind,
+    )
     lane = verdict_to_lane(view.level)
-    signals = collect_signals(conn, asset_id)
+    signals = collect_signals(
+        conn, asset_id,
+        encoder_version=encoder_version, anchors_kind=anchors_kind,
+    )
     return view.level, lane, {s.expert: s.label for s in signals}, signals
 
 
@@ -92,9 +120,15 @@ def _mix_zone_assets(conn: sqlite3.Connection, cohort_id: str) -> set[str]:
     }
 
 
-def build_gold(conn: sqlite3.Connection, *, cohort_id: str = MIX_ZONE_17) -> list[GoldEntry]:
+def build_gold(
+    conn: sqlite3.Connection,
+    *,
+    cohort_id: str = MIX_ZONE_17,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+) -> list[GoldEntry]:
     conn.row_factory = sqlite3.Row
-    dino = _dino_scope(conn)
+    dino = _dino_scope(conn, anchors_kind=anchors_kind)
     mz = _mix_zone_assets(conn, cohort_id)
 
     # (source, ground_truth, decided_by) par asset. Provenance = mix_zone_17 si
@@ -122,7 +156,8 @@ def build_gold(conn: sqlite3.Connection, *, cohort_id: str = MIX_ZONE_17) -> lis
 
     gold: list[GoldEntry] = []
     for aid, (source, gt, by) in picked.items():
-        level, lane, sig_labels, _ = _snapshot(conn, aid)
+        level, lane, sig_labels, _ = _snapshot(
+            conn, aid, anchors_kind=anchors_kind, encoder_version=encoder_version)
         gold.append(GoldEntry(aid, source, gt, by, level, lane, sig_labels, aid in dino))
     return gold
 
@@ -176,7 +211,13 @@ def load_gold(path: Path = DEFAULT_GOLD) -> list[GoldEntry]:
         return [GoldEntry(**json.loads(line)) for line in f if line.strip()]
 
 
-def replay_gold(conn: sqlite3.Connection, gold: list[GoldEntry]) -> dict:
+def replay_gold(
+    conn: sqlite3.Connection,
+    gold: list[GoldEntry],
+    *,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+) -> dict:
     """Recompute le verdict pour chaque entrée et diffe before↔after.
 
     Retourne le diff (régressions) + une mesure de correction (top1 DINO vs
@@ -186,9 +227,15 @@ def replay_gold(conn: sqlite3.Connection, gold: list[GoldEntry]) -> dict:
     changes: list[dict] = []
     before_levels, after_levels = Counter(), Counter()
     top1_ok, top1_tot = Counter(), Counter()
+    # Le `dino_in_scope` figé dans le gold vaut pour la banque d'ORIGINE. Rejouer
+    # sous une autre banque doit remesurer le périmètre, sinon l'exactitude top-1
+    # est calculée sur la mauvaise population — sans que rien ne le signale.
+    in_scope_now = _dino_scope(conn, anchors_kind=anchors_kind)
 
     for g in gold:
-        level, lane, _labels, signals = _snapshot(conn, g.asset_id)
+        level, lane, _labels, signals = _snapshot(
+            conn, g.asset_id,
+            anchors_kind=anchors_kind, encoder_version=encoder_version)
         before_levels[g.before_level] += 1
         after_levels[level] += 1
         if level != g.before_level or lane != g.before_lane:
@@ -204,7 +251,8 @@ def replay_gold(conn: sqlite3.Connection, gold: list[GoldEntry]) -> dict:
         # Exactitude top1 : seulement sur les labellisés ET in-scope dino — un
         # standard (dino abstient) ne peut pas matcher une ancre commemo, l'inclure
         # déflaterait artificiellement la mesure (le bug « 0/96 » d'origine).
-        if g.ground_truth_eurio_id and dino is not None and g.dino_in_scope:
+        if g.ground_truth_eurio_id and dino is not None and (
+                g.asset_id in in_scope_now):
             top1_tot[g.source] += 1
             if dino.raw.get("top1") == g.ground_truth_eurio_id:
                 top1_ok[g.source] += 1
@@ -214,8 +262,11 @@ def replay_gold(conn: sqlite3.Connection, gold: list[GoldEntry]) -> dict:
         "n_gold": len(gold),
         "n_labeled": n_labeled,
         "n_diff_only": len(gold) - n_labeled,
+        "anchors_kind": anchors_kind,
+        "encoder_version": encoder_version,
         "n_labeled_in_dino_scope": sum(
-            1 for g in gold if g.ground_truth_eurio_id and g.dino_in_scope
+            1 for g in gold
+            if g.ground_truth_eurio_id and g.asset_id in in_scope_now
         ),
         "by_source": dict(Counter(g.source for g in gold)),
         "before_level_dist": dict(before_levels),

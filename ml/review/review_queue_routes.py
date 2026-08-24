@@ -66,8 +66,15 @@ from training.foundation.thresholds import (
 # change la logique du verdict ou les seuils — c'est la trace canonique
 # de la calibration en vigueur au moment de l'écriture.
 # `_HUMAN_ENGINE_VERSION` : voir store.decisions (ré-importé en tête).
+# ⛔ La BANQUE fait partie de la calibration, au même titre que les seuils.
+# Jusqu'au 2026-08-24 cette chaîne ne portait que les deux seuils : la bascule
+# de `2eur_commemo`/vits14 vers `2eur_all`/vitl14 les laissant inchangés, une
+# auto-acceptation d'avant et une d'après auraient été **indiscernables** — et
+# ces décisions-là posent des étiquettes d'entraînement que personne ne relit.
+# On ne saurait plus, dans six mois, quelle banque a produit quel label.
 _AUTO_DINO_ENGINE_VERSION = (
-    f"auto_dino@s{DINO_VERDICT_THRESHOLDS['top1_country_sim_min']}"
+    f"auto_dino@{VERDICT_ANCHORS_KIND}/{VERDICT_ENCODER_VERSION}"
+    f"/s{DINO_VERDICT_THRESHOLDS['top1_country_sim_min']}"
     f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
 )
 from vision.normalize_snap import normalize_listing_with_detections
@@ -91,6 +98,7 @@ from serving.crop_edit import (
     CropEditContextData,
     ManualCropData,
     apply_manual_crop,
+    compute_crop_suggestion as _compute_crop_suggestion,
     load_crop_edit_context,
 )
 
@@ -194,7 +202,8 @@ class ReviewItem(BaseModel):
     # commémo (année présente). La sélection libre (touche F) reste le fallback
     # pour les vraies commémos noyées dans le pool standard.
     standard_candidates: list[ReviewCandidate] = []
-    # Chunk Cr — top-1 DINOv2 inliné (dinov2-vits14, 2eur_commemo).
+    # Chunk Cr — top-1 DINOv2 inliné, sur la banque du VERDICT (cf.
+    # `shared/verdict_scope.py` — `2eur_all`/vitl14 depuis le 2026-08-24).
     # Préférence : top1_country (restreint au pays du listing) > top1 global.
     # None si pas de prédiction Dino pour cet asset ou eurio_id inexistant
     # dans coins (mort après rename). Affiché comme bouton « Accept Dino »
@@ -2474,6 +2483,7 @@ def reject_review(
 # seule vraie dépendance est cv2. Ré-exporté pour les importeurs existants.
 from serving.crop_edit_api import (  # noqa: E402
     CropEditContext,
+    CropSuggestion,
     ManualCropPayload,
     ManualCropResponse,
     crop_edit_context_response as _crop_edit_context_response,
@@ -2481,12 +2491,54 @@ from serving.crop_edit_api import (  # noqa: E402
 )
 
 
+def _asset_id_for_review(review_id: str) -> str:
+    """`review_id` → `asset_id`, ou 404.
+
+    🔴 Cette fonction n'existait PAS. Elle était appelée à cinq endroits de ce
+    module — les trois routes de recadrage et deux autres — et chacune levait
+    donc `NameError`, c'est-à-dire un 500, sur *toutes* leurs requêtes. Trouvé
+    en revue le 2026-08-24.
+
+    Personne ne s'en était aperçu parce que le front est passé sur le canonique
+    au lot 6b : ce jumeau lourd n'est plus appelé par l'écran. Un module qui
+    n'est plus exercé cesse de dire quand il est cassé — d'où la règle du dépôt,
+    tester le CHEMIN et pas le fichier. Le test qui accompagnait ce correctif se
+    contentait de chercher la chaîne du chemin dans le source ; il monte
+    désormais le router et appelle la route.
+
+    Miroir lean : `serving/review_queue/crop_routes.py::_asset_id`, où la même
+    garde morte (`if asset_id is None`) a été corrigée le même jour.
+    """
+    from serving.review_queue import repository as _lean_repo
+
+    conn = _store()._connection()  # noqa: SLF001
+    try:
+        return _lean_repo.asset_id_for_review(conn, review_id)
+    except _lean_repo.ReviewItemNotFound as exc:
+        raise HTTPException(status_code=404, detail="Review introuvable.") from exc
+
+
 @router.get("/{review_id}/crop-edit-context", response_model=CropEditContext)
-def get_crop_edit_context(review_id: str) -> CropEditContext:
+def get_crop_edit_context(review_id: str, suggestion: bool = True) -> CropEditContext:
     """Contexte pour l'éditeur de cercle : le RAW (sur lequel on dessine) +
-    le cercle de départ (crop actuel, px natifs). Délègue au cœur keyé asset."""
-    ctx = load_crop_edit_context(_store(), _asset_id_for_review(review_id))
+    le cercle de départ (crop actuel, px natifs). Délègue au cœur keyé asset.
+
+    `?suggestion=0` rend le contexte sans toucher au RAW (que du SQL) : la
+    modale s'ouvre tout de suite et réclame le cercle proposé à part. Jumeau
+    lean : `serving/review_queue/crop_routes.py`."""
+    ctx = load_crop_edit_context(
+        _store(), _asset_id_for_review(review_id), with_suggestion=suggestion,
+    )
     return _crop_edit_context_response(ctx)
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchCropSuggestion)
+@router.get("/{review_id}/crop-suggestion", response_model=CropSuggestion)
+def get_crop_suggestion(review_id: str) -> CropSuggestion:
+    """Le cercle proposé, seul — l'appel qui porte le coût du RAW."""
+    asset_id = _asset_id_for_review(review_id)
+    circle, reason = _compute_crop_suggestion(_store(), asset_id)
+    return CropSuggestion(asset_id=asset_id, circle=circle, reason=reason)
 
 
 # Consumed by: admin/.../review/composables/useReviewApi.ts (manualCrop)

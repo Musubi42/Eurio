@@ -11,6 +11,8 @@ import uuid
 
 import pytest
 
+from review.validation.consensus import RULE_VERSION
+from shared.verdict_scope import VERDICT_ANCHORS_KIND, VERDICT_ENCODER_VERSION
 from sources._base.run_logger import start_run
 from sources._base.steps.enqueue import run_enqueue
 from store import StoreBase, emit_state_event
@@ -27,14 +29,29 @@ def conn(tmp_path):
 
 def _seed_asset(
     conn, *, eurio_id, is_commemorative, text_verdict, top1, sim, spread,
+    in_bank=True,
 ):
     """Crée source_image + crop needs_review + dino prediction + text signal +
-    coin, et renvoie (source_ref, source_image_id, asset_id)."""
+    coin, et renvoie (source_ref, source_image_id, asset_id).
+
+    ``in_bank`` pose une ligne dans ``dino_class_references`` : depuis la
+    bascule sur ``2eur_all``, c'est CETTE table qui dit si l'expert DINO est
+    dans son périmètre, plus le drapeau ``is_commemorative``. Une fixture sans
+    référence modélise une base où la banque n'a jamais été poussée — un cas
+    réel (cf. le WARNING de `target_in_dino_scope`), mais pas le cas nominal.
+    """
     conn.execute(
         "INSERT INTO coins (eurio_id, country, year, face_value, is_commemorative) "
         "VALUES (?, 'FR', 2014, 2.0, ?)",
         (eurio_id, is_commemorative),
     )
+    if in_bank:
+        conn.execute(
+            "INSERT INTO dino_class_references "
+            "(anchors_kind, class_id, eurio_id, method, encoder_version) "
+            "VALUES (?, ?, ?, 'canonical', ?)",
+            (VERDICT_ANCHORS_KIND, eurio_id, eurio_id, VERDICT_ENCODER_VERSION),
+        )
     sid = uuid.uuid4().hex
     ref = f"ebay_{sid}"
     conn.execute(
@@ -54,8 +71,9 @@ def _seed_asset(
         "(asset_id, encoder_version, anchors_kind, anchors_count, top_k_json, "
         " top1_eurio_id, top1_sim, spread, top1_country_eurio_id, top1_country_sim, "
         " country_spread) "
-        "VALUES (?, 'dinov2-vits14', '2eur_commemo', 10, '[]', ?, ?, ?, ?, ?, ?)",
-        (aid, top1, sim, spread, top1, sim, spread),
+        "VALUES (?, ?, ?, 10, '[]', ?, ?, ?, ?, ?, ?)",
+        (aid, VERDICT_ENCODER_VERSION, VERDICT_ANCHORS_KIND,
+         top1, sim, spread, top1, sim, spread),
     )
     conn.execute(
         "INSERT INTO listing_text_signals (source_image_id, extractor_version, "
@@ -154,7 +172,10 @@ def test_dual_contradict_auto_rejected_and_reopenable(conn):
     assert rq["status"] == "done"
     assert rq["decided_by"] == "consensus"
     assert rq["decision_notes"] == "rejected"
-    assert rq["decision_engine_version"] == "consensus@v1"
+    # Dérivé de RULE_VERSION, pas écrit en dur : le bump de la version de règle
+    # DOIT changer cette trace (c'est sa raison d'être), et un littéral ferait
+    # rougir le test pour la bonne raison mais au mauvais endroit.
+    assert rq["decision_engine_version"] == f"consensus@v{RULE_VERSION}"
 
     cv = conn.execute(
         "SELECT outcome, rule FROM consensus_verdicts WHERE image_asset_id = ?", (aid,)
@@ -189,12 +210,18 @@ def test_reject_not_counted_as_enqueued(conn):
 
 
 def test_standard_out_of_scope_not_falsely_rejected(conn):
-    # un standard (is_commemorative=0) avec texte contradict + top1≠cible :
-    # dino abstient (hors scope ancres) → rescue needs_review, PAS reject.
+    # Une pièce ABSENTE de la banque d'ancres, avec texte contradict et
+    # top1 ≠ cible : dino abstient (rien à quoi la comparer) → rescue
+    # needs_review, PAS reject.
+    #
+    # Le critère a changé avec la bascule du 2026-08-24 : c'est l'appartenance
+    # à la BANQUE qui décide, plus le drapeau `is_commemorative`. `2eur_all`
+    # contient 41 classes courantes — un standard n'est plus hors scope par
+    # nature, il l'est quand la banque ne le connaît pas.
     eid = "fr-2014-2eur-standard"
     ref, sid, aid = _seed_asset(
         conn, eurio_id=eid, is_commemorative=0, text_verdict="contradict",
-        top1="de-2014-2eur-other", sim=0.9, spread=0.2,
+        top1="de-2014-2eur-other", sim=0.9, spread=0.2, in_bank=False,
     )
     _enqueue(conn, ref, sid)
 

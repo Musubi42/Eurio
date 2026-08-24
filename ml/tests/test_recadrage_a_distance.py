@@ -411,3 +411,178 @@ def test_referential_n_a_plus_besoin_de_pillow():
         "l'import Pillow doit rester DANS encode_webp"
     )
     assert "from PIL import Image" in source, "l'encodage en a toujours besoin"
+
+
+# ─── 5. L'ouverture de l'éditeur ne dépend plus du RAW ──────────────────────
+
+
+@pytest.fixture()
+def rig_piece(rig, tmp_path, monkeypatch):
+    """Le rig, mais avec un raw que le détecteur voit VRAIMENT, et une bbox.
+
+    Le disque uniforme du rig de base ne rend AUCUN cercle : `_dominant_circle`
+    passe par `HoughCircles`, qui travaille sur le gradient — un aplat n'en a
+    qu'au bord, et `param2=30` ne s'en contente pas. On ajoute donc un jonc
+    (l'anneau clair du listel d'une pièce), et le détecteur le trouve.
+
+    Ce détail n'est pas cosmétique : c'est la même raison qui fait que la
+    suggestion ne sort que 3 fois sur 40 en production (mesuré le 2026-08-24 sur
+    des items ouverts au hasard). Le batch `scripts/recrop_ebay_refine` utilise,
+    lui, `vision.crop_detectors` — un détecteur de rim, pas un Hough nu.
+    """
+    import numpy as np
+
+    cv2 = pytest.importorskip("cv2")
+    store, conn, asset_id, review_id, uploads = rig
+
+    raw = np.full((600, 600, 3), 30, dtype=np.uint8)
+    cv2.circle(raw, (300, 300), 200, (200, 200, 200), -1)
+    cv2.circle(raw, (300, 300), 185, (150, 150, 150), -1)   # le jonc
+    raw_p = tmp_path / "piece.jpg"
+    cv2.imwrite(str(raw_p), raw)
+
+    from shared.storage import local_cache
+
+    monkeypatch.setattr(local_cache, "local_path", lambda bucket, key: raw_p)
+    conn.execute(
+        "UPDATE image_assets SET bbox_json=? WHERE id=?",
+        (json.dumps({"x": 100, "y": 100, "w": 400, "h": 400}), asset_id))
+    conn.commit()
+    return store, conn, asset_id, review_id, uploads
+
+
+def test_le_contexte_sans_suggestion_ne_touche_jamais_au_raw(rig_piece, monkeypatch):
+    """`with_suggestion=False` = que du SQL. C'est la garantie d'ouverture.
+
+    Avant le 2026-08-24, `load_crop_edit_context` lançait un Hough — donc un
+    `local_path`, donc un téléchargement MinIO — sur le chemin BLOQUANT de la
+    modale. Le chemin nominal est rapide (p50 0,08 s / p90 0,17 s mesurés sur 40
+    items ouverts), mais il n'a aucun plafond naturel : un objet lent retenait
+    l'OUVERTURE de l'éditeur, pas seulement l'aide facultative qu'il porte.
+
+    Ici on rend `local_path` explosif : si le contexte y touche encore, le test
+    rougit. Une régression sur ce point serait autrement **muette** — elle ne se
+    verrait qu'un jour de MinIO lent, chez l'opérateur, sans laisser de trace.
+    """
+    from serving.crop_edit import load_crop_edit_context
+    from shared.storage import local_cache
+
+    store, _, asset_id, _, _ = rig_piece
+
+    def _interdit(bucket, key):
+        raise AssertionError("le contexte sans suggestion ne doit PAS lire le raw")
+
+    monkeypatch.setattr(local_cache, "local_path", _interdit)
+
+    ctx = load_crop_edit_context(store, asset_id, with_suggestion=False)
+    assert ctx.suggested is None
+    assert ctx.hint is not None, "le cercle de départ vient de la bbox, pas du raw"
+
+
+def test_la_suggestion_vit_dans_son_propre_appel(rig_piece):
+    """Le cercle proposé sort bien — mais par `compute_crop_suggestion`."""
+    from serving.crop_edit import compute_crop_suggestion
+
+    store, _, asset_id, _, _ = rig_piece
+
+    circle, reason = compute_crop_suggestion(store, asset_id)
+    assert reason is None and circle is not None, f"aucune suggestion : {reason}"
+    assert abs(circle["cx"] - 300) < 40 and abs(circle["cy"] - 300) < 40
+
+
+def test_un_lot_dit_POURQUOI_il_n_a_pas_de_suggestion(rig_piece):
+    """Sur une source multi-crops, la suggestion est refusée — et NOMMÉE.
+
+    Un Hough global sauterait sur la plus grosse pièce du plateau, pas celle
+    qu'on édite. Mesuré le 2026-08-24 : 5 548 des 8 496 items ouverts (65 %)
+    sont dans ce cas — c'est-à-dire que l'opérateur voyait « le cadre n'a pas
+    bougé cette fois » deux fois sur trois, sans jamais savoir pourquoi. La
+    raison rendue est ce qui permet à l'écran de le DIRE.
+    """
+    from serving.crop_edit import compute_crop_suggestion
+
+    store, conn, asset_id, _, _ = rig_piece
+    row = conn.execute(
+        "SELECT source_image_id, bbox_json FROM image_assets WHERE id=?",
+        (asset_id,)).fetchone()
+    conn.execute(
+        "INSERT INTO image_assets (id, source_image_id, crop_index, bbox_json, "
+        "storage_path, storage_status) "
+        "VALUES ('A_SECOND', ?, 1, ?, 'ebay/crop2.png', 'present')",
+        (row["source_image_id"], row["bbox_json"]))
+    conn.commit()
+
+    circle, reason = compute_crop_suggestion(store, asset_id)
+    assert circle is None and reason == "lot"
+
+
+def test_la_route_de_suggestion_existe_sur_le_lean_et_sur_le_lourd():
+    """Les deux jumeaux doivent la porter : le VPS sert la review des amis.
+
+    ⚠️ Ce test ne cherchait qu'une CHAÎNE dans le source du jumeau lourd. Il
+    passait donc au vert sur un module dont les cinq routes de recadrage
+    levaient `NameError` — `_asset_id_for_review` n'y était **définie nulle
+    part**. Trouvé en revue le 2026-08-24. On importe désormais le module et on
+    vérifie que l'aide existe : chercher un nom de chemin dans un fichier n'est
+    pas tester un chemin.
+    """
+    from serving.review_queue import crop_routes
+    from review import review_queue_routes as lourd
+
+    paths = {r.path for r in crop_routes.router.routes}
+    assert "/review-queue/{review_id}/crop-suggestion" in paths
+
+    paths_lourd = {r.path for r in lourd.router.routes}
+    assert "/review-queue/{review_id}/crop-suggestion" in paths_lourd
+    assert callable(lourd._asset_id_for_review), (
+        "les cinq routes de recadrage du jumeau lourd l'appellent — "
+        "sans elle, elles rendent 500 sur toutes leurs requêtes")
+
+
+def test_la_route_de_suggestion_repond_par_HTTP(rig_piece, monkeypatch):
+    """Le câblage HTTP, pas seulement la fonction : dépendances, modèle, 404.
+
+    Le test de registration ci-dessus ne dit que « le chemin existe ». Une
+    dépendance mal typée ou un `response_model` incompatible passe ce test-là et
+    rend 500 en production — sur une route que personne ne surveille, parce
+    qu'elle ne sert qu'une aide facultative.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from serving.auth_principal import Principal, require_principal
+    from serving.deps import db_connection
+    from serving.review_queue import crop_routes
+
+    store, conn, asset_id, review_id, _ = rig_piece
+    monkeypatch.setattr(crop_routes, "_store", lambda: store)
+
+    app = FastAPI()
+    app.include_router(crop_routes.router)
+    app.dependency_overrides[require_principal] = lambda: Principal(
+        user_id="t", email="t@test.local", roles=["reviewer"],
+        scopes={"review:write"}, auth_method="api_token",
+    )
+    app.dependency_overrides[db_connection] = lambda: conn
+    client = TestClient(app)
+
+    r = client.get(f"/review-queue/{review_id}/crop-suggestion")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["asset_id"] == asset_id
+    assert body["reason"] is None and body["circle"] is not None
+
+    # Le contexte, lui, doit savoir se passer du raw quand on le lui demande.
+    r = client.get(f"/review-queue/{review_id}/crop-edit-context?suggestion=0")
+    assert r.status_code == 200, r.text
+    assert r.json()["suggested_circle"] is None
+
+    # 404, pas 500 : `asset_id_for_review` LÈVE, elle ne rend pas None — la
+    # garde `if asset_id is None` des trois handlers était morte, et un id
+    # inconnu sortait en 500. Corrigé le 2026-08-24, verrouillé ici.
+    assert client.get("/review-queue/nexistepas/crop-suggestion").status_code == 404
+    assert client.get(
+        "/review-queue/nexistepas/crop-edit-context").status_code == 404
+    assert client.post(
+        "/review-queue/nexistepas/manual-crop",
+        json={"cx": 1, "cy": 1, "r": 1}).status_code == 404

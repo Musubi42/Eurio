@@ -197,6 +197,8 @@ app.include_router(db_routes.router)
 # Mac allumé. Seuls les GESTES que la page propose sont lourds, et le front les
 # grise tout seul. Lecture lab:read.
 app.include_router(class_need_router)
+from serving.dino_drift_routes import router as dino_drift_router
+app.include_router(dino_drift_router)
 # Les deux compteurs personnels d'un reviewer (review-collaborative-v2, accueil
 # d'un ami) : SQL pur sur le canonique, stdlib → mount inconditionnel. C'est la
 # SEULE donnée de la page d'accueil qui ne soit pas déjà dans `/class-need`.

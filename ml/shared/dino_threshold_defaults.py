@@ -71,10 +71,21 @@ CLES_ENTIERES: Final[frozenset[str]] = frozenset({"min_exemplars"})
 #: Défauts par couple (banque, encodeur).
 #:
 #: `2eur_commemo`/vits14 : valeurs historiques du verdict, calibrées sur les
-#: sims vits14 (cf. training/foundation/thresholds.py).
+#: sims vits14 (cf. training/foundation/thresholds.py). Le verdict ne lit plus
+#: cette banque depuis le 2026-08-24 ; l'entrée reste pour ses 7 780 prédictions.
 #: `2eur_all`/vitl14 : seuils d'abstention des suggestions, calibrés en juin sur
 #: 478 crops ; `spread_auto_accept_min` = 0,10, mesuré le 2026-08-19 sur 1 952
 #: crops étiquetés (97,1 % de précision du top-1 au-dessus de ce palier).
+#:
+#: ⚠️ **`top1_country_sim_min` et `country_spread_min` portent les MÊMES nombres
+#: pour les deux couples, et ceux-là viennent de vits14.** Depuis que le verdict
+#: lit `2eur_all`/vitl14, ce sont donc des seuils hérités. Mesuré le 2026-08-24
+#: sur le gold hors banque (464 crops) : ils tiennent — 185 auto-accepts, 184
+#: justes, 99,5 %. L'unique faux est à spread 0,1036, au MILIEU de la
+#: distribution (30 auto-accepts justes ont un spread plus bas) : le racheter
+#: demanderait un seuil ≥ 0,15, qui coûte 41 % du volume. Une calibration propre
+#: sur vitl14 reste souhaitable ; ce n'est pas une urgence, et surtout ce n'est
+#: pas parce que les nombres sont identiques qu'ils ont été mesurés deux fois.
 DEFAULTS: Final[dict[tuple[str, str], dict[str, float]]] = {
     ("2eur_commemo", "dinov2-vits14"): {
         "top1_country_sim_min": 0.55,

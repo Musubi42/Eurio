@@ -48,7 +48,11 @@ from store import (
 # rendait le compteur d'enrichissement impossible à servir depuis le canonique
 # (B3). On gate donc les deux routes d'édition, pas le fichier.
 try:
-    from .crop_edit import apply_manual_crop, load_crop_edit_context
+    from .crop_edit import (
+        apply_manual_crop,
+        compute_crop_suggestion,
+        load_crop_edit_context,
+    )
     # Lot 6b : le contrat vient du module LÉGER, plus du gros router legacy.
     # Il fallait auparavant importer `review.review_queue_routes` en entier
     # (sources.ebay, review.validation, …) juste pour trois modèles pydantic —
@@ -56,6 +60,7 @@ try:
     # vraie dépendance, cv2, y est désormais présente.
     from .crop_edit_api import (
         CropEditContext,
+        CropSuggestion,
         ManualCropPayload,
         ManualCropResponse,
         crop_edit_context_response as _crop_edit_context_response,
@@ -596,10 +601,24 @@ def _bound_store() -> Store:
 if CROP_EDIT_AVAILABLE:
     # Consumed by: admin/.../coins/composables/useCoinAssets.ts (fetchAssetCropEditContext)
     @router.get("/assets/{asset_id}/crop-edit-context", response_model=CropEditContext)
-    def get_asset_crop_edit_context(asset_id: str) -> CropEditContext:
-        """Contexte de l'éditeur de cercle pour un asset (raw + cercle de départ)."""
-        ctx = load_crop_edit_context(_bound_store(), asset_id)
+    def get_asset_crop_edit_context(
+        asset_id: str, suggestion: bool = True,
+    ) -> CropEditContext:
+        """Contexte de l'éditeur de cercle pour un asset (raw + cercle de départ).
+
+        `?suggestion=0` : que du SQL, l'éditeur s'ouvre sans attendre le RAW ;
+        le cercle proposé se réclame ensuite à `crop-suggestion`."""
+        ctx = load_crop_edit_context(
+            _bound_store(), asset_id, with_suggestion=suggestion,
+        )
         return _crop_edit_context_response(ctx)
+
+    # Consumed by: admin/.../coins/composables/useCoinAssets.ts (fetchAssetCropSuggestion)
+    @router.get("/assets/{asset_id}/crop-suggestion", response_model=CropSuggestion)
+    def get_asset_crop_suggestion(asset_id: str) -> CropSuggestion:
+        """Le cercle proposé, seul — c'est lui qui porte le coût du RAW."""
+        circle, reason = compute_crop_suggestion(_bound_store(), asset_id)
+        return CropSuggestion(asset_id=asset_id, circle=circle, reason=reason)
 
     # Consumed by: admin/.../coins/composables/useCoinAssets.ts (manualCropAsset)
     @router.post("/assets/{asset_id}/manual-crop", response_model=ManualCropResponse)

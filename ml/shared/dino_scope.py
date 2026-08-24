@@ -20,10 +20,15 @@ Mesuré le 2026-08-20 sur `it-2euro-standard-t1`, crops ouverts :
 CE QUI SE LIT, ET CE QUI NE SE LIT PAS
 --------------------------------------
 La jointure porte TOUJOURS sur la banque des **suggestions**
-(`SUGGESTIONS_ANCHORS_KIND` / `SUGGESTIONS_ENCODER_VERSION`), jamais sur celle
-du verdict — `2eur_commemo` ne contient aucune étiquette de pièce courante (0
-sur 508 au rebuild du 2026-08-19), donc un périmètre bâti dessus serait
-vide pour toute classe standard, sans la moindre erreur pour le dire.
+(`SUGGESTIONS_ANCHORS_KIND` / `SUGGESTIONS_ENCODER_VERSION`).
+
+Cette règle existait parce que le verdict lisait `2eur_commemo`, qui ne contient
+aucune étiquette de pièce courante (0 sur 508 au rebuild du 2026-08-19) : un
+périmètre bâti dessus était vide pour toute classe standard, sans la moindre
+erreur pour le dire. Depuis le 2026-08-24 les deux constantes désignent la MÊME
+banque (`2eur_all`/vitl14), donc la distinction ne mord plus — on garde
+`SUGGESTIONS_*` ici parce que c'est bien de suggestions qu'il s'agit, et parce
+que rien ne garantit que les deux resteront confondues.
 
 ⛔ `anchors_kind` et `encoder_version` sont indissociables : `2eur_all` n'existe
 qu'en `dinov2-vitl14`. Basculer le seul kind donne un JOIN à zéro ligne.

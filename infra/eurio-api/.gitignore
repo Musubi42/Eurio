@@ -1,2 +1,5 @@
 # Volume canonique (eurio.db) — jamais committé.
 data/
+# Cache read-through des objets MinIO — re-téléchargeable, plafonné à
+# EURIO_CACHE_MAX_GB. Ne jamais committer.
+cache/

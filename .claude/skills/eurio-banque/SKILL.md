@@ -42,8 +42,8 @@ description: La banque d'ancres DINO — comment la lire, ce qu'elle vaut, ce qu
 
 | kind | encodeur | ce qu'elle contient | qui la lit |
 |---|---|---|---|
-| `2eur_all` | **`dinov2-vitl14`** | 2 € commémo **+** courantes | les **suggestions** de review, le backfill de prédictions, le banc, la courbe |
-| `2eur_commemo` | `dinov2-vits14` | commémoratives seules | le **verdict** d'auto-validation, **en dur** (`shared/verdict_scope.py`) |
+| `2eur_all` | **`dinov2-vitl14`** | 2 € commémo **+** courantes | **tout** : suggestions ET verdict d'auto-validation (`shared/verdict_scope.py`), backfill, banc, courbe |
+| `2eur_commemo` | `dinov2-vits14` | commémoratives seules | **plus rien depuis le 2026-08-24**. Ses 7 780 prédictions restent en base et lisibles ; le verdict la lisait avant la bascule |
 | `2eur_standard` | `dinov2-vits14` | groupes de dessin courants | historique — `.npz` du 2026-06-11, **aucune ligne en base** |
 | `reverse_2eur` | `dinov2-vitl14` | revers (gate `face`) | `backfill_face`, `bench_face_recall` — `.npz` du 2026-06-13 |
 

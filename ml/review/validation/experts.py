@@ -26,15 +26,26 @@ côté foundation (``fetch_and_resolve_signals``) — pas de duplication ici.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from shared.bank_classes import bank_class_ids
+from shared.verdict_scope import VERDICT_ANCHORS_KIND, VERDICT_ENCODER_VERSION
 from training.foundation.auto_validate import (
     ResolvedSignals,
     fetch_and_resolve_signals,
 )
 from training.foundation.thresholds import DINO_VERDICT_THRESHOLDS
+
+logger = logging.getLogger(__name__)
+
+
+#: Banques qui ne contiennent QUE des commémoratives. Pour elles, et elles
+#: seules, « dans le scope » se lit « la pièce est commémorative ». La liste est
+#: explicite plutôt que déduite de la base : cf. `target_in_dino_scope`.
+_COMMEMO_ONLY_BANKS: frozenset[str] = frozenset({"2eur_commemo"})
 
 
 @dataclass(frozen=True)
@@ -251,17 +262,92 @@ class CropQualityExpert:
         return crop_signal(ctx.crop)
 
 
-def target_in_dino_scope(conn: sqlite3.Connection, target: str | None) -> bool:
-    """La cible est-elle dans le scope du banc 2eur_commemo ? (= commémorative).
-    Inconnue → True (on ne supprime pas un signal qu'on ne sait pas invalider)."""
+def target_in_dino_scope(
+    conn: sqlite3.Connection,
+    target: str | None,
+    *,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
+) -> bool:
+    """La cible est-elle une classe que la banque d'ancres sait reconnaître ?
+
+    Hors scope ⇒ l'expert DINO **s'abstient** : sa prédiction serait
+    structurellement fausse, puisque la bonne réponse n'existe pas parmi les
+    ancres. Inconnue ⇒ True — on ne supprime pas un signal qu'on ne sait pas
+    invalider.
+
+    ⛔ **Le prédicat dépend de la banque, et il n'y a pas de formule unique.**
+
+    - `2eur_commemo` ne contient QUE des commémoratives et ne trace aucune ligne
+      dans `dino_class_references` : le seul prédicat disponible y reste « la
+      pièce est commémorative ».
+    - `2eur_all` contient les commémoratives ET les classes courantes : y
+      demander « est-elle commémorative ? » écarterait à tort tous les
+      standards, dont c'est précisément la raison d'être de cette banque.
+
+    🔴 **L'aiguillage est EXPLICITE, et il l'est depuis la revue du
+    2026-08-24.** La première version décidait d'après l'état de la base — « la
+    table contient-elle des lignes pour ce kind ? ». C'était un piège : les
+    références sont écrites par le build local et n'atteignent le canonique que
+    par `POST /ingest/dino-references`. Un push manqué aurait donc fait basculer
+    le prédicat, sur la machine concernée seulement, de « appartenance à la
+    banque » à « est commémorative » — c'est-à-dire fait abstenir l'expert DINO
+    sur **toute** pièce courante, la population même pour laquelle la bascule
+    vers `2eur_all` a été faite. Sans erreur, et avec deux machines rendant des
+    verdicts différents pour le même crop.
+
+    Désormais : la règle vient de `_COMMEMO_ONLY_BANKS`, pas de la donnée. Une
+    banque censée porter des courantes mais dont la table est vide **le dit en
+    WARNING** — et fait abstenir l'expert, délibérément.
+
+    Pourquoi abstenir plutôt que « dans le doute, garde le signal » : ici les
+    deux erreurs ne coûtent pas la même chose. Un expert DINO qui parle alors
+    qu'on ne peut pas mesurer son périmètre, combiné à un texte contradictoire,
+    donne `dual_contradict` — c'est-à-dire un **rejet**, définitif, sans humain.
+    Abstenir donne `text_contradict_rescue`, c'est-à-dire une review humaine.
+    Face à un état qu'on ne sait pas mesurer, on choisit celui qui demande un
+    humain, pas celui qui détruit. (Verrouillé par
+    `test_standard_out_of_scope_not_falsely_rejected`.)
+
+    La traduction pièce → classe passe par `shared.bank_classes`, jamais par un
+    `COALESCE(design_group_id, eurio_id)` naïf : la banque indexe une courante
+    sous le REPRÉSENTANT de son groupe de dessin.
+    """
     if not target:
         return True
+
+    if anchors_kind in _COMMEMO_ONLY_BANKS:
+        row = conn.execute(
+            "SELECT is_commemorative FROM coins WHERE eurio_id = ?", (target,)
+        ).fetchone()
+        if row is None:
+            return True
+        return bool(row[0])
+
+    classes = bank_class_ids(conn, target)
+    ph = ",".join("?" * len(classes))
     row = conn.execute(
-        "SELECT is_commemorative FROM coins WHERE eurio_id = ?", (target,)
+        f"SELECT 1 FROM dino_class_references "
+        f" WHERE anchors_kind = ? AND class_id IN ({ph}) LIMIT 1",
+        (anchors_kind, *classes),
     ).fetchone()
-    if row is None:
+    if row is not None:
         return True
-    return bool(row[0])
+
+    # Rien trouvé : soit cette classe n'est vraiment pas en banque, soit la
+    # table est vide ici (références jamais poussées). Le second cas ne doit pas
+    # se déguiser en premier — il vaut un WARNING, pas une abstention massive.
+    if not conn.execute(
+        "SELECT 1 FROM dino_class_references WHERE anchors_kind = ? LIMIT 1",
+        (anchors_kind,),
+    ).fetchone():
+        logger.warning(
+            "[verdict] dino_class_references VIDE pour anchors_kind=%s sur cette "
+            "base — le périmètre de l'expert DINO n'est pas mesurable ici. "
+            "Références jamais poussées (POST /ingest/dino-references) ? "
+            "L'expert s'abstient : mieux vaut une review humaine qu'un rejet "
+            "fondé sur un périmètre inconnu.", anchors_kind,
+        )
+    return False
 
 
 def fetch_crop_quality(
@@ -293,10 +379,18 @@ def collect_signals(
     conn: sqlite3.Connection,
     asset_id: str,
     *,
-    encoder_version: str = "dinov2-vits14",
-    anchors_kind: str = "2eur_commemo",
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
 ) -> list[Signal]:
     """Collecte les avis d'experts pour un asset (text + dino + crop_quality).
+
+    ⛔ Les défauts viennent de `shared.verdict_scope`, PLUS de littéraux.
+    Ils portaient `"dinov2-vits14"` / `"2eur_commemo"` en dur jusqu'au
+    2026-08-24, et ce module est le chemin de routage **LIVE** :
+    `sources/_base/steps/enqueue.py` l'appelle sans kwargs, puis écrit la lane.
+    Basculer `verdict_scope.py` n'aurait donc pas changé la lane posée à
+    l'enqueue — la bascule aurait été à moitié faite, en silence. Le test
+    paramétré `tests/test_verdict_anchors_scope.py` couvre désormais ce module.
 
     Les ``Signal`` sont la matière première de la règle de consensus (C3).
     Résolution faite en amont (verdict-bundle + crop-bundle), puis fan-out.
@@ -314,6 +408,7 @@ def collect_signals(
     ctx = AssetContext(
         resolved=resolved,
         crop=crop,
-        dino_in_scope=target_in_dino_scope(conn, resolved.target),
+        dino_in_scope=target_in_dino_scope(
+            conn, resolved.target, anchors_kind=anchors_kind),
     )
     return [expert.evaluate(ctx) for expert in EXPERTS]

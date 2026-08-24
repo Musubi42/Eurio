@@ -52,8 +52,10 @@ PrincipalDep = Annotated[Principal, Depends(_require_write)]
 
 try:
     from serving.crop_edit import apply_manual_crop, load_crop_edit_context
+    from serving.crop_edit import compute_crop_suggestion
     from serving.crop_edit_api import (
         CropEditContext,
+        CropSuggestion,
         ManualCropPayload,
         ManualCropResponse,
         crop_edit_context_response,
@@ -64,6 +66,21 @@ try:
 except ImportError as exc:  # pragma: no cover — dépend de l'image
     logger.info("[review-crop] recadrage indisponible sur cette image : %s", exc)
     CROP_EDIT_AVAILABLE = False
+
+
+def _asset_id(conn: sqlite3.Connection, review_id: str) -> str:
+    """`review_id` → `asset_id`, ou 404.
+
+    ⛔ `repository.asset_id_for_review` **lève** `ReviewItemNotFound` ; elle ne
+    rend jamais `None`. Les trois handlers testaient pourtant `if asset_id is
+    None` — une garde morte, et un id inconnu ressortait en **500** au lieu de
+    404. Trouvé le 2026-08-24 en câblant le test HTTP de `crop-suggestion` ; les
+    routes `dino-suggestions` du même paquet, elles, attrapaient bien.
+    """
+    try:
+        return repository.asset_id_for_review(conn, review_id)
+    except repository.ReviewItemNotFound as exc:
+        raise HTTPException(status_code=404, detail="Review introuvable.") from exc
 
 
 def _store():
@@ -81,17 +98,40 @@ if CROP_EDIT_AVAILABLE:
     )
     def get_crop_edit_context(
         review_id: str, principal: PrincipalDep, conn: ConnDep,
+        suggestion: bool = True,
     ) -> CropEditContext:
-        """Le RAW sur lequel dessiner + le cercle de départ.
+        """Le RAW sur dessiner + le cercle de départ.
 
         URLs MinIO **présignées** : le chemin `/sources/…/file` du legacy n'est
         servi que par l'app full de la workstation — l'éditeur ouvert depuis un
         navigateur distant n'y verrait que deux carrés gris (leçon du lot 1).
+
+        `?suggestion=0` rend le contexte sans toucher au RAW — que du SQL. La
+        modale l'utilise pour s'ouvrir tout de suite, puis réclame le cercle
+        proposé à `crop-suggestion`. Le défaut reste `true` : les appelants
+        existants (et l'OpenAPI) ne changent pas de comportement.
         """
-        asset_id = repository.asset_id_for_review(conn, review_id)
-        if asset_id is None:
-            raise HTTPException(status_code=404, detail="Review introuvable.")
-        return crop_edit_context_response(load_crop_edit_context(_store(), asset_id))
+        asset_id = _asset_id(conn, review_id)
+        return crop_edit_context_response(
+            load_crop_edit_context(_store(), asset_id, with_suggestion=suggestion)
+        )
+
+    @router.get(
+        "/review-queue/{review_id}/crop-suggestion",
+        response_model=CropSuggestion,
+    )
+    def get_crop_suggestion(
+        review_id: str, principal: PrincipalDep, conn: ConnDep,
+    ) -> CropSuggestion:
+        """Le cercle proposé, seul — l'appel qui porte le coût du RAW.
+
+        Séparé de `crop-edit-context` pour que l'ouverture de l'éditeur ne
+        dépende jamais d'un objet MinIO lent : une aide facultative ne doit pas
+        retenir le geste qu'elle aide.
+        """
+        asset_id = _asset_id(conn, review_id)
+        circle, reason = compute_crop_suggestion(_store(), asset_id)
+        return CropSuggestion(asset_id=asset_id, circle=circle, reason=reason)
 
     @router.post(
         "/review-queue/{review_id}/manual-crop",
@@ -109,9 +149,7 @@ if CROP_EDIT_AVAILABLE:
         (D5). `eurio_id`, `resolution_status` et `training_eligible` ne sont pas
         touchés : recadrer n'est pas décider.
         """
-        asset_id = repository.asset_id_for_review(conn, review_id)
-        if asset_id is None:
-            raise HTTPException(status_code=404, detail="Review introuvable.")
+        asset_id = _asset_id(conn, review_id)
         data = apply_manual_crop(
             _store(), asset_id, payload.cx, payload.cy, payload.r,
         )

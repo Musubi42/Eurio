@@ -28,7 +28,7 @@
 // écriture qui échoue LÈVE, et rien ne prétend qu'elle a eu lieu. Un écran
 // vide et honnête vaut mieux qu'un écran plein et faux.
 
-import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
+import { eurioApi, EurioApiError, EurioApiTimeout } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 export type ReviewFace = 'obverse' | 'reverse' | 'unknown'
@@ -90,7 +90,8 @@ export interface ReviewItem {
   // (la décision écrit ce membre → classe = son design_group). Vide pour les
   // crops commémo (année présente).
   standard_candidates?: ReviewCandidate[]
-  // Chunk Cr — top-1 DINOv2 inliné (dinov2-vits14, 2eur_commemo).
+  // Chunk Cr — top-1 DINOv2 inliné, sur la banque du VERDICT
+  // (`2eur_all`/vitl14 depuis la bascule du 2026-08-24).
   // Préférence country-band > global. null si pas de prédiction Dino ou
   // eurio_id mort. Sert au bouton « Accept Dino (D) » 1-clic dans
   // SingleReviewView — face hardcodée obverse (ancres = obverses Numista).
@@ -152,12 +153,24 @@ async function safeFetch<T>(path: string, init?: RequestInit): Promise<T | null>
  * `status: 0` = échec RÉSEAU (canonique injoignable, conteneur en cours de
  * recréation, DNS, coupure). On le distingue d'un code HTTP pour que l'écran
  * puisse dire laquelle des deux choses s'est produite. */
-async function fetchEurio<T>(path: string): Promise<T> {
+async function fetchEurio<T>(
+  path: string,
+  opts?: { signal?: AbortSignal },
+): Promise<T> {
   try {
-    return await eurioApi.get<T>(path)
+    return await eurioApi.get<T>(path, opts)
   } catch (err) {
     if (err instanceof EurioApiError) {
       throw new ReviewApiError(err.status, err.message)
+    }
+    if (err instanceof EurioApiTimeout) {
+      // `status: 0` comme l'échec réseau : dans les deux cas le serveur n'a
+      // rien dit. Le message, lui, distingue « injoignable » de « ne répond pas ».
+      throw new ReviewApiError(
+        0,
+        'Le canonique ne répond pas (délai dépassé). Rien n\'est affiché '
+        + 'plutôt que des données fausses — réessaie.',
+      )
     }
     if (err instanceof TypeError) {
       throw new ReviewApiError(
@@ -187,6 +200,19 @@ async function fetchEurioWrite<T>(
   } catch (err) {
     if (err instanceof EurioApiError) {
       throw new ReviewApiError(err.status, err.message)
+    }
+    if (err instanceof EurioApiTimeout) {
+      // ⚠️ NE PAS dire « la décision n'a pas été écrite » : contrairement à un
+      // échec réseau, la requête est PARTIE. Le serveur a pu la committer et ne
+      // pas avoir eu le temps de répondre. Envoyer l'opérateur la refaire, ou
+      // le laisser croire qu'elle est perdue, sont deux erreurs distinctes et
+      // toutes deux coûteuses sur la seule donnée que rien ne régénère.
+      throw new ReviewApiError(
+        0,
+        'Le canonique n\'a pas répondu à temps. La décision est PEUT-ÊTRE '
+        + 'passée — recharge la file avant de la refaire, plutôt que de '
+        + 'trancher deux fois.',
+      )
     }
     if (err instanceof TypeError) {
       throw new ReviewApiError(
@@ -452,6 +478,16 @@ export interface CropEditContext {
   suggested_circle?: { cx: number; cy: number; r: number } | null
 }
 
+/** Réponse de `crop-suggestion` : le cercle proposé, ou la raison de son absence. */
+export interface CropSuggestion {
+  asset_id: string
+  circle: { cx: number; cy: number; r: number } | null
+  /** `erreur` n'est jamais rendu par le serveur : le front le pose quand
+   *  l'appel a ÉCHOUÉ, pour ne pas maquiller une panne en verdict de
+   *  détecteur. */
+  reason: 'lot' | 'aucun_cercle' | 'cercle_aberrant' | 'erreur' | null
+}
+
 export interface ManualCropResult {
   asset_id: string
   cx: number
@@ -472,15 +508,38 @@ export interface ManualCropResult {
  * rend le geste possible à un ami — 18,4 % des crops sont recadrés à la main,
  * sans quoi il ne fait que la moitié du travail. `promoteUrl` (et non
  * `promoteMlUrl`) : les URLs sont désormais des URLs MinIO présignées. */
-export async function fetchCropEditContext(reviewId: string): Promise<CropEditContext> {
+export async function fetchCropEditContext(
+  reviewId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<CropEditContext> {
+  // `suggestion=0` : le contexte ne fait plus que du SQL. Le cercle proposé
+  // exige le RAW, donc un objet MinIO — il ne doit pas retenir l'OUVERTURE de
+  // l'éditeur, qui marche très bien sans lui. Il arrive par `fetchCropSuggestion`.
   const real = await fetchEurio<CropEditContext>(
-    `/review-queue/${encodeURIComponent(reviewId)}/crop-edit-context`,
+    `/review-queue/${encodeURIComponent(reviewId)}/crop-edit-context?suggestion=0`,
+    opts,
   )
   return {
     ...real,
     raw_url: promoteUrl(real.raw_url),
     crop_url: promoteUrl(real.crop_url),
   }
+}
+
+/** Le cercle proposé pour ce crop, ou `null` — et POURQUOI il est null.
+ *
+ *  Second temps de l'ouverture de la modale : une aide facultative, qu'on va
+ *  chercher une fois l'éditeur déjà à l'écran. `reason` vaut `lot` (source
+ *  multi-pièces : un Hough global sauterait sur la mauvaise pièce),
+ *  `aucun_cercle` (raw injoignable ou rien au bon calibre) ou `cercle_aberrant`. */
+export async function fetchCropSuggestion(
+  reviewId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<CropSuggestion> {
+  return fetchEurio<CropSuggestion>(
+    `/review-queue/${encodeURIComponent(reviewId)}/crop-suggestion`,
+    opts,
+  )
 }
 
 /** Re-croppe l'asset depuis un cercle (cx,cy,r) en px natifs du raw. Écrase le
@@ -505,15 +564,30 @@ export async function manualCrop(
 /** Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id.
  *  Même bascule qu'au-dessus (lot 6b) : `coin_assets_routes` enregistre enfin
  *  ces routes sur l'image lean, son contrat ne traînant plus le router legacy. */
-export async function fetchAssetCropEditContext(assetId: string): Promise<CropEditContext> {
+export async function fetchAssetCropEditContext(
+  assetId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<CropEditContext> {
   const real = await fetchEurio<CropEditContext>(
-    `/coins/assets/${encodeURIComponent(assetId)}/crop-edit-context`,
+    `/coins/assets/${encodeURIComponent(assetId)}/crop-edit-context?suggestion=0`,
+    opts,
   )
   return {
     ...real,
     raw_url: promoteUrl(real.raw_url),
     crop_url: promoteUrl(real.crop_url),
   }
+}
+
+/** Le cercle proposé pour un asset hors queue. Jumeau de `fetchCropSuggestion`. */
+export async function fetchAssetCropSuggestion(
+  assetId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<CropSuggestion> {
+  return fetchEurio<CropSuggestion>(
+    `/coins/assets/${encodeURIComponent(assetId)}/crop-suggestion`,
+    opts,
+  )
 }
 
 /** Re-croppe un asset en place (écrase cache + MinIO + DB au format prod). */
