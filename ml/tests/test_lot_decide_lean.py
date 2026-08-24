@@ -29,9 +29,14 @@ def _client(db):
 
     app = FastAPI()
     app.include_router(funnel_writes.router)
+    # `review:arbitrate`, PAS `review:write` : depuis e851a343, la décision de
+    # lot écrit le canonique en direct sans quarantaine, donc elle est fermée au
+    # scope d'un ami (cf. la note sur `_require_write` dans funnel_writes.py).
+    # Un principal `review:write` ici rend 403 sur TOUTES les routes du module,
+    # et le test ne mesure alors plus rien de ce qu'il croit mesurer.
     app.dependency_overrides[require_principal] = lambda: Principal(
-        user_id="t", email="t@test.local", roles=["reviewer"],
-        scopes={"review:write"}, auth_method="api_token",
+        user_id="t", email="t@test.local", roles=["owner"],
+        scopes={"review:arbitrate"}, auth_method="api_token",
     )
     return TestClient(app)
 

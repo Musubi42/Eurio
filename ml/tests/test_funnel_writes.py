@@ -26,12 +26,15 @@ from test_decisions_parity import _coin, _seed_asset
 
 def _principal(scopes):
     return Principal(
-        user_id="t", email="t@test.local", roles=["reviewer"],
+        user_id="t", email="t@test.local", roles=["owner"],
         scopes=set(scopes), auth_method="api_token",
     )
 
 
-def _make_client(db, scopes=("review:write",)):
+# `review:arbitrate` et pas `review:write` : depuis e851a343 ces routes écrivent
+# le canonique en direct (sans quarantaine), donc elles exigent le scope
+# d'arbitrage. Cf. la note sur `_require_write` dans serving/funnel_writes.py.
+def _make_client(db, scopes=("review:arbitrate",)):
     from serving import funnel_writes
 
     app = FastAPI()
@@ -105,5 +108,15 @@ def test_accept_training_idempotent(env):
 def test_missing_scope_403(env):
     conn, db = env
     _seed_asset(conn, "a7")
-    client = _make_client(db, scopes=())  # authentifié mais sans review:write
+    client = _make_client(db, scopes=())  # authentifié, aucun scope
     assert client.post("/lab/assets/a7/accept-training").status_code == 403
+
+
+def test_reviewer_sans_arbitrate_403(env):
+    """D7 : `review:write` est le scope de TOUT ami. S'il suffisait ici, un ami
+    poserait `training_eligible` sur le canonique sans passer par la
+    quarantaine — c'est exactement le trou refermé par e851a343."""
+    conn, db = env
+    _seed_asset(conn, "a8")
+    client = _make_client(db, scopes=("review:write",))
+    assert client.post("/lab/assets/a8/accept-training").status_code == 403
