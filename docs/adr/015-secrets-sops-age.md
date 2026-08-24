@@ -66,12 +66,15 @@ une pubkey. Le VPS suit exactement la même doctrine que les postes de dev.
 - Le déchiffrement se fait au chargement du shell : **hors direnv, on n'a rien**. C'est
   la même racine que le piège n°1 du dépôt (un shell hors `nix develop` lit la mauvaise
   base et n'a pas les bons secrets).
-- **L'historique git des remotes a contenu des secrets en clair.** Le `git rm --cached`
-  du 2026-07-04 n'a pas purgé l'historique ; la position retenue par
-  [ADR-005](./005-remaster-historique-git.md) est que le remaster sur base propre et
-  l'archivage hors ligne de l'ancien historique remplacent un `git-filter-repo`. **Ce
-  remaster n'est pas encore fait** — jusque-là, les clés qui ont fuité doivent être
-  considérées comme ayant été publiques, révocation ou pas.
+- **L'historique git public a contenu des secrets en clair, et deux le portent encore.**
+  Mesuré le 2026-08-25 en cherchant chaque valeur actuelle de `secrets/dev.env` dans tout
+  l'historique : Supabase et eBay ont bien été rotés (0 commit), mais
+  **`NUMISTA_API_KEY_MUSUBI00` et `NUMISTA_API_KEY_MUSUBI01` sont inchangées** et lisibles
+  dans `.envrc copy` au commit `f7dd22f7`, accessible depuis un dépôt **public**. Détail et
+  méthode : [ADR-005](./005-remaster-historique-git.md) §Correction mesurée.
+- **Un `git rm --cached` ne referme rien.** Il retire le fichier de HEAD, pas de
+  l'historique. La seule question qui compte est « la valeur actuelle apparaît-elle dans
+  un commit ? », et elle se pose avec `git log --all -S`.
 
 ## Voir aussi
 

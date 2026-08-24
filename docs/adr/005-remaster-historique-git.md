@@ -59,3 +59,28 @@ tarball d'archive uniquement**. À accepter consciemment ; c'est le prix de la b
 **Les 3 branches mortes** (`coin-richness/p3-schema`, `data-harmonization`,
 `debug-data-taxonomy`) disparaissent. `source-lmdlp-rebuild` porte du travail fini —
 **à merger ou abandonner explicitement avant le remaster**, sinon il est perdu.
+
+## Correction mesurée du 2026-08-25
+
+La ligne « secrets fuités → clés révoquées par le PO » est **partiellement fausse**, et
+c'est ce qui décide si un `git-filter-repo` reste évitable.
+
+Méthode : pour chaque valeur actuellement dans `secrets/dev.env`, chercher cette valeur
+dans **tout** l'historique (`git log --all -S <valeur>`). C'est le seul test qui répond à
+la vraie question — « ce qui est en ligne ouvre-t-il encore une porte ? » — et non
+« un fichier a-t-il été retiré ? ».
+
+| Secret | Verdict |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `VITE_SUPABASE_*` | ✅ **rotés** — 0 commit contient les valeurs actuelles |
+| `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | ✅ **rotés** — 0 commit |
+| 6 clés Numista sur 8 | ✅ 0 commit |
+| **`NUMISTA_API_KEY_MUSUBI00` et `NUMISTA_API_KEY_MUSUBI01`** | ⚠️ **PAS rotées.** En clair dans `.envrc copy` au commit `f7dd22f7` (2026-06-15, « WIP »), retiré à `d15cd4a4` (2026-07-05) mais **toujours accessible depuis `github/repo-cleanup` et `github/sources-jo-wikipedia`** — et `Musubi42/Eurio` est un dépôt **PUBLIC** |
+
+Elles ne sont plus à HEAD d'aucune branche : seul l'historique les porte. C'est
+exactement le cas que cette ADR dit couvrir en archivant l'ancien historique hors ligne
+— **mais l'archivage n'a pas encore eu lieu**, donc l'exposition est vivante aujourd'hui.
+
+**Conséquence.** Roter ces deux clés (elles sont 8 en rotation, le coût est nul) referme
+la porte **sans dépendre du remaster**. C'est le geste à faire en premier ; il rend
+ensuite le remaster libre de son calendrier au lieu d'en être le seul remède.
