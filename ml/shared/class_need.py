@@ -67,6 +67,7 @@ __all__ = [
     "all_needs",
     "bottleneck_for",
     "need_for",
+    "needs_for_classes",
     "target_for_family",
 ]
 
@@ -481,6 +482,37 @@ def all_needs(
     return _build(
         conn, anchors_kind=anchors_kind, encoder_version=encoder_version,
         only=None, min_denom=min_denom,
+    )
+
+
+def needs_for_classes(
+    conn: sqlite3.Connection,
+    class_ids: set[str] | list[str],
+    *,
+    anchors_kind: str,
+    encoder_version: str,
+) -> list[ClassNeed]:
+    """Le besoin d'un SOUS-ENSEMBLE de classes, déjà à la maille banque.
+
+    Même calcul, même verdict et mêmes champs qu'`all_needs` — c'est
+    littéralement le même `_build`, restreint. Sert à répondre « parmi CES
+    classes-là, lesquelles ont atteint leur cible ? » sans faire tourner le
+    besoin des 671 (`/me/review-stats`, review-collaborative-v2).
+
+    ⛔ Les `class_ids` doivent DÉJÀ être à la maille banque (`top1_eurio_id` ou
+    `dino_class_references.class_id`). Pour partir d'une pièce du catalogue,
+    c'est `need_for` qui traduit — via `shared.bank_classes`, jamais par un
+    COALESCE local (piège Q13, cf. l'en-tête du module).
+
+    Les `class_ids` inconnus de la banque sortent silencieusement : c'est un
+    filtre, pas une assertion. Une classe de la banque absente de `coins`, elle,
+    lève — comme dans `all_needs`.
+    """
+    if not class_ids:
+        return []
+    return _build(
+        conn, anchors_kind=anchors_kind, encoder_version=encoder_version,
+        only=set(class_ids),
     )
 
 

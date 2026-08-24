@@ -77,6 +77,13 @@ class Totals(BaseModel):
     #: Palier 1 (D7) : classes à ``have >= 1``. Porte les +10,8 pts de l'A/B
     #: médoïde ; c'est le premier exemplaire qui vaut, pas le huitième.
     coverage: int
+    #: Le MÊME palier 1, vu à travers les ACQUIS (D8) : classes à
+    #: ``have + accepted_pending >= 1``. C'est celui-ci, et jamais ``coverage``,
+    #: qu'un écran montre à quelqu'un qui TRIE : ``have`` ne bouge qu'au
+    #: ``build_dino_anchors`` suivant, donc une barre bâtie dessus reste figée
+    #: toute la semaine au-dessus du travail de quelqu'un qui vient d'en faire.
+    #: Même raison que ``bottleneck_for``, qui tranche déjà sur la somme.
+    coverage_acquired: int
     #: Palier 2 (D7) : Σ ``need``, ce qui manque À LA BANQUE.
     sum_need: int
     #: Σ ``min(need, pending_scoped)`` — ce que la file peut RÉELLEMENT poser.
@@ -213,6 +220,9 @@ def get_class_need(
     totals = Totals(
         n_classes=len(needs),
         coverage=sum(1 for n in needs if n.have >= 1),
+        coverage_acquired=sum(
+            1 for n in needs if n.have + n.accepted_pending >= 1
+        ),
         sum_need=sum(n.need for n in needs),
         # ⛔ `bottleneck != 'pleine'` n'est pas un raffinement. Une classe
         # pleine PAR LES ACQUIS (D8) garde `need > 0` — `need = target − have`

@@ -53,7 +53,45 @@ logger = logging.getLogger("eurio-api.funnel_writes")
 
 router = APIRouter(tags=["review-queue"])
 
-_require_write = require_scope("review:write")
+#: 🔴 `review:arbitrate`, et non `review:write` — CORRIGÉ LE 2026-08-24, trouvé
+#: en revue adversariale.
+#:
+#: CE QUE C'ÉTAIT
+#: --------------
+#: Les cinq routes de ce module écrivent le canonique EN DIRECT :
+#: `decide_lot` clôt des items et pose `training_eligible = 1`,
+#: `/lab/assets/{id}/training-eligible` le pose sur n'importe quel asset. Elles
+#: ont été écrites pour l'entonnoir (C2a, Direction A) **avant** la quarantaine
+#: du lot 3, et personne n'est repassé dessus quand elle est arrivée : le mot
+#: `arbitrate` n'apparaissait pas une fois dans ce fichier.
+#:
+#: `review:write` est le scope de TOUT ami (D7). D7 était donc contournable, et
+#: pas seulement en théorie — le sélecteur « unité / lot » de la pêche, l'écran
+#: où un ami travaille, n'était gaté par rien. Vérifié en conditions réelles
+#: avec un jeton de reviewer le 2026-08-24 :
+#:
+#:     POST /review-queue/lots/{lot}/decide      → 200 {"done":1}
+#:       review_queue.status        open → done
+#:       image_assets.training_eligible 0 → 1
+#:       decided_by                 = 'admin'   (la traçabilité ment)
+#:       peer_review_decisions      18 → 18     (AUCUNE quarantaine)
+#:
+#:     POST /lab/assets/{id}/training-eligible   → 200
+#:       training_eligible          0 → 1, sans quarantaine
+#:
+#: POURQUOI FERMER PAR LE SCOPE ET NON METTRE LES LOTS EN QUARANTAINE
+#: ------------------------------------------------------------------
+#: Tranché avec le PO le 2026-08-24. La quarantaine des lots est la réponse
+#: juste sur le fond — le tri par lot est le geste le plus efficace sur une
+#: annonce multi-pièces — mais c'est un LOT de travail (N lignes pendantes par
+#: décision, l'index unique 0012 à tenir, la vue d'arbitrage à apprendre à
+#: grouper). Fermer par le scope se déploie le jour même et se rouvre le jour où
+#: on instruit le sujet. Le trou, lui, est ouvert en production maintenant.
+#:
+#: ⛔ Ne pas remettre `review:write` ici sans avoir posé la quarantaine dans
+#: `decide_lot`. Ces routes n'ont pas de jumeau gardé ailleurs : ce `Depends`
+#: est la seule chose qui les sépare du canonique.
+_require_write = require_scope("review:arbitrate")
 ConnDep = Annotated[sqlite3.Connection, Depends(db_connection)]
 PrincipalDep = Annotated[Principal, Depends(_require_write)]
 

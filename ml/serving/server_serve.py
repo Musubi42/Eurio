@@ -64,6 +64,7 @@ from serving.lab_read_routes import router as lab_read_router
 from serving.dino_thresholds_routes import router as dino_thresholds_router
 from serving.encoder_bench_routes import router as encoder_bench_router
 from serving.class_need_routes import router as class_need_router
+from serving.me_review_stats_routes import router as me_review_stats_router
 from serving.thresholds_routes import router as thresholds_router
 from serving.sources import router as sources_router
 from store import Store
@@ -196,6 +197,11 @@ app.include_router(db_routes.router)
 # Mac allumé. Seuls les GESTES que la page propose sont lourds, et le front les
 # grise tout seul. Lecture lab:read.
 app.include_router(class_need_router)
+# Les deux compteurs personnels d'un reviewer (review-collaborative-v2, accueil
+# d'un ami) : SQL pur sur le canonique, stdlib → mount inconditionnel. C'est la
+# SEULE donnée de la page d'accueil qui ne soit pas déjà dans `/class-need`.
+# Lecture review:read — voir ce qu'on a fait soi-même n'est pas arbitrer.
+app.include_router(me_review_stats_router)
 
 
 @app.get("/healthz")
@@ -229,7 +235,12 @@ _CANDIDATES = [
     ("coins", "serving.coins_routes", True),
     ("sets", "serving.sets_routes", True),
     ("operations", "serving.operations_routes", False),
-    ("referential", "serving.referential_routes", False),
+    # `bind` OBLIGATOIRE ici : sans lui, `_store()` importe `serving.server`,
+    # qui tire `training` — absent de l'image lean. Le router se montait,
+    # et toutes ses routes qui lisent la base répondaient 500 (mesuré en
+    # prod le 2026-08-24 : plus une seule vignette canonique sur le front
+    # hébergé, écran de review compris).
+    ("referential", "serving.referential_routes", True),
     ("peer_arbitration", "review.peer_arbitration_routes", False),
     ("review_queue", "review.review_queue_routes", False),
 ]

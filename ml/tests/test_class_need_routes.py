@@ -192,6 +192,37 @@ def test_les_totaux_egalent_ce_que_class_need_rend(env):
     assert t["by_bottleneck"] == {"pleine": 1, "review": 2, "scrape": 1}
 
 
+def test_coverage_acquired_compte_les_acquis_quand_coverage_les_ignore(env):
+    """Le palier 1 tel qu'on le montre à quelqu'un qui TRIE (D8).
+
+    `coverage` compte `have >= 1`, et `have` ne bouge qu'au
+    `build_dino_anchors` suivant : une barre bâtie dessus reste FIGÉE toute la
+    semaine au-dessus du travail de quelqu'un qui vient d'en faire. C'est
+    exactement le piège que l'accueil d'un ami devait éviter
+    (`ACCUEIL-AMI.md` §5.3).
+
+    Ici, `DRY` n'a aucun exemplaire en banque mais un crop validé qui l'attend :
+    les deux compteurs DOIVENT diverger. S'ils sont égaux, le test ne prouve
+    rien — d'où la classe choisie.
+    """
+    conn, _ = env
+    acq = _asset(conn, "acquis-dry", country="VA", eligible=1)
+    _predict(conn, acq, DRY)
+    conn.commit()
+
+    from shared.class_need import all_needs
+    needs = all_needs(conn, anchors_kind=KIND, encoder_version=ENC)
+    t = _client().get("/class-need").json()["totals"]
+
+    assert t["coverage"] == sum(1 for n in needs if n.have >= 1) == 2
+    assert t["coverage_acquired"] == sum(
+        1 for n in needs if n.have + n.accepted_pending >= 1
+    ) == 3
+    assert t["coverage_acquired"] > t["coverage"], (
+        "sans cet écart, le test passerait aussi avec `have` seul"
+    )
+
+
 def test_les_classes_pleines_ne_sont_pas_masquees(env):
     """Refus n°3 de `class_need` : c'est l'info la plus utile de l'outil."""
     rows = _rows(_client().get("/class-need").json())

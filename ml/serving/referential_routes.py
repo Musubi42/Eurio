@@ -8,6 +8,7 @@ Architecture (cf. memory ``feedback_architecture_eurio_db_vs_supabase``):
 Endpoints :
 - ``GET /referential/canonical/{eurio_id}/{role}[/thumb]`` — sert les WebP locaux
 - ``GET /referential/canonical-index``                     — set d'eurio_id ayant un canonical (gate UI)
+- ``GET /referential/canonical-thumbs?ids=a,b,c``          — leurs URLs, chargeables SANS en-tête d'auth
 - ``GET /referential/coverage``                            — Chunk B : gaps par année
 - ``POST /referential/heal``                               — Chunk B : combler les gaps déjà identifiés
 
@@ -42,7 +43,53 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/referential", tags=["referential"])
 
 
+#: Store injecté par l'app qui monte ce router (`bind`). `None` sur le serveur
+#: LOURD local, qui n'appelle pas `bind` et retombe sur l'import ci-dessous.
+#:
+#: ⚠️ Global de module, comme `recipe_routes._store` et `ingest_routes._store` :
+#: c'est la convention de câblage du dépôt, pas une négligence. Elle porte un
+#: piège connu — un process qui monterait les DEUX apps (`server` et
+#: `server_serve`) verrait le dernier `bind()` gagner pour les deux. Aucun test
+#: ne le fait aujourd'hui ; celui qui écrira le premier test d'intégration
+#: croisé devra réinitialiser ce global entre les deux montages.
+_bound_store: Store | None = None
+
+
+def bind(store: Store) -> None:
+    """Câble le Store partagé. Appelé une fois par l'app qui monte le router.
+
+    🔴 CORRECTIF DU 2026-08-24 — CE ROUTER ÉTAIT MORT EN PRODUCTION.
+
+    `_store()` faisait `from .server import _store`, et `serving/server.py` tire
+    `serving.training_runner` → `training.pipeline`. L'image lean du VPS ne
+    COPIE pas `training/` : l'import levait `ModuleNotFoundError: No module named
+    'training'` **à l'appel**, pas au montage. Le router était donc monté,
+    visible dans l'OpenAPI, et **toute route qui touche la base répondait 500** —
+    `/referential/canonical-index` comme `/referential/canonical/{id}/{role}`.
+
+    Conséquence observable, et c'est là que ça fait mal : plus AUCUNE vignette
+    canonique sur le front hébergé — écran de review compris, celui-là même
+    qu'utilise un ami. Une `<img>` cassée ne dit rien, et le 500 ne vivait que
+    dans les logs du conteneur. Vérifié en prod le 2026-08-24 :
+    `GET /referential/canonical-index` → 500, trace `ModuleNotFoundError`.
+
+    Le remède est celui que les autres routers lean appliquent déjà
+    (`recipe_routes`, `ingest_routes`, `api_auth`) : recevoir le Store de l'app
+    plutôt que d'aller le chercher dans un module lourd.
+    """
+    global _bound_store
+    _bound_store = store
+
+
 def _store() -> Store:
+    """Le Store câblé s'il y en a un ; sinon celui du serveur lourd local.
+
+    L'ordre compte : le lean CÂBLE (et n'a pas `training`), le serveur lourd ne
+    câble pas (et l'a). Inverser ferait retomber le lean dans l'import qui vient
+    d'être réparé.
+    """
+    if _bound_store is not None:
+        return _bound_store
     from .server import _store as shared_store
     return shared_store
 
@@ -152,15 +199,11 @@ def _serve_canonical(
     # avec source='numista_api' n'implique PAS qu'un fichier local existe
     # (P.7c.3 stocke juste l'URL Numista en `url`, pas le binaire). Cf.
     # finding P.8b.1 audit V.2 2026-05-26.
-    candidates: list[str] = []
-    if source:
-        candidates.append(source)
-    db_source = _lookup_source(eurio_id, role)
-    if db_source and db_source not in candidates:
-        candidates.append(db_source)
-    for fallback in ("bce_comm", "numista", "unknown"):
-        if fallback not in candidates:
-            candidates.append(fallback)
+    # ⛔ L'ordre des sources vient de `_candidats`, partagé avec `_thumb_url`
+    #    (2026-08-24). Il était écrit ici ET là-bas ; deux rédactions du même
+    #    ordre finissent par diverger, et l'accueil montre alors une autre image
+    #    que l'écran de review pour la même pièce.
+    candidates = _candidats(eurio_id, role, source)
 
     # MinIO key = path relative to the canonical FS root (same convention the
     # upload script uses: ``{eurio_id}/{role}_{tag}.webp``).
@@ -191,14 +234,16 @@ def _serve_canonical(
     #    le canonique vit dans MinIO. On sert directement depuis le CDN si l'objet
     #    y est, même sans fichier local. Même ordre de candidats. C'est ce qui
     #    permet à une machine dev non hydratée d'afficher les vignettes.
-    for src in candidates:
-        storage_key = (
-            canonical_path(eurio_id, role, src, thumb=thumb)
-            .relative_to(CANONICAL_DIR)
-            .as_posix()
-        )
-        if storage_key in bucket:
-            return RedirectResponse(public_url(storage_key), status_code=302)
+    #
+    #    🔴 CORRIGÉ LE 2026-08-24 : cette passe ne regardait QUE `thumb=thumb`,
+    #    puis sautait à l'URL externe. Une pièce dont seul le PLEIN FORMAT est en
+    #    bucket partait donc chez Numista — un tiers, plus lent, parfois
+    #    indisponible — alors qu'on avait l'image chez nous. `_cle_bucket`
+    #    descend l'échelle vignette → plein format, et c'est la MÊME que celle
+    #    de `_thumb_url` : les deux écrans ne peuvent plus choisir différemment.
+    storage_key = _cle_bucket(eurio_id, role, candidates, bucket, thumb=thumb)
+    if storage_key:
+        return RedirectResponse(public_url(storage_key), status_code=302)
 
     # 3. Ni fichier local, ni objet MinIO — mais le référentiel connaît une URL
     #    externe. C'est le cas de 166 pièces sur 658 (mesuré le 2026-08-19) :
@@ -223,6 +268,134 @@ def _serve_canonical(
         detail=f"no canonical for {eurio_id}/{role} on disk, in MinIO, nor as a "
                f"referential URL (tried sources: {candidates})",
     )
+
+
+class CanonicalThumbs(BaseModel):
+    """Une URL par pièce demandée, ``null`` quand il n'y en a aucune."""
+
+    urls: dict[str, str | None]
+
+
+@router.get("/canonical-thumbs", response_model=CanonicalThumbs)
+def canonical_thumbs(
+    ids: str = Query(description="eurio_id séparés par des virgules"),
+    role: str = Query(default="obverse"),
+) -> CanonicalThumbs:
+    """Les vignettes canoniques de N pièces, en URLs **chargeables sans auth**.
+
+    POURQUOI CETTE ROUTE EXISTE À CÔTÉ DE ``/canonical/{id}/{role}/thumb``
+    ---------------------------------------------------------------------
+    Celle-là sert l'image ; celle-ci sert son ADRESSE. La différence n'est pas
+    cosmétique : la route qui sert l'image est gardée par ``coins:read``, et une
+    balise ``<img>`` **n'envoie pas d'en-tête ``Authorization``**. En cookie
+    (front hébergé, même site) le navigateur joint la session tout seul et tout
+    marche ; en **PAT** — le mode de tout poste de dev — elle répond 401 et
+    l'image ne s'affiche pas, sans une ligne en console. Mesuré le 2026-08-24 :
+    ``401`` sans en-tête, ``302`` avec.
+
+    Les URLs rendues ici pointent le CDN public (``shared.storage.public_url``,
+    bucket ``numista-canonical``, sans signature) ou le référentiel externe :
+    aucune n'exige d'en-tête, donc elles marchent dans les DEUX modes, se
+    mettent en cache navigateur, et ne traversent pas l'API.
+
+    UN APPEL POUR TOUTE UNE LISTE
+    -----------------------------
+    L'accueil d'un ami affiche 253 pièces. Une route unitaire, c'est 253
+    allers-retours à travers l'API là où le navigateur peut tirer 253 images du
+    CDN en parallèle.
+
+    ⛔ CE QU'ELLE NE FAIT PAS : servir un fichier local présent sur disque mais
+    absent du bucket. Elle rendrait alors une URL d'API, donc une image morte en
+    PAT — le défaut qu'elle existe pour fermer. Ce cas rend ``null``, et
+    l'appelant dessine son propre vide. Sur le VPS il ne se présente pas :
+    l'image lean ne copie pas ``ml/canonical_images/``.
+    """
+    role = _resolve_role(role)
+    wanted = [i.strip() for i in ids.split(",") if i.strip()]
+    if len(wanted) > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{len(wanted)} identifiants demandés — 1000 au maximum",
+        )
+    bucket = _bucket_keys()
+    out: dict[str, str | None] = {}
+    for eurio_id in wanted:
+        if eurio_id in out:
+            continue
+        out[eurio_id] = _thumb_url(eurio_id, role, bucket)
+    return CanonicalThumbs(urls=out)
+
+
+def _candidats(eurio_id: str, role: str, source: str | None = None) -> list[str]:
+    """L'ordre des sources à essayer — **un seul endroit** (2026-08-24).
+
+    Il était écrit deux fois, et deux fois ne veut pas dire deux fois pareil :
+    une divergence ici fait montrer à l'accueil et à l'écran de review deux
+    images DIFFÉRENTES de la même pièce, chacune « correcte » selon sa règle.
+    """
+    candidates: list[str] = []
+    if source:
+        candidates.append(source)
+    db_source = _lookup_source(eurio_id, role)
+    if db_source and db_source not in candidates:
+        candidates.append(db_source)
+    for fallback in ("bce_comm", "numista", "unknown"):
+        if fallback not in candidates:
+            candidates.append(fallback)
+    return candidates
+
+
+def _cle_bucket(
+    eurio_id: str, role: str, candidates: list[str], bucket: set[str], *, thumb: bool,
+) -> str | None:
+    """La meilleure clé de bucket : la vignette d'abord, le plein format ensuite.
+
+    ⛔ L'ÉCHELLE EST LA MÊME POUR LES DEUX CHEMINS, et c'est tout l'objet de
+    cette fonction. `_serve_canonical` ne regardait QUE `thumb=True` puis sautait
+    à l'URL externe : une pièce dont seul le plein format est en bucket partait
+    chez Numista alors qu'on avait l'image. Les deux appelants descendent
+    désormais la même échelle, donc rendent la même image.
+
+    `thumb=False` demandé explicitement (route plein format) ne redescend pas
+    vers la vignette : on ne rend jamais plus petit que ce qui est demandé.
+    """
+    niveaux = (True, False) if thumb else (False,)
+    for veut_thumb in niveaux:
+        for src in candidates:
+            key = (
+                canonical_path(eurio_id, role, src, thumb=veut_thumb)
+                .relative_to(CANONICAL_DIR).as_posix()
+            )
+            if key in bucket:
+                return key
+    return None
+
+
+def _thumb_url(eurio_id: str, role: str, bucket: set[str]) -> str | None:
+    """L'adresse de la vignette, **sans jamais passer par le disque local**.
+
+    Même ordre de sources et même échelle bucket que `_serve_canonical` — ils
+    partagent `_candidats` et `_cle_bucket`, ce n'est pas une promesse mais un
+    appel commun.
+
+    ⚠️ LA SEULE DIFFÉRENCE ASSUMÉE : `_serve_canonical` regarde d'abord
+    `ml/canonical_images/` sur disque, et pas nous. Elle est STRUCTURELLE, pas un
+    oubli : un fichier local ne s'atteint que par cette API, donc par une URL
+    qu'une balise `<img>` ne saurait pas authentifier. Conséquence, à connaître :
+    sur un poste de dev dont le disque est hydraté mais dont le bucket ne l'est
+    pas (le mirroir est best-effort), l'écran de review peut montrer le fichier
+    local pendant que l'accueil montre l'URL externe de la même pièce. **Sur le
+    VPS le cas n'existe pas** : l'image lean ne copie pas `canonical_images/`,
+    la première passe de `_serve_canonical` y est toujours vide.
+    """
+    candidates = _candidats(eurio_id, role)
+    key = _cle_bucket(eurio_id, role, candidates, bucket, thumb=True)
+    if key:
+        return public_url(key)
+    # Rien en bucket — mais le référentiel connaît souvent une URL externe (166
+    # pièces sur 658 n'ont QUE ça, mesuré le 2026-08-19). La taire rendrait
+    # `null` au-dessus d'une image qui se charge parfaitement.
+    return _lookup_url(eurio_id, role)
 
 
 @router.get("/canonical-index")

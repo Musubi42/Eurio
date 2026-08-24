@@ -151,6 +151,8 @@ app.include_router(db_routes.router)
 # la workstation la sert depuis sa réplique, le VPS depuis le canonique.
 from serving.class_need_routes import router as class_need_router  # noqa: E402
 app.include_router(class_need_router)
+from serving.me_review_stats_routes import router as me_review_stats_router  # noqa: E402
+app.include_router(me_review_stats_router)
 
 # La moitié ACHETER de `/besoin` (lot 5). LOURDE et montée ICI SEULEMENT : elle
 # lit `ml/state/eurio.local.db` (`api_call_log`), qui est l'état d'observabilité

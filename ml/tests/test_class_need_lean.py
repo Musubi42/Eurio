@@ -81,6 +81,21 @@ def test_le_routeur_du_besoin_s_importe_sans_dependance_lourde():
     assert r.stdout.split()[1] == "1"
 
 
+def test_le_routeur_des_compteurs_personnels_s_importe_sans_dependance_lourde():
+    """Même doctrine, même risque : `me_review_stats_routes` est lui aussi monté
+    au niveau module dans `server_serve.py` (mount inconditionnel). Il importe
+    `shared.class_need` — la chaîne déjà couverte ci-dessus — mais rien
+    n'empêcherait un import lourd d'y entrer demain, et la panne serait la
+    même : l'app entière refuse de démarrer, canonique et writer compris.
+    """
+    r = _import_under_lean("serving.me_review_stats_routes")
+    assert r.returncode == 0, (
+        "L'app lean ne démarrerait pas — le canonique tomberait, writer compris.\n"
+        f"stderr:\n{r.stderr}"
+    )
+    assert r.stdout.split()[1] == "1"
+
+
 def test_les_modules_de_calcul_sont_stdlib_only():
     """Le contrat d'import de `shared/` — il porte tout le reste.
 
