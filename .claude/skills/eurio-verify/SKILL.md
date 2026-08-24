@@ -75,6 +75,8 @@ rend le statut de `tail`, pas celui de la commande. Un refus manifeste a ainsi
 | Un seuil « réglé », `source='db'`, et un comportement de seuil désarmé | La valeur est un **compte** relu en `int()` : `min_exemplars = 1,9` franchissait les bornes `[0, 50]` et posait un plancher effectif de **1** (S1). Un seuil entier stocké en REAL doit être refusé fractionnaire à l'écriture |
 | Un `--dry-run` qui n'empêche rien | Le drapeau existait dans `argparse` et n'était **lu nulle part** : `--dry-run --execute --yes` brûlait le quota (S2). `grep -n <dest>` le montre en une seconde — un drapeau qui n'apparaît qu'une fois dans le fichier ne décide de rien |
 | Un plan chiffré « impossible à dépasser » | Le préflight qui devait l'arrêter comptait sur `source_runs.n_calls` (3 pour 740 appels réels) et rendait `estimate=8` pour une vague à 1040 (S3). **Un garde branché sur un compteur faux est un garde absent** |
+| Une file de review qui sert **une autre classe** sous le bon en-tête | Le périmètre vit dans l'URL et l'URL se complète en **deux temps** : la vue se monte, demande la file GLOBALE, puis `router.replace` ajoute `dino_class` et une seconde demande part. Deux requêtes à 2 ms d'écart, **et c'est la latence qui décide** laquelle s'affiche. Mesuré le 2026-08-25 : une pièce autrichienne servie sous « PÊCHE lu-2025-…-throne ». Rien ne casse, rien ne loge |
+| Un correctif d'affichage qui « marche » après un `location.reload()` | Le rechargement dur **change l'ordonnancement** et cache la course. Rejoue toujours par le **chemin réel** (le lien que l'écran fabrique), pas par une URL collée : le bug de la pêche ci-dessus est invisible en rechargement direct |
 
 Le motif commun : **une valeur par défaut plausible** (0, vide, absent) là où il
 aurait fallu une erreur.
@@ -93,6 +95,10 @@ aurait fallu une erreur.
   d'erreur qu'on cherchait.
 - **Le repo est actif en parallèle.** Le VPS pousse des commits pendant que tu
   travailles : `git push` peut être rejeté, rebase.
+- **Deux requêtes pour un même écran, c'est un ordre d'arrivée, pas un ordre
+  de demande.** Espionne `window.fetch` dans le navigateur (start/end par
+  requête) plutôt que de lire le code : la course se voit en trois lignes, et
+  un piège armé — réponse retardée *et* empoisonnée — prouve la garde.
 - **Un correctif qui touche à la prod se vérifie en prod.** Le rerouting de la
   galerie était vert en test et 404 sur le VPS (ordre de montage). Le
   déploiement fait partie du correctif.
