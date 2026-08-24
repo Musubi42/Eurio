@@ -118,7 +118,10 @@ Fermé par le scope, vérifié dans les deux sens (l'ami prend 403, l'arbitre pa
 la décision unitaire d'un ami part toujours en quarantaine), et verrouillé par
 `tests/test_funnel_writes_arbitrate.py`.
 
-⚠️ **Pas déployé.** Le trou est ouvert en production tant que ça n'est pas parti.
+✅ **Déployé le 2026-08-24** (`833c4e5f`). Vérifié en prod : l'image qui tourne
+porte `require_scope("review:arbitrate")` (ligne 94 de `funnel_writes.py`), et
+un arbitre prend 404 — et non 403 — sur un asset bidon, donc son geste passe
+toujours.
 
 ## 🔴 Trouvé en chemin : `referential` était MORT en production
 
@@ -155,10 +158,22 @@ n'importe pas : il **appelle**, sous la même sonde.
 le Store de l'app (`bind`) au lieu d'aller le chercher dans un module lourd.
 `_CANDIDATES` passe à `True` pour `referential`.
 
-⚠️ **Il n'est pas déployé.** Tant qu'il ne l'est pas, les vignettes canoniques
-restent absentes du front hébergé.
+✅ **Déployé le 2026-08-24.** Mesuré en prod, avant → après :
 
-## L'accueil d'un ami — livré le 2026-08-24, PAS déployé
+```
+GET /referential/canonical-index                → 500 → 200
+GET /referential/canonical/<id>/obverse/thumb   → 500 → 302
+```
+
+⛔ **Ce que la prod a appris, et qui corrige une analyse faite sur le Mac** : le
+routeur LOURD `review.review_queue_routes` est **skippé** sur le VPS
+(`ModuleNotFoundError: No module named 'training'`). Ses routes — `auto-accept/run`,
+`auto-crop`, `detect`, `requalify-lot/batch` — **n'existent pas en production**,
+vérifié dans l'OpenAPI. Une analyse de surface d'attaque faite sur une machine
+de dev les compte à tort : le Mac a `training` et `cv2`, le VPS non. La seule
+exposition réelle était celle de `funnel_writes`, servie par l'image lean.
+
+## L'accueil d'un ami — livré ET déployé le 2026-08-24
 
 Conception tranchée et implémentée le même jour. Le POURQUOI de chaque choix est
 dans [`ACCUEIL-AMI.md`](ACCUEIL-AMI.md) ; les deux décisions nouvelles sont
