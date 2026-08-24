@@ -177,6 +177,17 @@ class StoreBase:
                 self._ensure_column(
                     conn, table="cohort_jobs", column="pid", decl="INTEGER"
                 )
+            # Progression du rebuild DINO (n_done/n_total) sur les DB qui ont
+            # déjà la table. Pas d'index dessus → ALTER simple, idempotent.
+            # Fresh DB : créées par executescript avec les colonnes dedans.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='dino_rebuild_jobs'"
+            ).fetchone():
+                for col in ("n_done", "n_total"):
+                    self._ensure_column(
+                        conn, table="dino_rebuild_jobs", column=col, decl="INTEGER"
+                    )
             # Scan v2 du Jeu d'entraînement : composantes d'audit du verdict
             # (ancre canonique vs consensus intra-classe) + Phase 2 funnel
             # (denom-probe, sim absolue, suggestion typée) sur les DB qui ont

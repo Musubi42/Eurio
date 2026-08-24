@@ -416,3 +416,51 @@ def test_le_build_id_est_relu_au_CANONIQUE_pas_dans_la_replique():
     assert "get_json" in noms, "la trace se relit au canonique, par HTTP"
     assert "resolve_db_path" not in noms, (
         "relire la trace dans la base locale rend l'avant-dernier build")
+
+
+def test_la_progression_est_remise_a_zero_entre_les_etapes(conn):
+    """`n_done`/`n_total` décrivent l'ÉTAPE, pas le job.
+
+    Sans remise à zéro, le passage `anchors` → `predictions` afficherait un
+    instant « 3 187 / 16 015 » : deux étapes mélangées dans une seule barre, un
+    pourcentage qui recule, et une ETA absurde.
+    """
+    from store.dino_rebuild_jobs import (
+        latest_rebuild, rebuild_progress, rebuild_start, rebuild_step,
+    )
+
+    job_id = rebuild_start(conn, anchors_kind=KIND, encoder_version=ENCODER)
+    rebuild_progress(conn, job_id, n_done=3187, n_total=3187)
+    assert latest_rebuild(conn)["n_done"] == 3187
+
+    rebuild_step(conn, job_id, step="predictions")
+    row = latest_rebuild(conn)
+    assert row["n_done"] is None and row["n_total"] is None
+
+
+def test_le_backfill_annonce_son_dernier_lot():
+    """Le modulo rate la fin : sans report final, la barre se fige à 99 %.
+
+    Une barre qui s'arrête juste avant la fin est exactement le signal qu'on
+    voulait éviter — elle ressemble à un blocage au pire moment.
+
+    Test STRUCTUREL, et assumé comme tel : exercer la vraie boucle demanderait
+    torch, une banque d'ancres et des crops sur disque. On vérifie donc que le
+    report périodique existe ET qu'un report final le suit — c'est le couple
+    qui casse, pas l'un des deux.
+    """
+    src = (ML_DIR / "sources/_base/steps/auto_validate.py").read_text()
+
+    assert "if i_asset % _PROGRESS_TOUS_LES == 0" in src, "report périodique absent"
+    apres_boucle = src.split("if rows_to_write:", 1)[1]
+    assert "_dire(i_asset)" in apres_boucle.split("def ", 1)[0], (
+        "il manque le report FINAL après le dernier flush : la barre "
+        "s'arrêterait au dernier multiple de _PROGRESS_TOUS_LES")
+
+
+def test_le_callback_de_progression_ne_tue_jamais_le_backfill():
+    """Quarante minutes de calcul valent mieux qu'une barre de progression."""
+    src = (ML_DIR / "sources/_base/steps/auto_validate.py").read_text()
+    bloc = src.split("def _dire(", 1)[1].split("\n\n", 1)[0]
+    assert "except Exception" in bloc, (
+        "une exception du report doit être avalée et journalisée, jamais propagée")

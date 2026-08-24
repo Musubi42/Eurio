@@ -78,6 +78,11 @@ def main() -> int:
              "seul ferait diverger la machine du canonique), désactivé sinon "
              "(dev Model A). --no-push force l'écriture locale seule.",
     )
+    parser.add_argument(
+        "--progress-job", default=None,
+        help="id d'une ligne dino_rebuild_jobs à tenir à jour (n_done/n_total). "
+             "La progression va dans la base LOCALE — inscriptible même sous le "
+             "flip Direction A, contrairement à la réplique.")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -135,9 +140,26 @@ def main() -> int:
         (run_id, json.dumps({"anchors_kind": args.kind, "force": args.force})),
     )
 
+    # Progression : le SEUL endroit qui sache où on en est. Le canonique ne le
+    # sait pas (le push n'a lieu qu'à la fin), le journal peut être avalé par
+    # l'appelant. Un backfill de quarante minutes sans signal est indiscernable
+    # d'un backfill bloqué — mesuré le 2026-08-24, il a fallu `lsof` sur le
+    # processus pour retrouver sa réplique scratch et y compter les lignes.
+    progress = None
+    if args.progress_job:
+        from store import local_state_store
+        from store.dino_rebuild_jobs import rebuild_progress
+
+        _lconn = local_state_store()._connection()  # noqa: SLF001
+
+        def progress(n_done: int, n_total: int) -> None:  # noqa: F811
+            rebuild_progress(_lconn, args.progress_job,
+                             n_done=n_done, n_total=n_total)
+
     t0 = time.perf_counter()
     result = run_auto_validate_dino_backfill(
         store=store,
+        progress=progress,
         anchors_kind=args.kind,
         force=args.force,
         limit=args.limit,

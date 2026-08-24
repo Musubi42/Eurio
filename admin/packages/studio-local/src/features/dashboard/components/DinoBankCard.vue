@@ -101,10 +101,44 @@ const bati = computed(() => {
 })
 
 const etapeLabel: Record<string, string> = {
-  anchors: 'reconstruction des ancres…',
-  predictions: 'recalcul des prédictions…',
+  anchors: 'reconstruction des ancres',
+  predictions: 'recalcul des prédictions',
   done: 'terminé',
 }
+
+// ─── Progression et temps restant ──────────────────────────────────────────
+//
+// Le rebuild dure ~1 h en deux étapes, et rien ne le disait : le canonique ne
+// voit rien (le backfill pousse à la FIN), et le journal du job vit sur la
+// machine de calcul. Un job d'une heure sans signal est indiscernable d'un job
+// bloqué — mesuré le 2026-08-24, il a fallu `lsof` sur le processus pour
+// retrouver sa base scratch et y compter les lignes. Le worker écrit donc sa
+// progression en base, et c'est elle qu'on lit ici.
+const pourcent = computed(() => {
+  const j = job.value
+  if (!j?.n_total || !j.n_done) return null
+  return Math.min(100, Math.round((j.n_done / j.n_total) * 100))
+})
+
+/** Temps restant, extrapolé de la cadence OBSERVÉE sur cette étape.
+ *
+ * Pas d'estimation a priori : la cadence dépend de la machine et de l'encodeur
+ * (mesuré 157 ms/crop sur ce Mac en vitl14, quand la doc annonçait 84 ms). Une
+ * durée annoncée d'avance qui se trompe du simple au double vaut moins que pas
+ * de durée du tout. Ici on ne promet rien tant qu'on n'a pas vu le job avancer.
+ */
+const restant = computed<string | null>(() => {
+  const j = job.value
+  if (!j?.n_total || !j.n_done || !j.started_at) return null
+  const debut = Date.parse(j.started_at.replace(' ', 'T') + 'Z')
+  if (Number.isNaN(debut)) return null
+  const ecoule = (Date.now() - debut) / 1000
+  if (ecoule < 20 || j.n_done < 50) return null   // trop tôt pour extrapoler
+  const parCrop = ecoule / j.n_done
+  const secondes = (j.n_total - j.n_done) * parCrop
+  if (secondes < 60) return 'moins d\'une minute'
+  return `~${Math.round(secondes / 60)} min`
+})
 </script>
 
 <template>
@@ -201,6 +235,11 @@ const etapeLabel: Record<string, string> = {
 
       <span v-if="running && job?.step" class="text-[11px]" style="color: var(--ink-500);">
         {{ etapeLabel[job.step] ?? job.step }}
+        <template v-if="pourcent !== null">
+          · <span class="font-mono tabular-nums">{{ job.n_done }} / {{ job.n_total }}</span>
+          <span v-if="restant"> · {{ restant }}</span>
+        </template>
+        <template v-else>…</template>
       </span>
       <span
         v-else-if="job?.status === 'failed'"
@@ -223,6 +262,20 @@ const etapeLabel: Record<string, string> = {
       <span v-if="startError" class="text-[11px]" style="color: var(--danger);">
         {{ startError }}
       </span>
+    </div>
+
+    <!-- La barre, en pleine largeur sous la ligne d'état. Absente tant que le
+         worker n'a rien reporté : une barre à 0 % qui ne bouge pas est pire
+         qu'une absence de barre — elle affirme un avancement nul. -->
+    <div
+      v-if="running && pourcent !== null"
+      class="mt-2 h-1 w-full overflow-hidden rounded-full"
+      style="background: var(--surface-1);"
+    >
+      <div
+        class="h-full rounded-full transition-[width] duration-700"
+        :style="{ width: `${pourcent}%`, background: 'var(--indigo-700)' }"
+      />
     </div>
   </section>
 </template>

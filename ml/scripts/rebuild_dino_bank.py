@@ -150,8 +150,11 @@ def main() -> int:
         if conn is not None:
             rebuild_step(conn, args.job_id, step="predictions",
                          build_id=build_id, n_anchors=n_anchors)
-        _run([py, "-m", "scripts.backfill_dino_predictions", "-v",
-              "--kind", args.kind, "--force"])
+        backfill = [py, "-m", "scripts.backfill_dino_predictions", "-v",
+                    "--kind", args.kind, "--force"]
+        if args.job_id:
+            backfill += ["--progress-job", args.job_id]
+        _run(backfill)
 
         if conn is not None:
             rebuild_finish(conn, args.job_id, status="done")

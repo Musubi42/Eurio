@@ -42,6 +42,9 @@ export interface RebuildStatus {
   build_id?: string | null
   n_anchors?: number | null
   n_predictions?: number | null
+  /** Progression de l'ÉTAPE en cours (remise à zéro entre les étapes). */
+  n_done?: number | null
+  n_total?: number | null
   started_at?: string | null
   finished_at?: string | null
   error?: string | null

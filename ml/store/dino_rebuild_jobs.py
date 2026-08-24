@@ -59,11 +59,33 @@ def rebuild_step(
     """Passe à l'étape suivante. Écrit au fil de l'eau : c'est ce qui permet à
     l'écran de dire « ancres bâties, prédictions en cours » plutôt qu'un spinner
     indistinct pendant vingt minutes."""
+    # `n_done`/`n_total` sont REMIS À ZÉRO : ils décrivent l'étape en cours, pas
+    # le job. Sans ça, le passage `anchors` → `predictions` afficherait un
+    # instant « 3187 / 16015 », c'est-à-dire deux étapes mélangées dans une
+    # seule barre.
     conn.execute(
-        "UPDATE dino_rebuild_jobs SET step=?, "
+        "UPDATE dino_rebuild_jobs SET step=?, n_done=NULL, n_total=NULL, "
         "  build_id=COALESCE(?, build_id), n_anchors=COALESCE(?, n_anchors) "
         " WHERE id=?",
         (step, build_id, n_anchors, job_id),
+    )
+    conn.commit()
+
+
+def rebuild_progress(
+    conn: sqlite3.Connection, job_id: str, *, n_done: int, n_total: int | None = None,
+) -> None:
+    """Avancement de l'étape en cours. Appelé souvent — donc bon marché.
+
+    ⚠️ **Un seul UPDATE, pas de transaction longue.** Le worker écrit ici
+    pendant qu'il calcule ; tenir une transaction ouverte bloquerait la lecture
+    du statut par l'API, et l'écran afficherait un chiffre figé en croyant que
+    le job est bloqué — la panne qu'on essaie précisément de rendre visible.
+    """
+    conn.execute(
+        "UPDATE dino_rebuild_jobs SET n_done = ?, n_total = COALESCE(?, n_total) "
+        " WHERE id = ?",
+        (n_done, n_total, job_id),
     )
     conn.commit()
 

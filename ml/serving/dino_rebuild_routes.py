@@ -71,6 +71,10 @@ class RebuildStatus(BaseModel):
     build_id: str | None = None
     n_anchors: int | None = None
     n_predictions: int | None = None
+    #: Progression de l'ÉTAPE en cours (pas du job) — remise à zéro à chaque
+    #: changement d'étape. `None` tant que le worker n'a rien reporté.
+    n_done: int | None = None
+    n_total: int | None = None
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
@@ -88,7 +92,9 @@ def _to_status(row) -> RebuildStatus:
         status=row["status"], job_id=row["id"], step=row["step"],
         anchors_kind=row["anchors_kind"], encoder_version=row["encoder_version"],
         build_id=row["build_id"], n_anchors=row["n_anchors"],
-        n_predictions=row["n_predictions"], started_at=row["started_at"],
+        n_predictions=row["n_predictions"],
+        n_done=row["n_done"], n_total=row["n_total"],
+        started_at=row["started_at"],
         finished_at=row["finished_at"], error=row["error"],
     )
 

@@ -33,6 +33,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import cv2
@@ -433,6 +434,7 @@ def run_auto_validate_dino_backfill(
     force: bool = False,
     limit: int | None = None,
     run_id: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> AutoValidateResult:
     """Standalone backfill — used by ml/scripts/backfill_dino_predictions.py.
 
@@ -463,6 +465,7 @@ def run_auto_validate_dino_backfill(
         force=force,
         store=store,
         run_id=run_id,
+        progress=progress,
     )
 
 
@@ -656,6 +659,12 @@ def rank_eurio_ids_for_crop(
     }
 
 
+#: Cadence de report de progression, en assets. 100 × ~157 ms ≈ 16 s entre deux
+#: écritures : assez fin pour qu'un écran qui poll toutes les 3 s voie bouger,
+#: assez rare pour que le coût soit invisible devant l'encodage.
+_PROGRESS_TOUS_LES = 100
+
+
 def _run_inner(
     *,
     conn: sqlite3.Connection,
@@ -664,12 +673,22 @@ def _run_inner(
     force: bool,
     store=None,
     run_id: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> AutoValidateResult:
     """Boucle interne : encode chaque crop une fois, matche contre chaque
     banque dont le kind est en scope pour le target du listing.
 
     Compteurs : ``n_predicted`` = rows écrites (assets × kinds),
     ``n_skipped_existing`` / ``n_skipped_out_of_scope`` = assets.
+
+    ``progress(n_done, n_total)`` est appelé tous les
+    ``_PROGRESS_TOUS_LES`` assets. Il existe parce qu'un backfill de quarante
+    minutes sans signal est indiscernable d'un backfill bloqué : le canonique ne
+    voit rien (le push n'a lieu qu'à la fin) et le journal peut être avalé par
+    l'appelant. Le seul qui sait où il en est, c'est cette boucle.
+
+    ⚠️ Une exception du callback ne doit JAMAIS tuer le backfill — quarante
+    minutes de calcul valent mieux qu'une barre de progression.
     """
     n_predicted = 0
     n_existing = 0
@@ -677,6 +696,7 @@ def _run_inner(
     n_oos = 0
     n_errors = 0
     predicted_ids: list[str] = []  # assets re-prédits → re-route lane post-Dino
+    i_asset = 0
 
     # (asset, kinds applicables au target) — un asset peut nourrir N kinds.
     in_scope: list[tuple[Any, list[str]]] = []
@@ -710,7 +730,19 @@ def _run_inner(
     lot_cache: dict[str, bool] = {}  # source_image_id → lot ? (gate denom)
 
     rows_to_write: list[DinoPredictionRow] = []
-    for r, kinds in in_scope:
+    n_total = len(in_scope)
+
+    def _dire(n: int) -> None:
+        if progress is None:
+            return
+        try:
+            progress(n, n_total)
+        except Exception as exc:  # noqa: BLE001 — l'affichage n'est pas le travail
+            logger.warning("auto_validate: report de progression échoué : %s", exc)
+
+    for i_asset, (r, kinds) in enumerate(in_scope, start=1):
+        if i_asset % _PROGRESS_TOUS_LES == 0:
+            _dire(i_asset)
         aid = r["asset_id"]
         kinds_todo = [k for k in kinds if aid not in skip_by_kind[k]]
         if not kinds_todo:
@@ -828,6 +860,10 @@ def _run_inner(
     if rows_to_write:
         _flush(conn, store, rows_to_write)
         rows_to_write.clear()
+
+    # Le modulo rate le dernier lot : sans cette ligne, une barre s'arrêterait à
+    # 15 900 / 16 015 et laisserait croire à un blocage juste avant la fin.
+    _dire(i_asset)
 
     # ── Écriture de la face (C7) ─────────────────────────────────────────
     # UNIQUEMENT si face IS NULL : ne clobbe pas les labels humains/Claude

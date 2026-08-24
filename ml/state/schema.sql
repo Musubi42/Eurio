@@ -2136,6 +2136,14 @@ CREATE TABLE IF NOT EXISTS dino_rebuild_jobs (
   build_id         TEXT,                            -- dino_anchor_builds.build_id produit
   n_anchors        INTEGER,
   n_predictions    INTEGER,
+  -- Progression de l'ÉTAPE en cours, écrite par le worker au fil de l'eau.
+  -- Sans elle, l'écran ne pouvait dire que « predictions » pendant quarante
+  -- minutes : ni où on en est, ni si ça avance encore. Le backfill travaille
+  -- sur une réplique SCRATCH et ne pousse qu'à la fin, donc le canonique ne
+  -- peut pas non plus servir d'indicateur — il reste à 16 015 périmées jusqu'à
+  -- la dernière seconde, puis tombe à 0. Même patron que `cohort_jobs.n_done`.
+  n_done           INTEGER,
+  n_total          INTEGER,
   started_at       TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at      TEXT,
   error            TEXT,
