@@ -107,31 +107,75 @@ séparer, c'est ce qui permet d'être honnête sans être décourageant.
 avec les crops déjà validés avant lui. Un compteur qui s'approprie la pièce
 mentirait dès le deuxième ami — et se contredirait entre leurs deux écrans.
 
-⚠️ **Contrat social à connaître** : si le PO n'arbitre pas pendant deux
-semaines, l'effort de l'ami grimpe et son effet reste à zéro. Le mécanisme de
-motivation s'inverse. Arbitrer régulièrement fait partie du dispositif, pas du
-confort.
+### ✅ Tranché : ses compteurs ne redescendent JAMAIS
+
+> « je ne me vois pas faire le truc de "ah, là il y a ça qui a mal été validé, je
+>   lui décoche, du coup ça lui retire une de ses contributions". Je ne vois pas
+>   cette façon de faire comme étant nécessaire. » — PO, 2026-08-24
+
+**Règle** : les compteurs personnels comptent **ce qu'il a fait**, sans jamais
+consulter l'issue de l'arbitrage. Un rejet ne décrémente rien.
+
+Conséquence assumée : si beaucoup de ses décisions étaient rejetées, son écran
+serait plus flatteur que la réalité. Acceptable — c'est un compteur de
+CONTRIBUTION, pas un bulletin de notes. Et si un jour l'écart devenait gênant,
+c'est le signe d'un problème de formation, pas de compteur.
+
+### ⚠️ La conséquence dure : sans arbitrage, RIEN d'autre ne bouge
+
+Mesuré dans le code, et c'est la découverte la plus importante de la conception :
+`accepted_pending` exige `training_eligible = 1` (`class_need.py:284`) — or une
+décision en quarantaine ne l'écrit PAS, c'est tout l'objet de D7.
+
+Donc, tant que le PO n'a pas arbitré :
+
+| Ce qui bouge | Ce qui ne bouge PAS |
+|---|---|
+| Ses compteurs à lui (§ ci-dessus) | La barre `412 / 671` |
+| | Le `3 / 8` de chaque pièce de sa liste |
+| | Le goulot d'une pièce (donc l'ordre de la liste) |
+
+Un ami peut trier trente images sur une pièce et la voir rester à `3 / 8`.
+
+**Ce n'est pas un bug, c'est le prix de la quarantaine.** Trois façons de vivre
+avec, dans l'ordre où je les recommande :
+
+1. **Arbitrer souvent.** La cadence d'arbitrage n'est PAS un confort : c'est une
+   dépendance dure de cette page. C'est le contrat social du dispositif.
+2. **Projeter ses propres décisions dans SA vue** (`3 / 8` → `5 / 8, dont 2 en
+   attente`). Honnête, mais ça peut redescendre — donc ça rouvre exactement ce
+   que le PO vient d'écarter. À ne faire que si le point 1 ne suffit pas.
+3. **Auto-valider les décisions que DINO confirme** — 62,6 % des décisions
+   rejoignent DINO top-1. Le chantier existe déjà :
+   `docs/work-in-progress/review-autovalidation/PROBLEME.md`. C'est la vraie
+   réponse de fond, et elle est hors de ce chantier-ci.
 
 ## 5. La page d'accueil, telle qu'on la veut
 
 ```
-   ┌──────────────────────────────────────────────────────┐
-   │   47                                                 │  ← effort, gros
-   │   images triées                                      │
-   │   tu as contribué à 6 pièces complétées              │  ← effet
-   │                                                      │
-   │   412 / 671 pièces ont assez d'images                │  ← le but commun
-   │   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░                      │
-   │   il reste 128 images à trier pour que le modèle     │
-   │   reconnaisse toutes les pièces                      │
-   ├──────────────────────────────────────────────────────┤
-   │   Comment reconnaître un bon recadrage ?  [déplier]   │  ← les exemples
-   ├──────────────────────────────────────────────────────┤
-   │   2 € Belgique 2016 — Rio          3 / 8   [Trier]   │
-   │   2 € Autriche 2018 — République   0 / 8   [Trier]   │
-   │   2 € Slovénie 2011 — Rozman       5 / 8   [Trier]   │
-   └──────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  Tu ne peux rien casser : tout ce que tu tries est relu.              │
+   ├──────────────────┬──────────────────────┬────────────────────────────┤
+   │       47         │  tu as contribué à   │  412 / 671 pièces ont      │
+   │  images triées   │  6 pièces            │  assez d'images            │
+   │                  │                      │  ▓▓▓▓▓▓▓▓▓░░░░░            │
+   │   SON EFFORT     │      SON EFFET       │      LE BUT COMMUN         │
+   ├──────────────────┴──────────────────────┴────────────────────────────┤
+   │  Comment reconnaître une bonne image ?                    [déplier]   │
+   ├──────────────────────────────────────────────────────────────────────┤
+   │  2 € Belgique 2016 — Rio                        3 / 8      [Trier]   │
+   │  2 € Autriche 2018 — 100 ans République         0 / 8      [Trier]   │
+   │  2 € Slovénie 2011 — Franc Rozman               5 / 8      [Trier]   │
+   │  2 € France 2024 — Jeux Olympiques              1 / 8      [Trier]   │
+   │  …                                                                    │
+   └──────────────────────────────────────────────────────────────────────┘
 ```
+
+**La bande de chiffres tient sur UNE ligne**, en trois composants côte à côte —
+elle peut prendre de la hauteur, pas de la place. Ce qui doit dominer l'écran,
+c'est **la liste**. C'est là qu'il travaille.
+
+La phrase de réassurance est **en haut**, avant les chiffres (§8).
 
 Trois précisions qui ne s'inventent pas :
 
@@ -205,44 +249,55 @@ sa page à lui**, où ses chiffres, l'aide et son travail du jour tiennent ensem
 
 Pour l'arbitre, `/` ne change pas : il garde ses KPI.
 
-## 8. La réassurance — un revirement à trancher par le PO
+## 8. La réassurance — ✅ tranchée : oui
 
-Le lot 5 a délibérément caché à l'ami que sa décision part en quarantaine :
+Le lot 5 avait délibérément caché à l'ami que sa décision part en quarantaine :
 « sans les fliquer » (demande explicite du PO, cf. ROADMAP §lot 5).
 
-Je propose de **revenir dessus**, et l'argument tient à un cadrage :
+**Revirement acté le 2026-08-24.** La phrase va **en haut de la page d'accueil** :
 
-> « Ta décision est en attente de validation » → surveille.
-> « Tu ne peux rien casser, tout est relu » → rassure.
+> **Tu ne peux rien casser : tout ce que tu tries est relu.**
 
-Même fait, effet inverse. Le premier frein d'un ami n'est pas l'ergonomie, c'est
-la peur d'abîmer le projet de quelqu'un. La phrase existe déjà côté serveur
-(`{"status": "pending_arbitration"}`), le front la jette.
+Ce qui a changé, c'est le cadrage, pas le fait :
 
-**Non tranché.** À décider avec le PO — c'est sa décision produit, pas la mienne.
+| Formulation | Effet |
+|---|---|
+| « ta décision est en attente de validation » | surveille |
+| « tu ne peux rien casser, tout est relu » | rassure |
 
-## 9. Ce qu'on RETIRE
+Le premier frein d'un ami n'est pas l'ergonomie, c'est la peur d'abîmer le projet
+de quelqu'un d'autre.
 
-Nav d'un ami aujourd'hui : Tableau de bord · Pièces · Besoin · Review queue ·
-Pêche. Proposition : **Review queue, et sa page d'accueil.**
+⚠️ **Ce qui NE change pas** : l'écran de review continue d'ignorer le
+`{"status": "pending_arbitration"}` renvoyé par le serveur — pas de bandeau
+par décision, pas de compteur « en attente ». La réassurance est **une phrase
+d'accueil**, pas un statut collé à chaque geste. C'est la différence entre
+rassurer une fois et fliquer en continu.
+
+## 9. Les trois vues d'un ami — ✅ tranché
+
+| Vue | Statut | Ce que c'est |
+|---|---|---|
+| **Accueil** (`/`) | 🆕 à construire | Réassurance + les trois chiffres + l'aide + la liste des pièces à trier (§5) |
+| **Pièces** (`/coins`) | ✅ existante, gardée telle quelle | Le catalogue. Il peut **flâner** dedans, indépendamment de son travail du jour — c'est aussi ça, aimer les pièces |
+| **Review / Pêche** | ✅ existante | Atteinte par le bouton **Trier**, jamais par le menu |
+
+Ce qui **disparaît de sa nav** :
 
 | Entrée | Sort | Pourquoi |
 |---|---|---|
-| **Review queue** | ✅ garder | C'est le geste |
-| **Tableau de bord** | 🔁 remplacer | Devient sa page à lui (§3) |
-| **Besoin** | ❌ retirer | Instrument de décision, pas d'exécution (§2). Son intention est reprise dans les 3 lignes |
-| **Pièces** | ❌ retirer | Doublon de la recherche libre `F` qu'il a déjà dans l'écran de review |
-| **Pêche** | 🔁 **garder la PAGE, retirer l'entrée de nav** | C'est la destination du bouton « Trier » (§5) : `/review/peche?class=…`. Il n'y accède plus par un menu, mais par une pièce qu'il a choisie |
+| **Tableau de bord** | 🔁 remplacé | Devient l'Accueil (§5) |
+| **Besoin** | ❌ la PAGE part | Instrument de décision, pas d'exécution (§2). Mais **son composant de liste est réimporté** sur l'Accueil — c'est lui qu'on veut, pas la page. Le reste de ses données (histogramme, ACHETER, paliers, rebuild) ne sert pas à un ami |
+| **Pêche** | 🔁 la page RESTE, l'entrée part | Elle est la destination de « Trier » (§5). Il n'y accède plus par un menu, mais par une pièce qu'il a choisie |
+| **Review queue** | 🔁 l'entrée part | Même raison : on entre par une pièce, pas par une file anonyme |
 
-Mécanisme : `lab:read` sort du rôle `reviewer` (`ROLE_SCOPES`, `auth_principal.py`)
-→ `/besoin` disparaît par le filtre existant, sans code neuf. Pour `Pièces` et
-`Pêche`, il faut soit un scope plus fin, soit assumer un `hidden?: boolean` sur
-`NavItem`. **À trancher** : D3 dit « les scopes SONT le modèle de droits » — un
-troisième axe de nav serait une entorse à documenter, pas à glisser.
-
-⚠️ Retirer `coins:read` à un reviewer **casserait la recherche libre `F`**, qui
-est son outil principal quand il contredit DINO. Ne pas confondre « retirer
-l'entrée de nav » et « retirer le scope ».
+⚠️ **Ne pas confondre entrée de nav et scope.** Retirer `coins:read` casserait la
+recherche libre `F` — son outil principal quand il contredit DINO — ET la vue
+Pièces qu'on garde. Retirer `lab:read` ferait disparaître `/besoin` par le
+filtre existant, ce qui est le bon mécanisme pour CELLE-LÀ ; pour les autres, il
+faut trancher entre un scope plus fin et un `hidden?: boolean` sur `NavItem`.
+**Question ouverte** — D3 dit « les scopes SONT le modèle de droits », donc un
+troisième axe serait une entorse à documenter, pas à glisser.
 
 ## 10. R1 s'applique
 
@@ -253,25 +308,32 @@ formalité : c'est là que se décide à quoi ressemble « la première minute �
 
 ## Ordre proposé
 
-1. **Trancher les questions ouvertes** — elles changent le dessin :
-   - la réassurance « tu ne peux rien casser » (§8), qui revient sur une demande
-     explicite du PO ;
-   - le mécanisme de masquage de la nav (§9), qui frotte contre D3 ;
-   - l'attribution de l'« effet » (§4) : par personne, ou partagée.
-2. **Servir le compte personnel** — la seule donnée manquante côté serveur :
-   un `GET /me/review-stats` (effort + effet). Tout le reste vient de
-   `/class-need`, qui existe et qui abstrait déjà le rebuild (§3).
-3. **Proto** (R1) : la page d'accueil de l'ami, puis le panneau d'aide.
-4. **Implémenter** : nav réduite + atterrissage sur `/`, puis la page, puis les
-   coach marks.
-5. **Les exemples tranchés en dernier** — c'est du contenu, pas du code, et il
+1. **Servir le compte personnel** — la seule donnée qui manque côté serveur :
+   un `GET /me/review-stats` (effort + effet, comptés sur SES décisions, sans
+   consulter l'arbitrage — §4). Tout le reste vient de `/class-need`, qui existe
+   et abstrait déjà le rebuild (§3).
+2. **Proto** (R1) : l'Accueil, puis le panneau d'aide.
+3. **Implémenter** : l'Accueil + l'atterrissage, la nav réduite, puis les coach
+   marks.
+4. **Les exemples tranchés en dernier** — c'est du contenu, pas du code, et il
    se choisit dans les crops déjà arbitrés.
+
+Une seule question reste ouverte : **par quel mécanisme masquer les entrées de
+nav** (scope plus fin, ou `hidden` sur `NavItem`) — §9.
 
 ## Ce qui est acquis, et n'a pas à être rediscuté
 
-- La page se bâtit sur `/class-need`, pas sur une nouvelle agrégation (§3).
-- Deux compteurs, effort et effet, jamais un seul (§4).
-- La cible est **8 ou 5** selon la famille, lue par ligne (§5).
-- Seules les pièces à goulot `review` sont proposées (§5).
-- « Trier » ouvre la **pêche existante**, `/review/peche?class=…` (§5).
-- Le lexique du §6 s'applique partout où un ami lit.
+- **Trois vues** : Accueil, Pièces (`/coins`, gardée), Review/Pêche. §9
+- La page se bâtit sur **`/class-need`**, pas sur une nouvelle agrégation. §3
+- **Deux compteurs**, effort et effet — et ils **ne redescendent jamais** : un
+  rejet d'arbitrage ne retire rien à personne. §4
+- Sans arbitrage, **rien d'autre ne bouge** : la cadence d'arbitrage est une
+  dépendance dure de cette page, pas un confort. §4
+- La cible est **8 ou 5** selon la famille, lue par ligne. §5
+- Seules les pièces à goulot **`review`** sont proposées. §5
+- « Trier » ouvre la **pêche existante**, `/review/peche?class=…`. §5
+- La bande de chiffres tient sur **une ligne** ; c'est la **liste** qui domine. §5
+- **« Tu ne peux rien casser »** en haut de l'Accueil — et nulle part ailleurs :
+  pas de statut « en attente » collé à chaque décision. §8
+- Le **lexique** du §6 s'applique partout où un ami lit : pièce, image, trier.
+- `/besoin` : la **page** part, son **composant de liste** est réimporté. §9
