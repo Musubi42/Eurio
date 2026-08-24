@@ -26,6 +26,7 @@ import argparse
 import os
 import subprocess
 import sys
+from collections import deque
 from pathlib import Path
 
 _ML = Path(__file__).resolve().parents[1]
@@ -62,17 +63,33 @@ def _run(argv: list[str]) -> None:
     découvrir un `RuntimeError` de deux lignes. Un job qu'on lance depuis un
     bouton doit rendre compte depuis ce bouton.
     """
-    proc = subprocess.run(argv, cwd=str(_ML), capture_output=True, text=True)
-    sortie = (proc.stdout or "") + (proc.stderr or "")
-    # Le log garde TOUT : c'est lui qu'on relit quand la queue ne suffit pas.
-    print(sortie, end="", flush=True)
-    if proc.returncode == 0:
+    # ⛔ On STREAME, on ne capture pas en bloc.
+    #
+    # Le premier correctif utilisait `capture_output=True` pour pouvoir mettre
+    # la cause dans l'erreur — et retenait du coup toute la sortie jusqu'à la
+    # fin du sous-processus. Sur un backfill de dix-huit minutes, le journal
+    # restait vide tout du long : impossible de distinguer « ça avance » de
+    # « c'est bloqué ». J'avais gagné le POURQUOI de l'échec en perdant le
+    # PENDANT, alors qu'un job lancé depuis un bouton doit rendre compte des
+    # deux.
+    #
+    # Ici chaque ligne part au journal dès qu'elle arrive, et un tampon borné
+    # garde la fin pour l'erreur. Le coût est un `deque` de douze lignes.
+    proc = subprocess.Popen(
+        argv, cwd=str(_ML), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    queue: deque[str] = deque(maxlen=_CONTEXTE_ERREUR)
+    assert proc.stdout is not None
+    for ligne in proc.stdout:
+        print(ligne, end="", flush=True)
+        if ligne.strip():
+            queue.append(ligne.rstrip())
+    code = proc.wait()
+    if code == 0:
         return
-
-    lignes = [ligne for ligne in sortie.strip().splitlines() if ligne.strip()]
-    queue = "\n".join(lignes[-_CONTEXTE_ERREUR:])
     raise RuntimeError(
-        f"échec ({proc.returncode}) de `{' '.join(argv[2:])}`\n{queue}"
+        f"échec ({code}) de `{' '.join(argv[2:])}`\n" + "\n".join(queue)
     )
 
 

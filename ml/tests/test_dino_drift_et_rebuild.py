@@ -333,6 +333,34 @@ def test_une_etape_ratee_remonte_sa_CAUSE_pas_sa_commande(tmp_path, monkeypatch)
     assert "(3)" in message, "le code de sortie reste utile pour trier"
 
 
+def test_la_sortie_est_streamee_pendant_l_execution(tmp_path, capfd):
+    """Le journal doit vivre PENDANT le job, pas seulement après.
+
+    🔴 Le premier correctif de l'échec muet utilisait `capture_output=True` :
+    la cause arrivait bien dans l'erreur, mais toute la sortie était retenue
+    jusqu'à la fin du sous-processus. Sur un backfill de dix-huit minutes, le
+    journal restait vide tout du long — impossible de distinguer « ça avance »
+    de « c'est bloqué ». Gagner le POURQUOI en perdant le PENDANT n'est pas un
+    progrès : un job lancé depuis un bouton doit rendre compte des deux.
+    """
+    import sys
+
+    from scripts.rebuild_dino_bank import _run
+
+    script = tmp_path / "lent.py"
+    script.write_text(
+        "import sys, time\n"
+        "for i in range(3):\n"
+        "    print(f'étape {i}', flush=True)\n"
+        "    time.sleep(0.05)\n"
+    )
+    _run([sys.executable, str(script)])
+
+    sortie = capfd.readouterr().out
+    assert "étape 0" in sortie and "étape 2" in sortie, (
+        "chaque ligne doit atteindre le journal")
+
+
 def test_le_job_enregistre_son_propre_pid(tmp_path, monkeypatch):
     """Le processus est le seul à savoir qu'il existe — donc c'est à lui de le dire.
 
