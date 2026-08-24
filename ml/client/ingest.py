@@ -73,6 +73,22 @@ def push_dino_references(build: dict[str, Any], references: list[dict[str, Any]]
     )
 
 
+def push_consensus(verdicts: list[dict[str, Any]]) -> dict | None:
+    """POST ``/ingest/consensus`` si la sync est activée, sinon no-op (``None``).
+
+    ``verdicts`` = lignes DÉJÀ calculées (image_asset_id, rule_version, outcome,
+    lane, confidence, reason, rule, signals_json). Le calcul reste ici — c'est
+    lui qui a besoin de numpy — seules les lignes voyagent.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle
+
+    if not verdicts or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/consensus", {"verdicts": verdicts})
+
+
 def push_exclude_crops(run_id: str, asset_ids: list[str]) -> dict | None:
     """POST ``/ingest/crops/exclude`` si la sync est activée, sinon no-op (``None``).
 

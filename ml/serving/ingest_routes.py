@@ -16,6 +16,7 @@ from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
 from store import ExperimentCohortRow
 from store.confusion import apply_ingest_confusion_map
+from store.consensus_verdicts import apply_ingest_consensus
 from store.crops import (
     apply_delete_assets,
     apply_exclude_crops,
@@ -251,6 +252,51 @@ def ingest_dino_route(payload: IngestDinoPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_dino(conn, payload.predictions)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class ConsensusRowPayload(BaseModel):
+    """Un verdict de consensus DÉJÀ CALCULÉ. Le canonique ne le recalcule pas —
+    il n'a ni le moteur ni numpy (cf. `store/consensus_verdicts.py`)."""
+
+    image_asset_id: str
+    rule_version: int
+    outcome: str
+    lane: str
+    confidence: float = 0.0
+    reason: str | None = None
+    rule: str | None = None
+    signals_json: str | None = None
+
+
+class IngestConsensusPayload(BaseModel):
+    verdicts: list[ConsensusRowPayload] = []
+
+
+@router.post("/consensus", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_consensus_route(payload: IngestConsensusPayload) -> dict:
+    """Écrit des verdicts de consensus calculés client-side. SQL pur, UPSERT
+    idempotent sur `(image_asset_id, rule_version)`, atomique.
+
+    Pourquoi cette route existe : sous Direction A, le Mac a le moteur mais lit
+    une réplique read-only, et le VPS écrit mais n'embarque pas `training/`. Sans
+    elle, un recalcul de consensus n'a **aucun endroit où atterrir** — c'est le
+    constat qui a bloqué le lot B3 de la bascule de banque, le 2026-08-24.
+
+    Retourne ``{written, missing}`` : `missing` = assets inconnus du canonique,
+    non écrits.
+    """
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_consensus(
+            conn, [v.model_dump() for v in payload.verdicts])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

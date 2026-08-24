@@ -33,7 +33,8 @@ from pathlib import Path
 from review.validation.consensus import RULE_VERSION, consensus_verdict
 from shared.verdict_scope import VERDICT_ANCHORS_KIND
 from review.validation.experts import collect_signals
-from review.validation.persist import upsert_consensus_verdict
+from client.ingest import push_consensus
+from review.validation.persist import _signals_json, upsert_consensus_verdict
 from review.validation.replay import DEFAULT_GOLD, load_gold
 from store import resolve_db_path
 
@@ -82,16 +83,43 @@ def main() -> None:
         "--scope", choices=["dino", "open", "gold", "contradict"], default="dino")
     ap.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
     ap.add_argument("--apply", action="store_true", help="écrit (sinon dry-run)")
+    ap.add_argument(
+        "--no-push", action="store_true",
+        help="écrit dans la base LOCALE au lieu de pousser au canonique "
+             "(n'a de sens que sur le host canonique)")
+    ap.add_argument(
+        "--batch", type=int, default=500,
+        help="taille des lots poussés (défaut 500)")
     args = ap.parse_args()
 
-    if args.apply:
-        from store import resolve_db_readonly
+    # ── Où atterrissent les lignes ──────────────────────────────────────────
+    #
+    # Sous Direction A, l'écriture locale est impossible (réplique read-only) et
+    # le VPS ne peut pas calculer (l'image lean n'embarque pas `training/`). Le
+    # calcul reste donc ICI et les lignes partent par POST — le même chemin que
+    # les crops, les faces et les prédictions Dino.
+    #
+    # C'est ce qui bloquait le lot B3 de la bascule de banque : sans cette voie,
+    # un recalcul de consensus n'avait aucun endroit où atterrir.
+    from store import resolve_db_readonly
 
-        if resolve_db_readonly():
+    push = False
+    if args.apply:
+        if args.no_push and resolve_db_readonly():
             raise SystemExit(
-                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
-                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+                "DB en lecture seule (réplique Direction A) et --no-push : "
+                "aucune destination. Retire --no-push pour pousser au canonique, "
+                "ou lance ceci sur le host canonique avec EURIO_DB_READONLY=0."
             )
+        if not args.no_push:
+            from client.http import sync_enabled
+
+            if not sync_enabled():
+                raise SystemExit(
+                    "EURIO_API_URL absent : impossible de pousser au canonique. "
+                    "Charge le devShell, ou ajoute --no-push pour écrire en local."
+                )
+            push = True
 
     # Garantit que ``consensus_verdicts`` existe (bootstrap schema, idempotent) —
     # la table est nouvelle, la DB live ne l'a pas tant qu'aucun Store n'a démarré.
@@ -107,6 +135,20 @@ def main() -> None:
     by_rule: Counter = Counter()
     n_written = 0
     n_no_signal = 0
+    a_pousser: list[dict] = []
+    manquants: list[str] = []
+
+    def _flush(lot: list[dict]) -> int:
+        """Pousse un lot et RETIENT les refus. Un `missing` non lu, c'est une
+        écriture qu'on croit faite — la faute que ce dépôt collectionne."""
+        if not lot:
+            return 0
+        res = push_consensus(lot) or {}
+        manquants.extend(res.get("missing") or [])
+        n = int(res.get("written") or 0)
+        print(f"  … poussé {n}/{len(lot)}", flush=True)
+        lot.clear()
+        return n
 
     for aid in asset_ids:
         signals = collect_signals(conn, aid)
@@ -116,13 +158,32 @@ def main() -> None:
         cv = consensus_verdict(signals)
         outcomes[cv.outcome] += 1
         by_rule[cv.rule] += 1
-        if args.apply:
+        if not args.apply:
+            continue
+        if push:
+            a_pousser.append({
+                "image_asset_id": aid,
+                "rule_version": RULE_VERSION,
+                "outcome": cv.outcome,
+                "lane": cv.lane,
+                "confidence": cv.confidence,
+                "reason": cv.reason,
+                "rule": cv.rule,
+                "signals_json": _signals_json(signals),
+            })
+            if len(a_pousser) >= args.batch:
+                n_written += _flush(a_pousser)
+        else:
             upsert_consensus_verdict(
                 conn, aid, signals=signals, verdict=cv, commit=False
             )
             n_written += 1
+
     if args.apply:
-        conn.commit()
+        if push:
+            n_written += _flush(a_pousser)
+        else:
+            conn.commit()
 
     mode = "APPLY" if args.apply else "DRY-RUN"
     print(f"=== persist_consensus [{mode}] scope={args.scope} rule_version={RULE_VERSION} ===")
@@ -131,12 +192,18 @@ def main() -> None:
     print(f"  outcomes           : {dict(outcomes)}")
     print(f"  par règle          : {dict(by_rule)}")
     if args.apply:
-        total = conn.execute(
-            "SELECT COUNT(*) FROM consensus_verdicts WHERE rule_version=?",
-            (RULE_VERSION,),
-        ).fetchone()[0]
+        dest = "canonique (POST /ingest/consensus)" if push else "base locale"
+        print(f"  destination        : {dest}")
         print(f"  rows écrites       : {n_written}")
-        print(f"  total en table     : {total} (rule_version={RULE_VERSION})")
+        if manquants:
+            print(f"  ⚠️  REFUSÉS (assets inconnus du canonique) : {len(manquants)}")
+            print(f"      {manquants[:5]}{' …' if len(manquants) > 5 else ''}")
+        if not push:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM consensus_verdicts WHERE rule_version=?",
+                (RULE_VERSION,),
+            ).fetchone()[0]
+            print(f"  total en table     : {total} (rule_version={RULE_VERSION})")
     else:
         print("  (dry-run — rien écrit ; --apply pour persister)")
 
