@@ -91,7 +91,7 @@ Détail et critères de fin : [`ROADMAP.md`](./ROADMAP.md).
 
 ## Voir aussi
 
-- [`../../operations/backup-strategy.md`](../../operations/backup-strategy.md) — le plan
+- [`../../archive/operations/backup-strategy.md`](../../archive/operations/backup-strategy.md) — le plan
   initial du 2026-08-14, **remplacé par ce chantier** (certaines de ses prémisses étaient
   fausses, cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §1)
 - [`../../../infra/backup/README.md`](../../../infra/backup/README.md) — mode d'emploi

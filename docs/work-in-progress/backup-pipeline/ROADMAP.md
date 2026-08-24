@@ -584,7 +584,7 @@ automatique** — `/opt/eurio-restore-test` absent, 0 conteneur `-drill`, 0 imag
 
       Conséquence assumée : plus aucun retour en arrière avant le 15 août n'est
       possible. La fenêtre est désormais celle de Duplicati, `keep-time = 30D`.
-- [x] ~~Marquer `docs/operations/backup-strategy.md` comme remplacé~~ — fait le 2026-08-14
+- [x] ~~Marquer `docs/archive/operations/backup-strategy.md` comme remplacé~~ — fait le 2026-08-14
 - [ ] Retirer la clé age dédiée du backup si elle n'a plus d'usage
       *(coordination avec la session « secrets »)*
 

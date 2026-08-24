@@ -6,7 +6,7 @@
 
 ## 1. Une sauvegarde existe — et le plan initial l'ignorait
 
-`docs/operations/backup-strategy.md` §1 affirmait « **aucune sauvegarde ne tourne** » et
+`docs/archive/operations/backup-strategy.md` §1 affirmait « **aucune sauvegarde ne tourne** » et
 en concluait qu'il n'existait aucune copie. La première affirmation est vraie, la
 seconde est fausse.
 

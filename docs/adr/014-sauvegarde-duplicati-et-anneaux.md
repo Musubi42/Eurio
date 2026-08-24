@@ -2,7 +2,7 @@
 
 - **Statut** : ✅ Acceptée
 - **Date** : 2026-08-14 · lots 0 à 5 livrés, sur le VPS uniquement
-- **Supersède** : `operations/backup-strategy.md` et `operations/backup-pcloud.md`
+- **Supersède** : `archive/operations/backup-strategy.md` et `archive/operations/backup-pcloud.md`
   (le chemin parallèle `eurio-backup.sh` → pCloud via `rclone crypt`, qui n'a jamais tourné)
 
 ## Contexte
