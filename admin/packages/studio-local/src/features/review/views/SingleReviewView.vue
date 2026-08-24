@@ -7,7 +7,7 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, Keyboard, Search, Sparkles, Undo2, Wand2 } from 'lucide-vue-next'
+import { AlertTriangle, HelpCircle, Keyboard, Search, Sparkles, Undo2, Wand2 } from 'lucide-vue-next'
 import {
   autoCropReview,
   correctListing,
@@ -35,6 +35,7 @@ import { queryNeedOnly, queryParam, queryRunIds } from '../composables/useQueryS
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
+import CoachMarks, { type EtapeCoach } from '../components/CoachMarks.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
 import { Boxes, Crop } from 'lucide-vue-next'
 import DinoVerdict from '../components/DinoVerdict.vue'
@@ -43,6 +44,7 @@ import ReviewRightColumn from '../components/ReviewRightColumn.vue'
 import ListingContextCard from '../components/ListingContextCard.vue'
 import TextSignals from '../components/TextSignals.vue'
 import { useHeavyGate } from '@/shared/composables/useHeavyGate'
+import { useEurioSession } from '@/stores/eurio-session'
 import { withCacheBust } from '@/shared/url'
 
 // Ordre de cycle des corrections clavier (K / C).
@@ -71,6 +73,7 @@ import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 // D11 : `showHeavyGesture` porte la question « faut-il DESSINER ce geste lourd ? »
 // — grisé pour l'arbitre, absent pour un ami. La règle vit dans `useHeavyGate`.
 const { canArbitrate, canRunHeavy, showHeavyGesture } = useHeavyGate()
+const session = useEurioSession()
 
 // ─── State ──────────────────────────────────────────────────────────────
 
@@ -95,6 +98,35 @@ const freeSearchCandidate = ref<ReviewCandidate | null>(null)
 const face = ref<ReviewFace>('obverse')
 const stats = ref<ReviewStats | null>(null)
 const showHelp = ref(false)
+
+// Les repères posés sur les boutons (§7). Trois gestes, ceux que le PO a nommés
+// — recadrer, chercher à la main, passer — et rien d'autre : un carrousel de
+// douze étapes n'est plus un repère, c'est un manuel.
+//
+// ⛔ Le texte est dans le lexique d'un COLLECTIONNEUR (§6) : image, pièce,
+// trier. Un repère écrit en « crop » et « trancher » enseignerait notre
+// vocabulaire au lieu du geste.
+const showCoach = ref(false)
+const ETAPES_COACH: EtapeCoach[] = [
+  {
+    cle: 'recadrer',
+    titre: 'Recadrer une photo mal cadrée',
+    texte: "Si la pièce est de travers ou rognée, recadre-la ici plutôt que de "
+      + "la rejeter. C'est souvent le geste qui sauve une bonne photo.",
+  },
+  {
+    cle: 'libre',
+    titre: 'Chercher la pièce toi-même',
+    texte: "Quand aucune des propositions ne va, passe en recherche libre : tu "
+      + "choisis la pièce à la main. C'est là que tu apportes le plus.",
+  },
+  {
+    cle: 'passer',
+    titre: 'Passer, si tu hésites',
+    texte: "Une image passée revient à quelqu'un d'autre. Une image mal rangée, "
+      + "il faut la retrouver — donc en cas de doute, passe.",
+  },
+]
 // Éditeur de re-crop manuel (overlay) + jeton de cache-bust pour rafraîchir
 // le crop affiché après écrasement côté backend.
 const showCropEditor = ref(false)
@@ -289,12 +321,14 @@ const canValidate = computed(() => {
   if (cohortId.value) return true
   return effectiveKind.value !== null && effectiveCondition.value !== null
 })
+// Ce que ces phrases disent, quelqu'un les lit AU MOMENT où son geste échoue —
+// c'est le pire moment pour lui parler de « candidat » et de « listing » (§6).
 const validateBlockedReason = computed<string | null>(() => {
   if (!focusedCandidate.value) {
-    return 'Sélectionne un candidat (1-5) ou le sélecteur libre (F)'
+    return 'Choisis d’abord une pièce (1-5), ou cherche-la toi-même (F)'
   }
   if (!cohortId.value && (effectiveKind.value === null || effectiveCondition.value === null)) {
-    return 'Renseigne le type (K) et l’état (C) du listing'
+    return 'Indique le type d’annonce (K) et l’état de la pièce (C)'
   }
   return null
 })
@@ -513,6 +547,13 @@ async function loadMarketQuotes() {
   item.candidates.forEach((c) => ids.add(c.eurio_id))
   ;(item.group_candidates ?? []).forEach((c) => ids.add(c.eurio_id))
   if (ids.size === 0) return
+  // ⛔ On ne demande pas ce qu'on sait ne pas avoir le droit d'obtenir. Les
+  // prix de référence vivent sous `sources:read`, qu'un ami n'a pas : l'appel
+  // partait quand même et rendait 403 à CHAQUE image. Il est avalé
+  // (`fetchMarketQuotes` catch → `{}`), donc rien ne cassait — mais un aller-
+  // retour refusé par image, c'est du bruit dans les logs du canonique et une
+  // fausse piste pour qui les lit un jour. Mesuré le 2026-08-24.
+  if (!session.hasScope('sources:read')) return
   marketQuotes.value = await fetchMarketQuotes([...ids])
 }
 
@@ -558,7 +599,7 @@ function validateCurrent() {
   if (!currentItem.value) return
   if (!canValidate.value) {
     // ⏎ pressé mais validation bloquée → feedback visible.
-    flashTopNotice(validateBlockedReason.value ?? 'Validation bloquée')
+    flashTopNotice(validateBlockedReason.value ?? 'Il manque quelque chose')
     return
   }
   if (!focusedCandidate.value) return  // garanti par canValidate — narrowing TS
@@ -762,7 +803,9 @@ function onDinoSelect(s: DinoSuggestion) {
 
 // ─── Keyboard ───────────────────────────────────────────────────────────
 
-const keyboardEnabled = computed(() => !showHelp.value && !showCropEditor.value)
+const keyboardEnabled = computed(
+  () => !showHelp.value && !showCropEditor.value && !showCoach.value,
+)
 
 // Bumpé après un re-crop manuel pour forcer DinoSuggestions à refetcher
 // (le backend a recalculé Dino sur le nouveau crop dans la même requête).
@@ -905,6 +948,7 @@ useReviewKeybinds(keyboardEnabled, {
             type="button"
             class="mode-btn"
             :class="{ active: mode === 'free' }"
+            data-coach="libre"
             @click="mode = 'free'"
           >
             <Search class="h-3 w-3" />
@@ -912,6 +956,23 @@ useReviewKeybinds(keyboardEnabled, {
             <span class="ml-1 font-mono text-[9px] uppercase tracking-wider opacity-70">F</span>
           </button>
         </div>
+        <!-- « Comment ça marche » REJOUE les repères à la demande (§7). C'est ce
+             qui les rend toujours accessibles sans imposer un tour au premier
+             passage à quelqu'un qui n'en veut pas.
+
+             Visible de tous, et non du seul ami : l'arbitre doit pouvoir
+             regarder ce que son ami voit depuis son propre compte, sans se
+             reconnecter. Le pense-bête clavier voisin, lui, reste ce qu'il est
+             — l'aide de celui qui connaît déjà les gestes. -->
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]"
+          style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
+          @click="showCoach = true"
+        >
+          <HelpCircle class="h-3 w-3" />
+          Comment ça marche
+        </button>
         <button
           type="button"
           class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]"
@@ -1040,6 +1101,7 @@ useReviewKeybinds(keyboardEnabled, {
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
                 title="Re-cropper manuellement (pièce mal cadrée) · E"
+                data-coach="recadrer"
                 @click="showCropEditor = true"
               >
                 <Crop class="h-3 w-3" />
@@ -1224,6 +1286,8 @@ useReviewKeybinds(keyboardEnabled, {
       @close="showCropEditor = false"
       @saved="onCropSaved"
     />
+
+    <CoachMarks v-model:ouvert="showCoach" :etapes="ETAPES_COACH" />
 
     <!-- ═══ Help overlay ═══ -->
     <div

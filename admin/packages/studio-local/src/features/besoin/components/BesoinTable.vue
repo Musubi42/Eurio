@@ -13,8 +13,10 @@
 // ⛔ LE GESTE EST UN LIEN, JAMAIS UNE ACTION. Enfiler, scraper, rebâtir sont
 // des ÉCRITURES : elles ne se déclenchent pas au fil d'une lecture.
 
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import VignettePiece from '@/shared/ui/VignettePiece.vue'
+import { useCanonicalThumbs } from '@/shared/composables/useCanonicalThumbs'
 import {
   gestureHref, MARGIN_FLOOR, type ClassNeedRow,
 } from '../composables/useClassNeed'
@@ -103,6 +105,15 @@ function gesteLabel(r: ClassNeedRow): string {
 }
 
 const anyDisarmed = computed(() => props.rows.some((r) => r.country_disarmed))
+
+// La vignette de la pièce, à gauche du `class_id`. Un identifiant est une clé,
+// pas une pièce : voir l'objet dont la ligne parle coûte 26 px et évite d'aller
+// vérifier ailleurs. Même composant et même route que l'accueil — une seule
+// façon d'obtenir une vignette dans ce front.
+const vignettes = useCanonicalThumbs()
+watch(() => props.rows, (rows) => {
+  if (rows.length) vignettes.load(rows.map((r) => r.class_id))
+}, { immediate: true })
 </script>
 
 <template>
@@ -119,14 +130,22 @@ const anyDisarmed = computed(() => props.rows.some((r) => r.country_disarmed))
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.class_id" :class="{ parked: r.bottleneck === 'pleine' }">
-          <td>
-            <span class="flag">{{ r.country ?? '··' }}</span>
-            <span class="cls">{{ r.class_id }}</span>
-            <span
-              v-if="r.family === 'emission_commune'" class="ec"
-              title="Émission commune : le même dessin frappé par 13 à 19 pays. L'image reconnaît le dessin à 97,7 % mais le pays à 64,4 % — ici c'est le TITRE de l'annonce qui tranche. Cible 5, pas 8 (D4)."
-            >◈</span>
-            <span class="lbl">{{ r.label }}</span>
+          <td class="cls-cell">
+            <VignettePiece
+              :url="vignettes.urls.value[r.class_id]" :nom="r.label" :taille="26"
+            />
+            <!-- Le bloc texte reste UN bloc : `.lbl` est en `display: block` et
+                 gère son ellipse. Le sortir en frère de la vignette dans un flex
+                 le remettrait sur la ligne de l'identifiant. -->
+            <span class="cls-texte">
+              <span class="flag">{{ r.country ?? '··' }}</span>
+              <span class="cls">{{ r.class_id }}</span>
+              <span
+                v-if="r.family === 'emission_commune'" class="ec"
+                title="Émission commune : le même dessin frappé par 13 à 19 pays. L'image reconnaît le dessin à 97,7 % mais le pays à 64,4 % — ici c'est le TITRE de l'annonce qui tranche. Cible 5, pas 8 (D4)."
+              >◈</span>
+              <span class="lbl">{{ r.label }}</span>
+            </span>
           </td>
 
           <td class="bank">
@@ -200,6 +219,10 @@ thead th {
   padding: 0 12px 8px; border-bottom: 1px solid var(--surface-3); white-space: nowrap;
 }
 tbody td { padding: 9px 12px; border-bottom: 1px solid var(--surface-2); vertical-align: top; }
+/* La vignette à gauche, le bloc texte à droite — et ce dernier reste un bloc,
+   sinon le libellé remonte sur la ligne de l'identifiant. */
+.cls-cell { display: flex; align-items: flex-start; gap: 8px; }
+.cls-texte { min-width: 0; flex: 1; }
 tbody tr:hover { background: var(--surface-1); }
 tbody tr.parked { color: var(--ink-400); }
 tbody tr.parked .cls { color: var(--ink-400); }

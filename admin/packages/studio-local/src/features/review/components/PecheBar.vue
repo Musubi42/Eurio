@@ -14,6 +14,7 @@
 import { computed } from 'vue'
 import { Loader2 } from 'lucide-vue-next'
 import type { DinoCandidatesSummary } from '../composables/useReviewApi'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 
 const props = defineProps<{
   classId: string
@@ -35,6 +36,13 @@ const emit = defineEmits<{
   (e: 'enqueue-orphans'): void
   (e: 'need-only', value: boolean): void
 }>()
+
+// Le tri par LOT écrit le canonique en direct : `funnel_writes.decide_lot` est
+// gardé par `review:arbitrate` depuis le 2026-08-24, faute de quarantaine sur
+// les lots. Sans ce masquage, un ami verrait un onglet qui lui rendrait 403 —
+// exactement le bouton mort que D11 interdit. Le jour où la quarantaine couvre
+// les lots, cette condition saute avec elle.
+const { canArbitrate } = useHeavyGate()
 
 const RANKS = [1, 3, 5]
 /** Les paliers de marge, avec la précision mesurée le 2026-08-20 en regard. */
@@ -105,6 +113,7 @@ const lotFaible = computed(
         @click="emit('mode', 'single')"
       >{{ nSingle ?? '…' }} à l'unité{{ margeLabel(summary?.best_spread_single) }}</button>
       <button
+        v-if="canArbitrate"
         type="button" class="chip"
         :class="{ 'chip--on': mode === 'lot', 'chip--faible': lotFaible }"
         :disabled="nLot === 0"

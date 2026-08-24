@@ -43,6 +43,12 @@ export interface Totals {
   n_classes: number
   /** Palier 1 (D7) : classes à `have >= 1`. */
   coverage: number
+  /** Le MÊME palier 1, vu à travers les ACQUIS (D8) : `have + accepted_pending
+   *  >= 1`. C'est celui-ci, et jamais `coverage`, qu'un écran montre à
+   *  quelqu'un qui TRIE : `have` ne bouge qu'au rebuild de la banque, donc une
+   *  barre bâtie dessus reste figée toute la semaine au-dessus du travail de
+   *  quelqu'un qui vient d'en faire. */
+  coverage_acquired: number
   /** Palier 2 (D7) : Σ `need`, ce qui manque À LA BANQUE. */
   sum_need: number
   /** Σ `min(need, pending_scoped)` — ce que la file peut réellement poser. */

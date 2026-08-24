@@ -1,4 +1,22 @@
 <script setup lang="ts">
+/**
+ * La barre d'action de la review — dans le lexique de celui qui trie.
+ *
+ * ⛔ « SKIP / REJECT / VALIDATE » A DISPARU, POUR TOUT LE MONDE.
+ * Le §6 d'`ACCUEIL-AMI.md` pose que le lexique d'un collectionneur s'applique
+ * « partout où un ami lit » — et cette barre est le seul endroit de l'app où il
+ * agit vraiment. Trois verbes anglais y décrivaient un geste de pipeline, pas ce
+ * qu'il fait.
+ *
+ * Traduit pour TOUS et non pour le seul ami, délibérément. Deux libellés pour un
+ * même bouton, c'est deux vocabulaires à tenir, deux captures d'écran à
+ * expliquer, et une conversation d'aide où personne ne parle du même bouton. Le
+ * français ne coûte rien à l'arbitre : c'est déjà la langue du reste de l'app.
+ *
+ * ⛔ LES RACCOURCIS NE BOUGENT PAS. `N` / `R` / `⏎` sont dans les doigts de
+ * l'arbitre depuis 3 809 décisions. Renommer un libellé est gratuit ; déplacer
+ * une touche coûte une erreur de tri à chaque réflexe.
+ */
 import { CornerDownLeft } from 'lucide-vue-next'
 import type { ReviewFace } from '../composables/useReviewApi'
 
@@ -73,9 +91,11 @@ const FACE_ITEMS: { key: ReviewFace; label: string; hint: string }[] = [
         type="button"
         class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] transition-all"
         style="background: var(--surface-1); color: var(--ink-700); border: 1px solid var(--surface-3);"
+        data-coach="passer"
+        title="Repousser cette image : elle reviendra à quelqu'un d'autre · N"
         @click="$emit('skip')"
       >
-        Skip
+        Passer
         <span class="font-mono text-[9px] uppercase tracking-wider opacity-60">N</span>
       </button>
 
@@ -87,9 +107,10 @@ const FACE_ITEMS: { key: ReviewFace; label: string; hint: string }[] = [
           color: 'var(--danger)',
           background: 'color-mix(in srgb, var(--danger) 6%, var(--surface))',
         }"
+        title="Cette image est inutilisable (floue, coupée, plusieurs pièces) · R"
         @click="$emit('reject')"
       >
-        Reject
+        Écarter
         <span class="font-mono text-[9px] uppercase tracking-wider opacity-70">R</span>
       </button>
 
@@ -102,10 +123,12 @@ const FACE_ITEMS: { key: ReviewFace; label: string; hint: string }[] = [
           color: canValidate ? 'var(--surface)' : 'var(--ink-400)',
           cursor: canValidate ? 'pointer' : 'not-allowed',
         }"
-        :title="canValidate ? `Valider avec ${focusedEurioId}` : (validateHint ?? 'Sélection requise')"
+        :title="canValidate
+          ? `Ranger cette image dans : ${focusedEurioId}`
+          : (validateHint ?? 'Choisis d\'abord une pièce')"
         @click="$emit('validate')"
       >
-        Validate
+        Ranger
         <CornerDownLeft class="h-3.5 w-3.5" />
       </button>
     </div>

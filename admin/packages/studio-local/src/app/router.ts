@@ -22,8 +22,21 @@ const router = createRouter({
       component: () => import('@/shared/ui/AppLayout.vue'),
       children: [
         {
+          // `/` sert DEUX écrans : les KPI pour l'arbitre, l'accueil d'un ami
+          // pour qui n'a pas `review:arbitrate` (ACCUEIL-AMI §7). L'arbitrage
+          // est fait dans `HomePage`, pas ici : une garde de route ne saurait
+          // pas attendre que `/me` ait répondu.
           path: '',
-          component: () => import('@/features/dashboard/pages/DashboardPage.vue'),
+          component: () => import('@/features/accueil/pages/HomePage.vue'),
+        },
+        {
+          // La MAQUETTE de l'accueil, sur fixtures — hors nav, sans réseau.
+          // Elle monte le composant définitif : ce qu'on y regarde est ce qu'on
+          // livre. Elle sert à trancher le visuel, puis à revoir les cas
+          // limites qu'on ne sait pas provoquer en base (file vide, ami à zéro,
+          // `/class-need` qui tombe).
+          path: 'accueil/maquette',
+          component: () => import('@/features/accueil/pages/AccueilMaquettePage.vue'),
         },
         {
           path: 'sets',

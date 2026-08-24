@@ -36,8 +36,24 @@ export function useHeavyGate() {
   const canRunHeavy = computed(() => caps.hasLocalMlApi)
   /** DROIT — le principal arbitre (owner/admin). */
   const canArbitrate = computed(() => session.hasScope('review:arbitrate'))
-  /** Faut-il DESSINER ce geste lourd ? (grisé pour l'arbitre, absent pour un ami) */
-  const showHeavyGesture = computed(() => canRunHeavy.value || canArbitrate.value)
+  /**
+   * Faut-il DESSINER ce geste lourd ? (grisé pour l'arbitre, absent pour un ami)
+   *
+   * 🔴 CORRIGÉ LE 2026-08-24, en revue adversariale. La formule était
+   * `canRunHeavy || canArbitrate` : elle dessinait le geste dès que la MACHINE
+   * pouvait, **sans regarder le droit**. Un ami qui lance le front en mode local
+   * avec l'API ML joignable voyait donc « Re-détecter », « Sync crops »,
+   * « Crop manuel » — et leur infobulle « disponible uniquement en local (API ML
+   * :8042) ». C'est mot pour mot ce que D11 interdit, à cause du OU.
+   *
+   * D11 dit une chose simple : le geste lourd s'adresse à l'ARBITRE. Le droit
+   * décide qu'on le dessine, la machine décide s'il est cliquable (`:disabled`
+   * reste porté par `canRunHeavy` — masquer n'est pas désarmer).
+   *
+   * Pour un arbitre, rien ne change : `canArbitrate` est vrai, le geste reste
+   * visible et grisé hors de son poste, exactement comme au lot 5.
+   */
+  const showHeavyGesture = computed(() => canArbitrate.value)
 
   return { canRunHeavy, canArbitrate, showHeavyGesture }
 }

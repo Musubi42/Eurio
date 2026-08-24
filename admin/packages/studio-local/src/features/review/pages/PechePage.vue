@@ -27,7 +27,12 @@ import {
   fetchDinoCandidates, type DinoCandidatesSummary,
 } from '../composables/useReviewApi'
 import { reflagAssetsNeedsReview } from '@/features/coins/composables/useCoinAssets'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 
+// Le lien de retour suit la porte par laquelle on est ENTRÉ : un ami vient
+// de « Trier » sur son accueil, un opérateur vient de la file. `review:arbitrate`
+// est le même discriminant que partout ailleurs dans ce front (D11).
+const { canArbitrate } = useHeavyGate()
 const route = useRoute()
 const router = useRouter()
 
@@ -56,8 +61,13 @@ const countryOnly = computed(() => queryParam(route, 'pays') !== 'tous')
 // au résumé (les vues single le lisent elles-mêmes dans la route).
 const needOnly = computed(() => queryNeedOnly(route))
 
+// ⛔ Le mode LOT est réservé à l'arbitre (`funnel_writes.decide_lot` exige
+// `review:arbitrate` depuis le 2026-08-24, faute de quarantaine sur les lots).
+// `PecheBar` en masque déjà l'onglet ; on referme ici le chemin de l'URL tapée à
+// la main, sinon un ami atterrit sur une vue de lot dont chaque geste rend 403.
+// C'est du confort, comme tout le filtrage front — la garde est serveur.
 const mode = computed<'single' | 'lot'>(
-  () => (queryParam(route, 'mode') === 'lot' ? 'lot' : 'single'),
+  () => (queryParam(route, 'mode') === 'lot' && canArbitrate.value ? 'lot' : 'single'),
 )
 /** L'opérateur a-t-il CHOISI son mode, ou est-ce le défaut ? */
 const modeChosen = computed(() => queryParam(route, 'mode') !== null)
@@ -200,8 +210,12 @@ const nothingHere = computed(
       style="border-color: var(--surface-3); background: var(--surface);"
     >
       <div class="flex items-center gap-4">
-        <button type="button" class="linkish" @click="router.push('/review')">
-          <ArrowLeft class="inline h-3 w-3" /> Review queue
+        <button
+          type="button" class="linkish"
+          @click="router.push(canArbitrate ? '/review' : '/')"
+        >
+          <ArrowLeft class="inline h-3 w-3" />
+          {{ canArbitrate ? 'Review queue' : 'Accueil' }}
         </button>
         <h1 class="font-display text-2xl italic font-semibold" style="color: var(--indigo-700);">
           Pêche
