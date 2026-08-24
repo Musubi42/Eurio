@@ -42,7 +42,7 @@ github/repo-cleanup`.
 | [`banque-dino/`](./banque-dino/) | Ce que vaut la banque d'ancres et ce qu'elle coûte à rebâtir. **Deux de ses constats sont périmés depuis le 2026-08-19** et portent leur correction datée |
 | [`peche-dino/`](./peche-dino/) | Le périmètre d'une file de review se définit par la **prédiction**, pas par la cible du scrape. 55 crops sur 57 étaient hors sujet dans l'ancienne file |
 | [`scan-quality/`](./scan-quality/) | Le cadre d'expérimentation du scan sur vrais téléphones. `DURABILITE-CORPUS.md` dit où sont les photos et comment ne pas les perdre |
-| [`review-autovalidation/`](./review-autovalidation/) | **Rien d'implémenté.** Pose le problème : 90 % des décisions de review demandent un geste sur le **cadrage**, pas sur la classe. Le goulot n'est pas là où on l'a cherché deux jours |
+| [`review-autovalidation/`](./review-autovalidation/) | `PROBLEME.md` pose le sujet : 90 % des décisions de review demandent un geste sur le **cadrage**, pas sur la classe. **`REPRENDRE-ICI.md` (2026-08-24) porte les mesures qui y répondent** et découpe le reste-à-faire en deux sessions — la review en lot qui perd du travail humain, puis le geste binaire de pêche |
 | [`refacto-page-cohorte/`](./refacto-page-cohorte/) | La cible de la page cohorte, écrite après avoir construit avant d'avoir défini. Fonde [ADR-013](../adr/013-la-maille-est-la-classe.md) |
 
 ### En attente d'un geste
