@@ -897,7 +897,10 @@ def build_anchors_2eur_all(
     from store.dino_references import (
         DinoBuild,
         DinoRefRow,
+        delta_de_forme,
+        forme_servie,
         get_reference_overrides,
+        histogramme_exemplaires,
         record_build,
         replace_auto_references,
     )
@@ -1171,6 +1174,20 @@ def build_anchors_2eur_all(
             f"{len(sans_canonique_gardees)} sans canonique gardées sous le plancher"
         ),
     )
+    # ── La FORME de la banque, comparée à celle qu'on remplace ───────────────
+    # Le compte d'exemplaires ne dit pas la forme, et c'est par là qu'une
+    # banque a déjà changé en silence (cf. `delta_de_forme`). La lecture se
+    # fait AVANT `replace_auto_references` : après, il n'y a plus rien à
+    # comparer.
+    delta = delta_de_forme(
+        forme_servie(conn, kind, encoder_version),
+        histogramme_exemplaires(ref_rows),
+    )
+    if delta:
+        logger.warning("2eur_all : %s", delta)
+        build.note = f"{build.note}; {delta}"
+    else:
+        logger.info("2eur_all : forme inchangée par rapport à la banque servie")
     if write_references:
         # La transaction est gérée par l'appelant (Store._writing) — pas de
         # commit ici (il casserait le BEGIN IMMEDIATE/COMMIT du contexte).

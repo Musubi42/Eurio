@@ -114,6 +114,75 @@ def _exige_encodeur_dans_la_cle(conn: sqlite3.Connection) -> None:
         )
 
 
+def histogramme_exemplaires(rows: list[DinoRefRow]) -> dict[int, int]:
+    """Combien de classes ont 0, 1, 2… exemplaires ``fps`` — la FORME d'une banque.
+
+    Le compte total d'exemplaires ne dit pas la forme : 100 exemplaires peuvent
+    être 100 classes à 1 ou 10 classes à 10, et ces deux banques ne se
+    comportent pas pareil. Une classe présente au seul canonique compte 0.
+    """
+    par_classe: dict[str, int] = {}
+    for r in rows:
+        par_classe.setdefault(r.class_id, 0)
+        if r.method == "fps":
+            par_classe[r.class_id] += 1
+    histo: dict[int, int] = {}
+    for n in par_classe.values():
+        histo[n] = histo.get(n, 0) + 1
+    return histo
+
+
+def forme_servie(
+    conn: sqlite3.Connection, anchors_kind: str, encoder_version: str
+) -> dict[int, int]:
+    """L'histogramme de la banque ACTUELLEMENT en base, pour ce couple.
+
+    À appeler AVANT ``replace_auto_references`` : après, les lignes qu'on veut
+    comparer n'existent plus.
+    """
+    rows = conn.execute(
+        "SELECT class_id, SUM(method = 'fps') AS n FROM dino_class_references "
+        " WHERE anchors_kind = ? AND encoder_version IN (?, '') "
+        " GROUP BY class_id",
+        (anchors_kind, encoder_version),
+    ).fetchall()
+    histo: dict[int, int] = {}
+    for _cid, n in rows:
+        k = int(n or 0)
+        histo[k] = histo.get(k, 0) + 1
+    return histo
+
+
+def delta_de_forme(avant: dict[int, int], apres: dict[int, int]) -> str | None:
+    """Une phrase qui dit ce que le rebuild a changé — ou ``None`` si rien.
+
+    Ce garde existe parce que la composition d'une banque a déjà bougé **en
+    silence**. Le 2026-08-20, le plancher ``min_exemplars=2`` a été retiré du
+    code alors que la banque servie le portait encore ; le rebuild du
+    2026-08-24 a rendu leur exemplaire à 55 classes, et **rien ne l'a dit** —
+    le garde P1 de ``store/encoder_bench`` compte les classes à ``>= 2``
+    exemplaires, un compte que ce retour laisse exactement invariant.
+
+    Comparer les totaux ne suffit donc pas : il faut comparer les **paliers**.
+    Une banque qui gagne 55 classes à 1 exemplaire et en perd 55 à 3 a le même
+    nombre de classes, presque le même nombre de lignes, et n'est pas la même
+    banque.
+    """
+    if not avant:
+        return None  # première banque de ce couple : il n'y a rien à comparer
+    paliers = sorted(set(avant) | set(apres))
+    bouges = [
+        (k, avant.get(k, 0), apres.get(k, 0))
+        for k in paliers
+        if avant.get(k, 0) != apres.get(k, 0)
+    ]
+    if not bouges:
+        return None
+    return "forme changée — " + ", ".join(
+        f"{k} exemplaire{'s' if k != 1 else ''}: {a}\u2192{b}" for k, a, b in bouges
+    )
+
+
 def record_build(conn: sqlite3.Connection, build: DinoBuild) -> None:
     """Journalise un build. L'appelant possède la transaction."""
     conn.execute(
