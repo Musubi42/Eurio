@@ -68,7 +68,7 @@ La qualité end-to-end = **capture × modèle × mesure**. Un maillon faible pla
 tout.
 
 ### Pilier A — CAPTURE (déjà cadré ailleurs → on LIE, on ne duplique pas)
-La mécanique « quelle frame on infère » est le projet **[`best-frame-capture/`](../best-frame-capture/README.md)** :
+La mécanique « quelle frame on infère » est le projet **[`best-frame-capture/`](../../archive/best-frame-capture/README.md)** :
 stabilité → verrou AE/AF → rafale courte → n'inférer que la meilleure frame →
 archive HQ. Inclut déjà un **quality scorer** (chunk-2) et un **protocole de
 bench** (chunk-7).

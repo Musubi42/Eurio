@@ -9,6 +9,7 @@
 > ⛔ Ne pas le recoller dans une nouvelle session : il ouvrirait une phase de
 > design déjà close, et ses chiffres (671 classes, 4 426, 344/276…) sont
 > périmés.
+eurio_kDbYQguxLXf5DXWXTa6N7pzY4galdzI0vSadQX_aaJU
 
 ---
 

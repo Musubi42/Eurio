@@ -1,3 +1,5 @@
+> 🗄️ **Archivé le 2026-08-24.** Décision consignée dans [ADR-012](../../adr/012-review-collaborative-ecriture-directe.md). Chantier vivant : [`review-collaborative-v2/`](../../work-in-progress/review-collaborative-v2/).
+
 # Review collaborative — Vision & index
 
 > ## ⛔ SUPERSÉDÉ (2026-08-23) — ne pas implémenter depuis ce dossier

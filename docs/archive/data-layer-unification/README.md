@@ -1,3 +1,5 @@
+> 🗄️ **Archivé le 2026-08-24.** Livré. Le résiduel — retrait du bucket `eurio-db` — est dans [`docs/BACKLOG.md`](../../BACKLOG.md).
+
 # data-layer-unification
 
 > Chantier en cours depuis le 2026-06-19 : unifier toute la donnée Eurio

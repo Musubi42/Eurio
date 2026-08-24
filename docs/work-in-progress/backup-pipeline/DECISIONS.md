@@ -347,7 +347,7 @@ Le miroir garde `eurio-db/transfers/` (artefacts ML, 105 Mo) et **exclut**
 `eurio.db` / `eurio.db.*` (104 Mo, figés au 2026-06-29).
 
 *Contexte* : ce bucket est legacy —
-[`data-layer-unification`](../data-layer-unification/README.md) phase 5 prévoit sa
+[`data-layer-unification`](../../archive/data-layer-unification/README.md) phase 5 prévoit sa
 suppression, et `infra/minio/bootstrap.sh` ne le recrée pas (il crée
 `numista-canonical`, `enrichment-raws`, `enrichment-crops` et `model-artifacts`).
 *Pourquoi garder `transfers/`* : ce sont des poids issus de runs d'entraînement.

@@ -91,7 +91,7 @@ haut l'est.
 | **Jobs** (PID, log, avancement) | `eurio.local.db`, toujours | `jobs.connection()` (`jobs/conn.py`) |
 | **Quota d'API** (eBay, Numista) | `eurio.local.db` | `shared/api_quota.default_db_path()` |
 | **Crops / assets / funnel** | canonique | `POST /ingest/*` (`client/ingest.py`) |
-| **Runs d'entraînement** (`training_runs`, epochs, steps) | ⛔ **non tranché** — écrit encore le canonique, donc échoue sous flip | cf. `docs/work-in-progress/local-sync/migration-direction-a.md` |
+| **Runs d'entraînement** (`training_runs`, epochs, steps) | ⛔ **non tranché** — écrit encore le canonique, donc échoue sous flip | cf. `docs/archive/local-sync/migration-direction-a.md` |
 
 ## Ajouter une route qui écrit
 
@@ -134,5 +134,5 @@ nix develop .#mac --command sqlite3 ml/state/eurio.replica.db \
 ## Références
 
 - `docs/architecture/README.md` — les trois stockages, les flux
-- `docs/work-in-progress/local-sync/migration-direction-a.md` — le plan C1→C7, ce qui reste
+- `docs/archive/local-sync/migration-direction-a.md` — le plan C1→C7, ce qui reste
 - `ml/serving/lab_writes.py`, `ml/jobs/conn.py` — les deux façades d'écriture

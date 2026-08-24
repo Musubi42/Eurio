@@ -15,7 +15,7 @@ travaillent directement sur `review_queue` du canonique, via `eurio-api`.
 Mac et qu'il fallait un endroit toujours allumé. Sous Direction A le canonique **est**
 sur le VPS : le tampon recopie la donnée d'un serveur vers lui-même.
 
-**Ce que ça écarte.** L'architecture de [`collaborative-review/`](../collaborative-review/)
+**Ce que ça écarte.** L'architecture de [`collaborative-review/`](../../archive/collaborative-review/)
 (juin 2026), qui reste valide *pour son époque*. Ce chantier la **supersède**.
 
 ---

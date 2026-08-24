@@ -1,3 +1,5 @@
+> 🗄️ **Archivé le 2026-08-24.** Ses deux décisions vivantes sont [ADR-009](../../adr/009-direction-a-writer-canonique-unique.md) (canonique) et [ADR-011](../../adr/011-front-admin-unique.md) (front).
+
 # Model B — État courant & cible (source de vérité)
 
 > **Ce doc est LE seul à lire pour Model B.** État présent + cible + roadmap +

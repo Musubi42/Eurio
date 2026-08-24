@@ -39,9 +39,9 @@ C'est la découverte de l'exploration : le back est écrit, en triple.
 | `ml/serving/review_routes.py` (`/review/claim`, `/review/flow`…) | monté sur `eurio-api.musubi.dev` | OIDC + scopes | **livré, sans aucun front** |
 | `ml/serving/review_queue/` (`/review-queue/*`) | `eurio-api.musubi.dev` | OIDC + `review:write` | **livré, c'est ce que `studio-local` utilise** |
 
-Le chantier [`collaborative-review/`](../collaborative-review/) (juin 2026) avait posé
+Le chantier [`collaborative-review/`](../../archive/collaborative-review/) (juin 2026) avait posé
 le problème, l'avait implémenté et testé E2E, puis l'avait différé — c'est le chunk
-**K2** de [`auth-redesign/ROADMAP.md`](../auth-redesign/ROADMAP.md), encore ⬜.
+**K2** de [`auth-redesign/ROADMAP.md`](../../archive/auth-redesign/ROADMAP.md), encore ⬜.
 
 Le rôle existe aussi (`ml/serving/auth_principal.py:60`) :
 

@@ -26,7 +26,7 @@ simple possible à sauvegarder.
 Le bucket `eurio-db` contient 5 objets : `eurio.db` (101 937 152 o, 2026-06-29),
 `eurio.db.lock`, `eurio.db.sha256`, et les deux artefacts `transfers/arcface_*`
 (109,6 Mo). Sa copie de `eurio.db` est un vestige du modèle pré-R2 — et
-[`data-layer-unification`](../data-layer-unification/README.md) phase 5 prévoit de tuer
+[`data-layer-unification`](../../archive/data-layer-unification/README.md) phase 5 prévoit de tuer
 ce bucket. Voir la question ouverte du [`HANDOFF`](./HANDOFF-NEXT-SESSION.md).
 
 `eurio.db` compte **80 tables** applicatives (81 dans `sqlite_master`, dont

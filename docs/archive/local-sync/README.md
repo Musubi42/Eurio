@@ -1,3 +1,5 @@
+> 🗄️ **Archivé le 2026-08-24.** Décision consignée dans [ADR-009](../../adr/009-direction-a-writer-canonique-unique.md) — Direction A. Ce dossier garde le raisonnement de l'event-log et sa réfutation par la mesure.
+
 # local-sync — écritures locales à pleine vitesse, convergence sur le canonique
 
 > **⚠️ ARCHI ABANDONNÉE (2026-07-03). NE PAS REPARTIR DESSUS.** L'event-log

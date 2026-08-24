@@ -1,8 +1,8 @@
 # Review collaborative v2 — index
 
 > **Statut : lot 0 livré (2026-08-23), implémentation en cours.**
-> Supersède [`../collaborative-review/`](../collaborative-review/) (juin 2026) et
-> tranche le chunk **K2** de [`../auth-redesign/ROADMAP.md`](../auth-redesign/ROADMAP.md).
+> Supersède [`../../archive/collaborative-review/`](../../archive/collaborative-review/) (juin 2026) et
+> tranche le chunk **K2** de [`../../archive/auth-redesign/ROADMAP.md`](../../archive/auth-redesign/ROADMAP.md).
 
 > 🟢 **En production depuis le 2026-08-23, et utilisé.** Reprise, défaut connu et
 > scénario de recette : **[`REPRISE.md`](REPRISE.md)** — à lire en premier.
