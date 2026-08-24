@@ -61,6 +61,7 @@ def _crop(
     conn, ref, *, kind="single", top1=None, spread=None, country="IT",
     target=None, listing_year=None, lane="manual", status="open",
     training_eligible=0, enqueue=True, eurio_id=None, face=None,
+    resolution_status="needs_review",
 ):
     conn.execute(
         "INSERT INTO source_images (id, source, source_ref, target_eurio_id, "
@@ -70,8 +71,9 @@ def _crop(
     conn.execute(
         "INSERT INTO image_assets (id, source_image_id, storage_path, "
         "storage_status, resolution_status, training_eligible, eurio_id, face) "
-        "VALUES (?,?,?,'present','needs_review',?,?,?)",
-        (f"a-{ref}", f"si-{ref}", "c.jpg", training_eligible, eurio_id, face),
+        "VALUES (?,?,?,'present',?,?,?,?)",
+        (f"a-{ref}", f"si-{ref}", "c.jpg", resolution_status, training_eligible,
+         eurio_id, face),
     )
     if enqueue:
         conn.execute(
@@ -352,8 +354,18 @@ def test_les_acquis_ferment_la_classe_avant_le_rebuild(conn):
     ce qu'il a explicitement demandé à ne plus voir.
     """
     _bank(conn, "it-2002-std", 7)
+    # Un ACQUIS, c'est-à-dire un crop TRANCHÉ : étiquette humaine, avers,
+    # statut de résolution validé. Sans ces trois-là ce serait un crop marqué
+    # et non rangé, que le builder ignore (D15).
     _crop(conn, "00acq", top1="it-2002-std", spread=0.30, training_eligible=1,
-          enqueue=False)
+          enqueue=False, eurio_id="it-2002-std", face="obverse",
+          resolution_status="manual")
+    # ...et tranché APRÈS le build servi : un crop que le dernier build a déjà
+    # refusé n'est plus un acquis (D15), il ne peut plus fermer une classe.
+    conn.execute(
+        "UPDATE image_assets SET resolved_at = '2999-01-01T00:00:00Z'"
+        " WHERE id = 'a-00acq'")
+    conn.commit()
     _crop(conn, "01sgl", top1="it-2002-std", spread=0.30)
 
     s = repository.dino_candidates_summary(conn, dino_class=CLASSE, need_only=True)

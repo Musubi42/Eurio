@@ -13,8 +13,9 @@
 // ⛔ LE GESTE EST UN LIEN, JAMAIS UNE ACTION. Enfiler, scraper, rebâtir sont
 // des ÉCRITURES : elles ne se déclenchent pas au fil d'une lecture.
 
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import { Check, Copy, ExternalLink } from 'lucide-vue-next'
 import VignettePiece from '@/shared/ui/VignettePiece.vue'
 import { useCanonicalThumbs } from '@/shared/composables/useCanonicalThumbs'
 import {
@@ -114,6 +115,26 @@ const vignettes = useCanonicalThumbs()
 watch(() => props.rows, (rows) => {
   if (rows.length) vignettes.load(rows.map((r) => r.class_id))
 }, { immediate: true })
+
+// Copier l'identifiant. Il sert de clé partout — préflight, requêtes SQL,
+// liens — et le relire à l'œil depuis un écran est le meilleur moyen de se
+// tromper d'une variante (`…-hologram` / `…-coloured` ne diffèrent que par
+// leur suffixe). Le retour visuel est indispensable : sans lui, rien à
+// l'écran ne distingue « copié » de « le clic n'a pas pris ».
+const copied = ref<string | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+async function copyId(id: string) {
+  try {
+    await navigator.clipboard.writeText(id)
+    copied.value = id
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copied.value = null }, 1400)
+  } catch {
+    // Presse-papier refusé (contexte non sécurisé, permission) : on ne fait pas
+    // semblant d'avoir copié.
+    copied.value = null
+  }
+}
 </script>
 
 <template>
@@ -121,10 +142,10 @@ watch(() => props.rows, (rows) => {
     <table>
       <thead>
         <tr>
-          <th style="width: 38%">Classe</th>
-          <th style="width: 16%">Banque</th>
-          <th style="width: 22%">Candidats</th>
-          <th style="width: 10%">Goulot</th>
+          <th style="width: 46%">Classe</th>
+          <th style="width: 12%">Banque</th>
+          <th style="width: 18%">Candidats</th>
+          <th style="width: 9%">Goulot</th>
           <th>Geste</th>
         </tr>
       </thead>
@@ -140,6 +161,21 @@ watch(() => props.rows, (rows) => {
             <span class="cls-texte">
               <span class="flag">{{ r.country ?? '··' }}</span>
               <span class="cls">{{ r.class_id }}</span>
+              <button
+                type="button" class="act" :title="`Copier ${r.class_id}`"
+                :aria-label="`Copier l'identifiant ${r.class_id}`"
+                @click="copyId(r.class_id)"
+              >
+                <Check v-if="copied === r.class_id" class="ico" />
+                <Copy v-else class="ico" />
+              </button>
+              <RouterLink
+                class="act" :to="`/coins/${r.class_id}`" target="_blank"
+                :title="`Ouvrir la fiche de ${r.class_id} dans un nouvel onglet`"
+                :aria-label="`Ouvrir la fiche de ${r.class_id}`"
+              >
+                <ExternalLink class="ico" />
+              </RouterLink>
               <span
                 v-if="r.family === 'emission_commune'" class="ec"
                 title="Émission commune : le même dessin frappé par 13 à 19 pays. L'image reconnaît le dessin à 97,7 % mais le pays à 64,4 % — ici c'est le TITRE de l'annonce qui tranche. Cible 5, pas 8 (D4)."
@@ -156,8 +192,24 @@ watch(() => props.rows, (rows) => {
             </span>
             <span
               v-if="r.accepted_pending > 0" class="acq"
-              :title="`${r.accepted_pending} crop(s) validé(s) par un humain, PAS encore en banque : \`have\` ne bouge qu'au prochain build_dino_anchors. Le verdict, lui, les compte déjà (D8) — sinon la file resservirait une classe qu'on vient de remplir.`"
+              :title="`${r.accepted_pending} crop(s) portant CETTE étiquette, validés depuis le dernier build et pas encore en banque : \`have\` ne bouge qu'au prochain build_dino_anchors. Le verdict, lui, les compte déjà (D8) — sinon la file resservirait une classe qu'on vient de remplir. Un crop que le build a DÉJÀ vu et pas retenu n'est plus compté ici : il a été refusé (plancher de similarité, plafond de la classe), et le prochain build le refusera pareil (D15).`"
             >+{{ r.accepted_pending }}</span>
+            <!-- D15 — l'avis du MODÈLE, et le fait qu'il ne décide de rien. Il
+                 n'apparaît que lorsqu'il diffère : identique, il ne dirait rien
+                 et encombrerait 600 lignes. -->
+            <span
+              v-if="r.accepted_by_model > 0 && r.accepted_by_model !== r.accepted_pending"
+              class="mdl"
+              :title="`Le modèle rattache ${r.accepted_by_model} crop(s) DÉJÀ VALIDÉ(S) à cette classe — mais l'humain les a étiquetés autrement, et c'est l'étiquette qui décide où le rebuild pose l'exemplaire. Ce compte ne change donc ni le verdict ni la banque : il signale une confusion d'image, presque toujours entre variantes d'un même dessin (« … », « …-hologram », « …-coloured »).`"
+            >≈{{ r.accepted_by_model }}</span>
+            <!-- Voie A. La colonne parle de la banque DINO (voie B) ; sans
+                 cette ligne, une classe qui a cinq crops au train s'affiche
+                 « 0/8 » et se lit « rien n'a été fait » — c'est ce qu'elle a
+                 fait croire au PO le 2026-08-24. -->
+            <span
+              v-if="r.n_train_eligible > 0" class="voieA"
+              :title="`${r.n_train_eligible} crop(s) validé(s) partent à l'entraînement ArcFace (voie A). C'est une AUTRE voie que la banque d'ancres DINO (voie B) que compte ce ${r.have}/${r.target} : un crop peut nourrir l'une sans nourrir l'autre. Elle ne change aucun verdict de cette page.`"
+            >{{ r.n_train_eligible }} au train</span>
           </td>
 
           <td>
@@ -200,7 +252,11 @@ watch(() => props.rows, (rows) => {
 
     <p class="src">
       <b>banque</b> = <code>have</code> / <code>target</code>, <b>+N</b> =
-      <code>accepted_pending</code> (D8) ·
+      <code>accepted_pending</code> — acquis à l'étiquette HUMAINE et postérieurs
+      au build servi, seuls à compter dans le verdict (D8/D15) ; <b>≈N</b> =
+      <code>accepted_by_model</code>, l'avis du top-1 DINO, qui ne décide de rien ·
+      <b>au train</b> = <code>n_train_eligible</code>, la voie A (ArcFace),
+      pas la banque ·
       <b>candidats</b> = <code>pending_scoped</code> et l'effet des filtres ·
       <b>goulot</b> = <code>bottleneck</code>
       <span v-if="anyDisarmed">
@@ -218,18 +274,20 @@ thead th {
   letter-spacing: 0.16em; color: var(--ink-400); font-weight: 600;
   padding: 0 12px 8px; border-bottom: 1px solid var(--surface-3); white-space: nowrap;
 }
-tbody td { padding: 9px 12px; border-bottom: 1px solid var(--surface-2); vertical-align: top; }
+tbody td { padding: 11px 12px; border-bottom: 1px solid var(--surface-2); vertical-align: top; }
 /* La vignette à gauche, le bloc texte à droite — et ce dernier reste un bloc,
-   sinon le libellé remonte sur la ligne de l'identifiant.
-   `align-items: stretch` : la vignette prend TOUTE la hauteur de la ligne, y
-   compris quand le libellé passe sur trois lignes. C'est la demande du PO —
-   on trie des objets qu'on aime regarder, autant les voir. */
-.cls-cell { display: flex; align-items: stretch; gap: 10px; }
+   sinon le libellé remonte sur la ligne de l'identifiant. */
+.cls-cell { display: flex; align-items: flex-start; gap: 10px; }
 .cls-texte { min-width: 0; flex: 1; }
-/* Carrée et pleine hauteur : `aspect-ratio` fait suivre la largeur, donc la
-   vignette grandit avec la ligne au lieu d'être figée à 26 px. Le plancher
-   garde un disque lisible sur une ligne courte. */
-.vign { height: auto; width: auto; aspect-ratio: 1; align-self: stretch; min-height: 38px; }
+/* ⛔ LA VIGNETTE PORTE SA TAILLE EN DUR, ET C'EST LE POINT.
+   La version « pleine hauteur » (`width/height: auto` + `aspect-ratio` +
+   `align-self: stretch`) ne résolvait aucune dimension : la hauteur venait de
+   la ligne, la ligne venait de son contenu, et le contenu — un `<img>` en
+   `width: 100%` d'un parent auto — retombait sur la TAILLE INTRINSÈQUE du
+   fichier. Une classe dont l'image canonique est une photo de 1200 px faisait
+   donc une ligne de 1200 px, écrasant les colonnes voisines à un caractère par
+   ligne. Un carré en px casse la boucle : la ligne ne dépend plus de l'image. */
+.vign { width: 80px; height: 80px; flex: none; }
 tbody tr:hover { background: var(--surface-1); }
 tbody tr.parked { color: var(--ink-400); }
 tbody tr.parked .cls { color: var(--ink-400); }
@@ -244,6 +302,16 @@ tbody tr.parked .cls { color: var(--ink-400); }
   border: 1px solid var(--surface-3); border-radius: 3px; padding: 0 4px; margin-right: 5px;
 }
 .ec { color: var(--gold); font-size: 12px; margin-left: 4px; cursor: help; }
+/* Les deux gestes de l'identifiant : copier, et ouvrir la fiche. Discrets au
+   repos (la ligne parle d'un besoin, pas de ses outils), francs au survol. */
+.act {
+  display: inline-flex; align-items: center; vertical-align: middle;
+  margin-left: 4px; padding: 2px; border: 0; background: none;
+  color: var(--ink-300); cursor: pointer; border-radius: 4px;
+}
+.act:hover { color: var(--indigo-700); background: var(--surface-2); }
+.act:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.ico { width: 12px; height: 12px; }
 
 .bank { font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
 .cap { color: var(--ink-300); font-size: 10px; }
@@ -251,6 +319,11 @@ tbody tr.parked .cls { color: var(--ink-400); }
 .pips i { font-style: normal; color: var(--indigo-700); }
 .pips u { text-decoration: none; color: var(--surface-3); }
 .acq { color: var(--gold); font-size: 10.5px; margin-left: 5px; cursor: help; }
+.mdl { color: var(--ink-300); font-size: 10.5px; margin-left: 4px; cursor: help; }
+.voieA {
+  display: block; margin-top: 3px; font-family: var(--font-sans);
+  font-size: 10px; color: var(--ink-400); cursor: help;
+}
 
 .cand { font-family: var(--font-mono); font-size: 11.5px; }
 .cand--weak { color: var(--ink-400); }

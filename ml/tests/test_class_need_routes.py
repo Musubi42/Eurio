@@ -55,7 +55,13 @@ def _coin(conn, eid, country, year):
     )
 
 
-def _asset(conn, ref, *, country=None, eligible=0):
+def _asset(conn, ref, *, country=None, eligible=0, etiquette=None):
+    """Un crop. `etiquette` = ce que l'HUMAIN a décidé (`image_assets.eurio_id`).
+
+    C'est elle qui décide de la classe où le builder posera l'exemplaire, donc
+    elle seule qui fait un ACQUIS (D15) — un crop validé sans étiquette n'en
+    est pas un, quoi qu'en dise le top-1 du modèle.
+    """
     conn.execute(
         "INSERT INTO source_images (id, source, source_ref, listing_country,"
         " storage_path) VALUES (?,'ebay',?,?,'x.jpg')",
@@ -63,8 +69,11 @@ def _asset(conn, ref, *, country=None, eligible=0):
     )
     conn.execute(
         "INSERT INTO image_assets (id, source_image_id, storage_path,"
-        " storage_status, training_eligible) VALUES (?,?,'c.jpg','present',?)",
-        (f"a-{ref}", f"si-{ref}", eligible),
+        " storage_status, training_eligible, eurio_id, face, resolution_status)"
+        " VALUES (?,?,'c.jpg','present',?,?,?,?)",
+        (f"a-{ref}", f"si-{ref}", eligible, etiquette,
+         "obverse" if etiquette else None,
+         "manual" if etiquette else "pending_match"),
     )
     return f"a-{ref}"
 
@@ -130,7 +139,7 @@ def env(tmp_path, monkeypatch):
         " VALUES ('rq-muet', ?, 'open')", (aid,),
     )
     # Un ACQUIS (D8) sur NEEDY : validé, pas encore bâti
-    acq = _asset(conn, "acquis", country="DE", eligible=1)
+    acq = _asset(conn, "acquis", country="DE", eligible=1, etiquette=NEEDY)
     _predict(conn, acq, NEEDY)
     conn.commit()
     return conn, db
@@ -206,7 +215,7 @@ def test_coverage_acquired_compte_les_acquis_quand_coverage_les_ignore(env):
     rien — d'où la classe choisie.
     """
     conn, _ = env
-    acq = _asset(conn, "acquis-dry", country="VA", eligible=1)
+    acq = _asset(conn, "acquis-dry", country="VA", eligible=1, etiquette=DRY)
     _predict(conn, acq, DRY)
     conn.commit()
 
@@ -331,7 +340,7 @@ def test_le_rebuild_ne_promet_que_ce_qu_il_peut_poser(env):
     conn, _ = env
     # FULL est à sa cible (8/8) : ses acquis ne peuvent rien poser.
     for i in range(5):
-        acq = _asset(conn, f"surplus{i}", country="FR", eligible=1)
+        acq = _asset(conn, f"surplus{i}", country="FR", eligible=1, etiquette=FULL)
         _predict(conn, acq, FULL)
     conn.commit()
 

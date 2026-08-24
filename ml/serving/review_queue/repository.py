@@ -381,7 +381,18 @@ def _fetch_group_candidates(
                     if r["face_value"] is not None else ""
                 ),
                 year=r["year"],
-                canonical_thumb_url=(
+                # ⛔ LE RÉFÉRENTIEL D'ABORD — comme `_build_target_candidate`,
+                # `_build_dino_top1_candidate` et `_fetch_standard_candidates`.
+                # Ce builder-ci était le SEUL à sauter `canonical_obverse_url`
+                # et à servir directement l'URL legacy. Or `/images/<nid>/source`
+                # n'existe que sur le serveur ML (`serving/server.py`, :8042) :
+                # servie par eurio-api, elle rend 404 et le `<img>` reste vide.
+                # Conséquence mesurée le 2026-08-24 sur la pêche
+                # `lu-2025-…-henri-to-the-throne` : les 6 vignettes « pièces du
+                # groupe » ET la grande image « canonique · candidat focusé »
+                # (qui suit le candidat focusé, pris dans cette liste) étaient
+                # toutes vides — l'écran ne montrait plus À QUOI comparer.
+                canonical_thumb_url=canonical_obverse_url(conn, r["eurio_id"]) or (
                     f"/images/{int(r['numista_id'])}/source"
                     if r["numista_id"] else ""
                 ),

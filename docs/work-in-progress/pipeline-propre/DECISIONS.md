@@ -221,48 +221,66 @@ Donc : **O4c se livre AVANT O2**, et la Station 0 compte `pending_scoped`
 *Écarte* : livrer O2 sur le pool brut « en attendant » — la page annoncerait 13
 candidats au-dessus d'une file qui en sert 0.
 
-## D15 · un acquis se compte à l'étiquette HUMAINE, jamais au top-1 du modèle
+## D15 · un acquis, c'est ce que le BUILDER posera — pas ce que le modèle voit, ni ce qu'un build a déjà refusé
 
 Arbitrée le **2026-08-24**. Corrige D8, ne l'annule pas. *(Le numéro suit la
-série partagée avec `review-collaborative-v2`, qui va jusqu'à D14.)*
+série partagée avec `review-collaborative-v2`, qui va jusqu'à D14.)* Synthèse
+durable : [ADR-016](../../adr/016-un-acquis-est-ce-que-le-builder-posera.md).
 
-D8 comptait `accepted_pending` sous `image_asset_dino_predictions.top1_eurio_id`
-— là où le **modèle** voit le crop. Or le builder range un exemplaire là où
-l'**humain** l'a mis : `anchors._candidate_crops_for_class` filtre sur
-`image_assets.eurio_id IN members`. Les deux clés divergent précisément là où
-l'image ne sépare pas deux variantes d'un même dessin.
+D8 comptait `accepted_pending` avec **deux approximations**, et chacune promet
+un `have` qui n'arrivera pas. Une classe passe alors `pleine`, sort du travail,
+et n'en revient plus : le verdict devient un état absorbant.
 
-Constaté par le PO le 2026-08-24 sur `/besoin` : `lu-2025-…-throne-hologram`
-affiche `0/8` **+6**, alors que `GET /coins/…-hologram/assets` rend `total: 0`.
-Six exemplaires promis à une classe qui n'a aucun crop à son nom — et comme
-`bottleneck_for` tranche sur `have + accepted_pending`, assez pour la déclarer
-`pleine` et **la sortir du travail**.
+**1. La clé.** Le compte se faisait sous
+`image_asset_dino_predictions.top1_eurio_id` — là où le **modèle** voit le crop.
+Or le builder range un exemplaire là où l'**humain** l'a mis
+(`anchors._candidate_crops_for_class` filtre sur `image_assets.eurio_id IN
+members`). Les deux clés divergent précisément là où l'image ne sépare pas deux
+variantes d'un même dessin.
 
-Mesuré sur la réplique du 2026-08-24 23:29 (`ml/state/eurio.replica.db`,
-banque `2eur_all` / `dinov2-vitl14`) :
+Constaté par le PO sur `/besoin` : `lu-2025-…-throne-hologram` affiche `0/8`
+**+6**, alors que `GET /coins/…-hologram/assets` rend `total: 0`. Six
+exemplaires promis à une classe qui n'a aucun crop à son nom.
 
-| | clé modèle (avant) | clé builder (après) |
+**2. Le temps.** Même à la bonne clé, les portes SQL décrivent les crops que le
+builder *envisage*, pas ceux qu'il *pose* : il borne le pool
+(`MAX_CANDIDATES_PER_CLASS`), n'en garde que `exemplars_per_class` par FPS, et
+écarte par `DEFAULT_EXEMPLAR_FLOOR_SIM = 0,45` les crops trop éloignés du
+canonique. **Un crop éligible que le dernier build n'a pas pris a été refusé**,
+et le prochain le refusera de la même façon. Ne comptent donc que les crops
+tranchés APRÈS `built_at`. La porte se referme d'elle-même : au rebuild suivant,
+un crop pris sort par la banque, un crop refusé passe derrière la date.
+
+Mesuré sur la réplique du **2026-08-24 23:52**, banque `2eur_all` /
+`dinov2-vitl14`, build `53d22c38` (`built_at = 2026-08-24T20:41:15+00:00`) :
+
+| | avant (clé modèle) | après (clé builder + porte du build) |
 |---|---|---|
-| Σ acquis | 1 560 sur 140 classes | 1 481 sur 89 classes |
-| `rebuild_would_place` | 119 | **42** |
-| classes déclarées `pleine` | — | **8 rouvrent**, 0 ne se ferme |
+| Σ acquis | 1 560 sur 140 classes | **45 sur 18 classes** |
+| `rebuild_would_place` | 119 | **40** |
+| classes `pleine` | 108 | **99** |
+| couverture acquise | 282 | 277 |
 
-`_acquired_by_class` reprend **une à une** les portes du builder (`face`,
-`denom`, `resolution_status`, `training_eligible`, `storage_status`, plus
-« pas déjà en banque ») : un compte plus large promet ce que le build refuse,
-un compte plus étroit rouvre une classe déjà nourrie. Il reste un **majorant** —
-le builder borne ensuite le pool et choisit par FPS —, d'où
-`rebuild_would_place = Σ min(need, accepted_pending)` et jamais la somme nue.
+Sur les 1 481 crops éligibles hors banque, **45 seulement sont postérieurs au
+build** : les 1 436 autres ont déjà été soumis à un build complet.
 
 Le compte au top-1 n'est pas supprimé : il devient `accepted_by_model`,
 **affiché et jamais décisif**. Il dit « le modèle croit que ces crops validés
-sont de cette classe », ce qui est un signal de confusion entre variantes — le
-seul écran où il vaut quelque chose est celui qui décidera d'un rebuild ou d'un
-scrape ciblé.
+sont de cette classe » — un signal de confusion entre variantes, utile à qui
+décide d'un rebuild ou d'un scrape ciblé, jamais à qui décide de servir la file.
 
-*Écarte* : garder la clé modèle « puisqu'elle bouge dans le bon sens » (elle
-ferme des classes qui n'ont rien reçu), et supprimer le compte modèle (il porte
-un signal que rien d'autre ne porte).
+**Effet de bord mesuré, à rejouer côté `dino_drift`.** Le correctif du même jour
+sur `is_stale` attribuait au plancher `floor_sim` les 8 classes « sans
+exemplaire malgré des crops éligibles ». Remesuré : ces 8 classes ont **toutes**
+au moins un crop tranché après le build — `fr-2017-…-rodin` a ses 9 crops
+résolus entre 20:42:48 et 20:43:37, soit 93 s plus tard. Ce n'était pas un
+plancher, c'était de la fraîcheur. `n_classes_would_gain_anchor` porte désormais
+la même porte temporelle et peut donc retomber à zéro ; le remettre dans
+`is_stale` est un arbitrage PO, laissé ouvert.
+
+*Écarte* : garder la clé modèle « puisqu'elle ferme des classes » ; supprimer le
+compte modèle (il porte un signal que rien d'autre ne porte) ; matérialiser un
+« refusé par le build N » en base (une date suffit, et rien à tenir à jour).
 
 ## Ordre qui en découle
 

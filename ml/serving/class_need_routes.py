@@ -90,6 +90,8 @@ class Totals(BaseModel):
     #: Très différent de ``sum_need`` : le reste est à aller chercher.
     sum_reachable: int
     #: Σ ``accepted_pending`` (D8) et ce qu'un rebuild poserait vraiment.
+    #: Depuis D15 les deux sont comptés à la clé du BUILDER : avant, ils
+    #: promettaient des exemplaires à des classes qui n'en recevaient aucun.
     accepted_pending: int
     rebuild_would_place: int
     n_open: int
@@ -110,7 +112,13 @@ class ClassNeedRow(BaseModel):
     best_margin: float | None
     bottleneck: str
     n_train_eligible: int
+    #: D8/D15 — ACQUIS : validés, pas encore bâtis, comptés à la clé du
+    #: BUILDER (l'étiquette humaine du crop). C'est celui-ci qui entre dans
+    #: `bottleneck`.
     accepted_pending: int
+    #: D15 — le même fait vu par le MODÈLE (top-1 DINO). Signal de confusion
+    #: entre variantes, jamais un acquis : il ne décide de rien.
+    accepted_by_model: int
     #: O4c — le filtre pays s'est-il retiré parce qu'il ne laissait rien ?
     #: L'écran DOIT le lire : sinon il annonce « pays LU » au-dessus d'une file
     #: qui sert tous les pays, et le lien qu'il propose sert zéro.
@@ -138,7 +146,7 @@ class ClassNeedResponse(BaseModel):
 ClassNeed_FIELDS = (
     "class_id", "label", "country", "family", "have", "cap", "target",
     "need", "pending", "pending_scoped", "best_margin", "bottleneck",
-    "n_train_eligible", "accepted_pending",
+    "n_train_eligible", "accepted_pending", "accepted_by_model",
     "country_disarmed", "n_hidden_by_era", "n_hidden_by_country",
     "n_hidden_by_denom",
 )

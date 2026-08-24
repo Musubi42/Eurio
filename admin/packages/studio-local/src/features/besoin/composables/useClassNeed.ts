@@ -43,8 +43,8 @@ export interface Totals {
   n_classes: number
   /** Palier 1 (D7) : classes à `have >= 1`. */
   coverage: number
-  /** Le MÊME palier 1, vu à travers les ACQUIS (D8) : `have + accepted_pending
-   *  >= 1`. C'est celui-ci, et jamais `coverage`, qu'un écran montre à
+  /** Le MÊME palier 1, vu à travers les ACQUIS (D8/D15) : `have +
+   *  accepted_pending >= 1`. C'est celui-ci, et jamais `coverage`, qu'un écran montre à
    *  quelqu'un qui TRIE : `have` ne bouge qu'au rebuild de la banque, donc une
    *  barre bâtie dessus reste figée toute la semaine au-dessus du travail de
    *  quelqu'un qui vient d'en faire. */
@@ -76,8 +76,20 @@ export interface ClassNeedRow {
   best_margin: number | null
   bottleneck: Bottleneck
   n_train_eligible: number
-  /** D8 — validés, pas encore bâtis. `have` ne bouge qu'au rebuild. */
+  /**
+   * D8/D15 — ACQUIS : validés, pas encore bâtis. `have` ne bouge qu'au rebuild.
+   *
+   * Compté à la clé du BUILDER (l'étiquette humaine du crop), donc à la classe
+   * qui recevra vraiment l'exemplaire. C'est LUI qui entre dans `bottleneck`.
+   */
   accepted_pending: number
+  /**
+   * D15 — le même fait vu par le MODÈLE (top-1 DINO), quelle que soit
+   * l'étiquette humaine. **Ne décide de rien.** Un écart franc avec
+   * `accepted_pending` dit presque toujours la même chose : deux variantes que
+   * l'image ne sépare pas (`…`, `…-hologram`, `…-coloured`).
+   */
+  accepted_by_model: number
   /** O4c — le filtre pays s'est retiré parce qu'il ne laissait rien. */
   country_disarmed: boolean
   /**

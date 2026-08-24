@@ -158,12 +158,15 @@ une classe à sa cible.**
 
 ### 3.5 · D8 — `accepted_pending` : ce qui est acquis mais pas encore bâti *(nouveau)*
 
-> ⚠️ **Corrigé par D15 (2026-08-24) : la CLÉ a changé.** Le compte décrit
-> ci-dessous se faisait sous `top1_eurio_id` (ce que voit le modèle) ; il se
-> fait désormais sous l'étiquette humaine du crop (ce que range le builder).
-> Le compte au top-1 survit en `accepted_by_model`, affiché et jamais décisif.
-> Effet mesuré : `rebuild_would_place` 119 → 42, 8 classes rouvrent. Tout le
-> reste de cette section — le problème, le remède, `bottleneck_for` — tient.
+> ⚠️ **Corrigé par D15 (2026-08-24) — deux fois.** Le compte décrit ci-dessous
+> se faisait sous `top1_eurio_id` (ce que voit le modèle) : il se fait désormais
+> sous l'étiquette humaine du crop (ce que range le builder), et **seulement
+> pour les crops tranchés après le build servi** — ce qu'un build a déjà refusé
+> n'est plus un acquis. Le compte au top-1 survit en `accepted_by_model`,
+> affiché et jamais décisif. Effet mesuré : Σ acquis 1 560 → 45,
+> `rebuild_would_place` 119 → 40, 9 classes rouvrent. Tout le reste de cette
+> section — le problème, le remède, `bottleneck_for` — tient.
+> Synthèse : [ADR-016](../../../adr/016-un-acquis-est-ce-que-le-builder-posera.md).
 
 **Le problème.** Accepter un crop écrit `training_eligible = 1`. Ça n'ajoute
 **aucun exemplaire à la banque** : `have` ne bouge qu'au `build_dino_anchors`

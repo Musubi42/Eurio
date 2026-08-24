@@ -280,6 +280,34 @@ def test_les_classes_gagnantes_se_comptent_a_la_maille_classe(conn):
         "sa classe A un exemplaire — sous le nom du représentant")
 
 
+def test_un_crop_que_le_build_a_deja_refuse_ne_compte_plus(conn):
+    """D15 — sans cette porte, le compteur ne peut pas retomber à zéro.
+
+    Un crop éligible au SQL que le build servi n'a PAS pris a été refusé
+    (plancher `floor_sim`, plafond de la classe, ou FPS qui ne l'a pas choisi).
+    Le prochain build le refusera pareil, sur la même donnée : le compter, c'est
+    réclamer éternellement une heure de calcul sans effet.
+    """
+    _build(conn, "2026-08-24T20:41:15+00:00")
+    conn.execute("INSERT INTO coins (eurio_id, country, year, face_value, "
+                 " is_commemorative) VALUES ('fr-2017-rodin','FR',2017,2.0,1)")
+    _asset(conn, "A9", eurio_id="fr-2017-rodin", eligible=1)
+    conn.execute("UPDATE image_assets SET face='obverse', "
+                 " resolution_status='manual', "
+                 " resolved_at='2026-08-24T09:00:00Z', "
+                 " fetched_at='2026-08-23 17:13:42' WHERE id='A9'")
+    conn.commit()
+    d = dino_drift(conn, anchors_kind=KIND, encoder_version=ENCODER)
+    assert d.n_classes_would_gain_anchor == 0, "le build l'a déjà refusé"
+
+    # Le même crop, tranché APRÈS le build : aucun build ne l'a vu, il compte.
+    conn.execute("UPDATE image_assets SET resolved_at='2026-08-24T21:00:00Z' "
+                 " WHERE id='A9'")
+    conn.commit()
+    d = dino_drift(conn, anchors_kind=KIND, encoder_version=ENCODER)
+    assert d.n_classes_would_gain_anchor == 1
+
+
 def test_le_job_n_efface_pas_le_flip_direction_a():
     """`EURIO_DB_READONLY` ne doit PAS être vidé par la route.
 
@@ -472,13 +500,18 @@ def test_un_compteur_irreductible_ne_pilote_pas_is_stale(conn):
 
     🔴 Mesuré après le premier rebuild complet, le 2026-08-24 : 8 classes
     restaient comptées, dont `fr-2017-…-rodin` avec 9 crops éligibles au SQL et
-    zéro exemplaire. La cause n'est pas la fraîcheur mais `floor_sim = 0,45` —
-    ces crops ne ressemblent pas assez à leur canonique pour servir d'ancre.
-    Aucun rebuild ne les prendra.
+    zéro exemplaire.
 
-    Le faire peser sur `is_stale` réclamait sans fin une heure de calcul sans
-    effet. Un indicateur qu'aucune action ne peut satisfaire apprend à être
-    ignoré — et emporte avec lui les trois autres, qui sont vrais.
+    ⚠️ **La CAUSE alors retenue — `floor_sim = 0,45` — ne tient pas au
+    remesurage** (réplique du 2026-08-24 23:52, build `53d22c38` à 20:41:15Z) :
+    les 9 crops de rodin ont été tranchés entre 20:42:48 et 20:43:37, soit 93 s
+    APRÈS ce build, et les 8 classes comptées sont toutes dans ce cas. Aucun
+    build ne les avait vus : c'était de la fraîcheur, pas un plancher.
+
+    Ce que ce test verrouille reste vrai et reste utile : ce compteur ne pilote
+    pas `is_stale`. Depuis D15 il ne regarde que les crops POSTÉRIEURS au build,
+    donc il peut retomber à zéro — le remettre dans `is_stale` redeviendrait
+    défendable, c'est un arbitrage PO, pas un effet de bord de test.
     """
     _build(conn, "2026-08-22T18:06:22+00:00")
     # Une classe avec un crop éligible, mais aucune ancre : le cas irréductible.

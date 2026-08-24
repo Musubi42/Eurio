@@ -51,7 +51,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Final
 
-from shared.bank_classes import bank_class_ids
+from shared.bank_classes import bank_class_ids, builder_class_key_by_eurio_id
 from shared.class_family import EMISSION_COMMUNE, emission_commune_group_ids, family_from_coin
 from shared.verdict_scope import (
     SUGGESTIONS_ANCHORS_KIND,
@@ -92,6 +92,14 @@ DEFAULT_TARGET: Final = 8
 #: plat ensuite. Au-delà, l'image ne sépare plus rien — le pays vient d'ailleurs.
 TARGET_EMISSION_COMMUNE: Final = 5
 
+#: Les statuts de résolution qu'un crop doit porter pour que le builder le
+#: retienne comme exemplaire (`training.foundation.anchors._VALIDATED_STATUSES`,
+#: recopié ici pour la même raison que `DEFAULT_CAP` : ce module doit s'importer
+#: sans torch). `tests/test_class_need.py` verrouille l'égalité des deux.
+BUILDER_VALIDATED_STATUSES: Final[tuple[str, ...]] = (
+    "manual", "auto_name", "auto_phash",
+)
+
 #: Les verdicts, dans l'ordre où ils sont évalués (exclusifs).
 BOTTLENECKS: Final[tuple[str, ...]] = ("pleine", "review", "scrape")
 
@@ -113,7 +121,12 @@ class ClassNeed:
     need: int                # max(0, target − have) — la BANQUE, cf. note
     bottleneck: str          # pleine | review | scrape
     n_train_eligible: int    # voie A, pour affichage seulement — JAMAIS pour le verdict
-    accepted_pending: int    # ACQUIS : validés, pas encore en banque (D8)
+    accepted_pending: int    # ACQUIS : validés, pas encore en banque (D8/D15)
+    #: Le MÊME fait vu par le MODÈLE : crops validés dont le top-1 DINO tombe
+    #: ici, quelle que soit l'étiquette humaine. Affichage seulement — il ne
+    #: décide de rien (D15). Il dit « le modèle croit que ces crops sont de
+    #: cette classe », ce qui est un signal de confusion, pas un acquis.
+    accepted_by_model: int = 0
     # L'EFFET DE CHAQUE FILTRE, jamais tu (O4). Ces trois comptes sont
     # EMBOÎTÉS dans l'ordre où le WHERE les applique :
     #     pending − n_hidden_by_era − n_hidden_by_country − n_hidden_by_denom
@@ -180,6 +193,12 @@ def bottleneck_for(
     calculé sur lui seul continue de servir une classe qu'on vient de remplir.
     C'est l'arête que FLOW-ADMIN §3 signale comme n'existant « sous aucune
     forme ». `need_only` seul ne suffit pas à la fermer.
+
+    ⛔ ET `accepted_pending` DOIT VENIR DE `_acquired_by_class`, jamais du
+    compte au top-1 DINO (D15). Un acquis qui ne se pose pas ferme une classe
+    pour rien : `lu-2025-…-throne-hologram` annonçait « +6 » avec zéro crop à
+    son nom (mesuré le 2026-08-24) — six exemplaires promis par le modèle, que
+    le rebuild n'aurait jamais donnés à cette classe.
 
     La cible reste la CIBLE (8, ou 5 en émission commune), jamais le plafond 10
     du builder — celui-ci reste exposé en `ClassNeed.cap` pour l'affichage.
@@ -248,12 +267,62 @@ def _train_key(eurio_id: str, design_group_id: str | None, is_commemorative) -> 
     return design_group_id or eurio_id
 
 
-def _accepted_pending_by_class(
+def _last_built_at(
     conn: sqlite3.Connection, anchors_kind: str, encoder_version: str
+) -> str | None:
+    """Quand la banque servie a été bâtie — `None` si elle ne l'a jamais été.
+
+    `dino_anchor_builds` d'abord (la trace du build), `dino_class_references`
+    en second : une base restaurée ou une banque bâtie avant que la trace
+    existe n'a que la seconde. Sans build, personne n'a encore rien refusé.
+    """
+    row = conn.execute(
+        "SELECT built_at FROM dino_anchor_builds "
+        " WHERE anchors_kind = ? AND encoder_version = ? "
+        " ORDER BY datetime(built_at) DESC LIMIT 1",
+        (anchors_kind, encoder_version),
+    ).fetchone() if _has_table(conn, "dino_anchor_builds") else None
+    if row is not None and row[0]:
+        return str(row[0])
+    row = conn.execute(
+        "SELECT MAX(datetime(built_at)) FROM dino_class_references "
+        " WHERE anchors_kind = ? AND encoder_version = ?",
+        (anchors_kind, encoder_version),
+    ).fetchone()
+    return str(row[0]) if row is not None and row[0] else None
+
+
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
+
+def _acquired_by_class(
+    conn: sqlite3.Connection, anchors_kind: str, encoder_version: str,
 ) -> dict[str, int]:
     """Les ACQUIS : validés par un humain, pas encore entrés en banque (D8).
 
-    Grain BANQUE, via `top1_eurio_id` — la même clé que `_pending_by_class`.
+    ⛔ CLÉ = CELLE DU BUILDER, PAS CELLE DU MODÈLE (D15, 2026-08-24).
+    Un crop devient exemplaire de la classe où l'HUMAIN l'a rangé
+    (`anchors._candidate_crops_for_class` : `image_assets.eurio_id IN members`),
+    jamais de celle où le modèle le voit. La première version de ce compte
+    lisait `top1_eurio_id` : elle promettait des exemplaires à des classes qui
+    n'en recevaient aucun, et comme `bottleneck_for` tranche sur
+    `have + accepted_pending`, elle les SORTAIT DU TRAVAIL. Mesuré le
+    2026-08-24 : `lu-2025-…-throne-hologram` annonçait « +6 acquis » avec zéro
+    crop à son nom. Le compte au top-1 n'a pas disparu — il est devenu
+    `accepted_by_model`, et il ne décide plus de rien.
+
+    Ce compte reste un MAJORANT de ce que le rebuild posera — le FPS et le
+    plancher de similarité tranchent au moment du build, sur des embeddings —
+    d'où `rebuild_would_place = Σ min(need, accepted_pending)` côté route, et
+    jamais la somme nue.
+
+    `anchors_kind` sert à savoir ce qui est DÉJÀ bâti ; `encoder_version` ne
+    sert qu'à dater le build servi (`_last_built_at`) — `dino_class_references.
+    asset_id` ne dépend pas de l'encodeur, et l'exiger dans le `NOT IN` ferait
+    rater les lignes des banques bâties avec un autre.
 
     CE QUE CE COMPTE RÉPARE
     -----------------------
@@ -262,21 +331,106 @@ def _accepted_pending_by_class(
     champ, `have` et `bottleneck` sont figés pendant toute une session de
     review, et la file ressert une classe qu'on vient de remplir.
 
-    LES QUATRE CONDITIONS, ET POURQUOI CHACUNE
-    ------------------------------------------
+    LES PORTES, ET POURQUOI CHACUNE
+    -------------------------------
+    Ce sont EXACTEMENT celles de `anchors._candidate_crops_for_class`, une à
+    une. Un compte plus large promet des exemplaires que le builder refusera ;
+    un compte plus étroit rouvre une classe déjà nourrie.
+
+    `eurio_id` connu du builder : cf. `builder_class_key_by_eurio_id`.
+    `face = 'obverse'`        : le revers commun n'apprend rien, le builder ne
+                                le regarde même pas.
+    `denom != 'not_2eur'`     : ce n'est pas une 2 €.
+    `resolution_status IN …`  : tranché (à la main ou par une automatisation
+                                qui écrit une étiquette), pas juste marqué.
     `training_eligible = 1`   : validé par un humain.
     `storage_status='present'`: le fichier existe encore.
-    `face != 'reverse'`       : le revers commun n'apprend rien, le builder
-                                l'ignore — le compter promettrait un exemplaire
-                                qui n'arrivera jamais.
     `asset_id NOT IN (banque)`: PAS ENCORE bâti. C'est tout l'objet du champ ;
                                 sans cette clause on recompterait ce que `have`
                                 compte déjà, et une classe pleine paraîtrait
                                 doublement pleine.
+    `résolu APRÈS le build`   : cf. ci-dessous — c'est la porte que le SQL du
+                                builder ne peut pas exprimer.
 
-    Mesuré le 2026-08-22 (banque a55e6594) : 1 451 crops acceptés hors banque,
-    dont 76 seulement poseraient un exemplaire — le reste tombe dans des
-    classes déjà à leur cible. Ce rapport EST la mesure de la sur-review.
+    ⛔ CE QU'UN BUILD A DÉJÀ REFUSÉ N'EST PLUS UN ACQUIS.
+    Les six portes ci-dessus décrivent les crops que le builder ENVISAGE, pas
+    ceux qu'il POSE : il borne ensuite le pool (`MAX_CANDIDATES_PER_CLASS`),
+    n'en garde que `exemplars_per_class` par FPS, et surtout écarte par
+    `DEFAULT_EXEMPLAR_FLOOR_SIM = 0,45` les crops trop éloignés du canonique.
+    Un crop éligible que le dernier build n'a pas pris a donc été REFUSÉ — le
+    prochain le refusera de la même façon, sur la même donnée.
+
+    Sans cette porte, ces crops promettent éternellement un `have` qui
+    n'arrivera pas : la classe passe `pleine`, sort du travail, et n'en revient
+    jamais — le verdict devient un état absorbant que rien ne peut satisfaire.
+    C'est la même leçon que `store/dino_drift.is_stale` : un indicateur qu'aucune
+    action ne fait bouger apprend à être ignoré.
+
+    La porte se referme d'elle-même : au rebuild suivant, un crop pris sort par
+    `NOT IN (banque)`, un crop refusé passe derrière `built_at`. Aucune écriture,
+    aucun état à tenir.
+
+    Mesuré sur la réplique du 2026-08-24 23:52 (build `53d22c38`, 20:41:15Z) :
+    1 481 crops éligibles hors banque, dont **45 seulement postérieurs au
+    build** — les 1 436 autres ont déjà été soumis à un build complet.
+    `rebuild_would_place` : 42 → 40, et surtout aucune classe ne peut plus être
+    fermée par des crops déjà refusés.
+
+    ⛔ `datetime()` DES DEUX CÔTÉS, jamais une comparaison de chaînes. Trois
+    formats d'horodatage cohabitent dans cette base — `'2026-08-23 17:51:31'`
+    (assets), `'2026-08-24T20:42:48Z'` (résolutions), `'2026-08-24T20:41:15+00:00'`
+    (builds). L'espace vaut 0x20, le `T` vaut 0x54 : comparer les chaînes classe
+    tout crop résolu comme antérieur à tout build du même jour. Le piège a déjà
+    coûté 12 454 faux « périmés » à `store/encoder_bench.py`.
+    """
+    key_by_eid = builder_class_key_by_eurio_id(conn)
+    built_at = _last_built_at(conn, anchors_kind, encoder_version)
+    status_ph = ",".join("?" * len(BUILDER_VALIDATED_STATUSES))
+    # `resolved_at` est l'instant où l'humain a tranché ; `fetched_at` sert de
+    # filet pour les rares crops sans résolution datée (11 sur 1 481 mesurés).
+    depuis = (
+        " AND datetime(COALESCE(a.resolved_at, a.fetched_at)) > datetime(?)"
+        if built_at else ""
+    )
+    rows = conn.execute(
+        "SELECT a.eurio_id, COUNT(*) "
+        "  FROM image_assets a "
+        " WHERE a.eurio_id IS NOT NULL "
+        "   AND a.face = 'obverse' "
+        "   AND (a.denom IS NULL OR a.denom != 'not_2eur') "
+        f"   AND a.resolution_status IN ({status_ph}) "
+        "   AND a.training_eligible = 1 "
+        "   AND a.storage_status = 'present' "
+        "   AND a.id NOT IN (SELECT asset_id FROM dino_class_references "
+        "                     WHERE anchors_kind = ? AND asset_id IS NOT NULL) "
+        + depuis +
+        " GROUP BY a.eurio_id",
+        (*BUILDER_VALIDATED_STATUSES, anchors_kind,
+         *((built_at,) if built_at else ())),
+    ).fetchall()
+    out: dict[str, int] = {}
+    for eurio_id, n in rows:
+        class_id = key_by_eid.get(eurio_id)
+        if class_id is None:
+            continue  # pièce dont le builder ne fait aucune classe
+        out[class_id] = out.get(class_id, 0) + int(n)
+    return out
+
+
+def _accepted_by_model_by_class(
+    conn: sqlite3.Connection, anchors_kind: str, encoder_version: str
+) -> dict[str, int]:
+    """Le même fait vu par le MODÈLE — affichage seulement (D15).
+
+    Crops validés, hors banque, comptés sous `top1_eurio_id` : « le modèle
+    croit que ces crops sont de cette classe ». C'est le compte qui servait de
+    verdict jusqu'au 2026-08-24 ; il reste utile, mais comme SIGNAL et non
+    comme acquis. Un écart franc avec `accepted_pending` sur une classe dit
+    presque toujours la même chose : deux variantes que l'image ne sépare pas
+    (`…`, `…-hologram`, `…-coloured`).
+
+    ⛔ Ne le remets JAMAIS dans `bottleneck_for` : ces exemplaires-là n'iront
+    pas dans cette classe (cf. `_acquired_by_class`).
     """
     rows = conn.execute(
         "SELECT p.top1_eurio_id, COUNT(*) "
@@ -408,7 +562,8 @@ def _build(
     if not class_ids:
         return []
     pending = _pending_by_class(conn, anchors_kind, encoder_version)
-    accepted = _accepted_pending_by_class(conn, anchors_kind, encoder_version)
+    accepted = _acquired_by_class(conn, anchors_kind, encoder_version)
+    by_model = _accepted_by_model_by_class(conn, anchors_kind, encoder_version)
     train = _train_eligible_by_key(conn)
     coins = _coins_for(conn, class_ids)
     ec_groups = emission_commune_group_ids(conn)
@@ -462,6 +617,7 @@ def _build(
             ),
             n_train_eligible=train.get(_train_key(class_id, dgid, is_commemo), 0),
             accepted_pending=n_accepted,
+            accepted_by_model=by_model.get(class_id, 0),
             n_hidden_by_era=n_era,
             n_hidden_by_country=n_country,
             n_hidden_by_denom=n_denom,

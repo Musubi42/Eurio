@@ -25,7 +25,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, asdict
 
-from shared.bank_classes import bank_class_ids
+from shared.bank_classes import builder_class_key_by_eurio_id
+from shared.class_need import BUILDER_VALIDATED_STATUSES
 
 
 @dataclass(frozen=True)
@@ -44,9 +45,10 @@ class DinoDrift:
     # Ce qui a bougé depuis qu'elle a été bâtie.
     n_crops_validated_since: int
     n_classes_touched_since: int
-    #: Classes à crops éligibles mais sans exemplaire en banque. ⚠️ Ce nombre a
-    #: un PLANCHER IRRÉDUCTIBLE : `floor_sim` écarte les crops trop éloignés de
-    #: leur canonique. Il ne pilote donc PAS `is_stale` — cf. sa docstring.
+    #: Classes qu'un rebuild ferait passer de « rendu Numista seul » à « vraie
+    #: photo ». Ne compte QUE des crops que le build servi n'a jamais vus —
+    #: ceux qu'il a déjà refusés (plancher `floor_sim`) en sont exclus, sinon
+    #: le nombre ne peut pas retomber à zéro. Cf. la note de calcul plus bas.
     n_classes_would_gain_anchor: int
 
     # Ce qui est déjà incohérent avec elle.
@@ -66,21 +68,27 @@ class DinoDrift:
         état neutre, c'est le pire des états — et c'est précisément celui où un
         écart de zéro serait le plus trompeur.
 
-        🔴 `n_classes_would_gain_anchor` n'entre PAS dans ce calcul, et c'est le
-        cœur du correctif du 2026-08-24. Après un rebuild complet il restait 8
-        classes comptées — dont `fr-2017-…-rodin`, 9 crops éligibles au SQL et
-        aucun exemplaire. La cause n'est pas la fraîcheur mais le plancher de
-        similarité (`floor_sim = 0,45`) : ces crops ne ressemblent pas assez à
-        leur canonique pour servir d'ancre. Aucun rebuild ne les prendra.
+        🔴 `n_classes_would_gain_anchor` n'entre PAS dans ce calcul depuis le
+        correctif du 2026-08-24 : il ne pouvait pas retomber à zéro, donc il
+        rendait la carte définitivement rouge et réclamait sans fin une heure de
+        calcul sans effet. Un indicateur qu'aucune action ne peut satisfaire
+        n'incite pas à agir : il apprend à être ignoré, et emporte avec lui les
+        trois autres, qui sont vrais.
 
-        Les faire peser sur `is_stale` rendait la carte définitivement rouge et
-        réclamait sans fin une heure de calcul sans effet. Un indicateur qu'aucune
-        action ne peut satisfaire n'incite pas à agir : il apprend à être ignoré,
-        et emporte avec lui les trois autres, qui sont vrais.
+        ⚠️ **Le diagnostic d'alors mérite d'être rejoué.** Il attribuait ce
+        plancher au seuil de similarité (`floor_sim = 0,45`) : « ces crops ne
+        ressemblent pas assez à leur canonique, aucun rebuild ne les prendra ».
+        Remesuré sur la réplique du 2026-08-24 23:52, build `53d22c38`
+        (20:41:15Z), les 8 classes comptées ont **toutes** au moins un crop
+        tranché APRÈS ce build — `fr-2017-…-rodin` a ses 9 crops résolus entre
+        20:42:48 et 20:43:37, soit 93 secondes plus tard. Aucun build ne les a
+        jamais vus : ce n'était pas un plancher, c'était de la fraîcheur.
 
-        Le nombre reste servi — il dit quelque chose de RÉEL (« ces classes ont
-        des photos que le modèle ne reconnaît pas comme les leurs »), mais c'est
-        un sujet d'enrichissement, pas de rebuild.
+        Le compteur ci-dessous ne regarde donc plus que les crops POSTÉRIEURS au
+        build servi. Ainsi corrigé, il retombe à zéro après un rebuild — un crop
+        pris sort par la banque, un crop refusé passe derrière `built_at`. Le
+        remettre dans `is_stale` redevient donc défendable ; ce n'est pas à ce
+        commit de le décider (l'arbitrage est PO).
         """
         return (
             self.built_at is None
@@ -206,33 +214,50 @@ def dino_drift(
         )
     }
     # ⛔ Le prédicat est le MIROIR de la sélection du builder
-    # (`training/foundation/anchors._eligible_crops`), pas une approximation.
+    # (`anchors._candidate_crops_for_class`), pas une approximation — et il ne
+    # la recopie plus : `BUILDER_VALIDATED_STATUSES` est la constante de
+    # `shared.class_need`, verrouillée sur `anchors._VALIDATED_STATUSES` par
+    # `tests/test_class_need.py`. Deux copies de « ce que le builder accepte »
+    # divergent, et la divergence est muette.
     #
-    # 🔴 Corrigé après le premier vrai rebuild, le 2026-08-24. Il disait
-    # « training_eligible ET présent ET pas un revers », c'est-à-dire bien plus
-    # large que ce que le builder accepte : `face = 'obverse'` STRICTEMENT (un
-    # `face IS NULL` ne passe pas), `denom != 'not_2eur'`, et un
-    # `resolution_status` validé. Résultat : 9 classes restaient comptées comme
-    # « gagneraient une photo » APRÈS un rebuild frais — donc `is_stale` restait
-    # vrai à vie et la carte réclamait éternellement un travail d'une heure qui
-    # n'y changeait rien. C'est le deuxième compteur de ce module à ne pas
-    # pouvoir retomber à zéro ; le premier avait été trouvé en revue.
+    # 🔴 Corrigé après le premier vrai rebuild, le 2026-08-24 : le prédicat
+    # disait « training_eligible ET présent ET pas un revers », bien plus large
+    # que ce que le builder accepte.
     #
-    # Reste hors de portée du SQL : `floor_sim` (0,45), qui écarte après coup un
-    # crop trop éloigné du canonique. Un petit résidu irréductible est donc
-    # possible, et c'est une vraie information — ces classes ont des crops que
-    # le modèle ne reconnaît pas comme les leurs.
-    n_gagnantes = 0
-    for (eurio_id,) in conn.execute(
-        "SELECT DISTINCT a.eurio_id FROM image_assets a "
-        " WHERE a.training_eligible = 1 AND a.storage_status = 'present' "
-        "   AND a.eurio_id IS NOT NULL "
-        "   AND a.face = 'obverse' "
-        "   AND (a.denom IS NULL OR a.denom != 'not_2eur') "
-        "   AND a.resolution_status IN ('manual', 'auto_name', 'auto_phash')"
-    ):
-        if not (set(bank_class_ids(conn, eurio_id)) & exemplaires):
-            n_gagnantes += 1
+    # 🔴 Complété le 2026-08-24 (D15) : ne comptent que les crops tranchés
+    # APRÈS le build servi. Un crop que ce build a vu et n'a pas pris a été
+    # refusé — plancher `floor_sim`, plafond de la classe, ou FPS qui ne l'a pas
+    # choisi — et le prochain le refusera pareil. Sans cette porte le compteur
+    # ne peut pas retomber à zéro : c'est exactement le défaut qui a sorti ce
+    # nombre de `is_stale`. Avec elle, il redevient satisfiable.
+    #
+    # ⛔ La maille est `class_id`, jamais `eurio_id` : la banque n'indexe pas
+    # une COURANTE sous son propre identifiant mais sous celui du représentant
+    # de son groupe (`fr-1999-…` est en banque, `fr-2007-…` non). La traduction
+    # passe par `shared.bank_classes` — ici par la table complète, qui rend en
+    # deux requêtes ce que `bank_class_ids` rendait en une par ligne, et qui
+    # compte des CLASSES et non des pièces (deux membres d'une même ère sans
+    # exemplaire comptaient pour deux).
+    key_by_eid = builder_class_key_by_eurio_id(conn)
+    status_ph = ",".join("?" * len(BUILDER_VALIDATED_STATUSES))
+    depuis = (
+        " AND datetime(COALESCE(a.resolved_at, a.fetched_at)) > datetime(?)"
+        if built_at else ""
+    )
+    classes_gagnantes = {
+        key_by_eid[eurio_id]
+        for (eurio_id,) in conn.execute(
+            "SELECT DISTINCT a.eurio_id FROM image_assets a "
+            " WHERE a.training_eligible = 1 AND a.storage_status = 'present' "
+            "   AND a.eurio_id IS NOT NULL "
+            "   AND a.face = 'obverse' "
+            "   AND (a.denom IS NULL OR a.denom != 'not_2eur') "
+            f"   AND a.resolution_status IN ({status_ph})" + depuis,
+            (*BUILDER_VALIDATED_STATUSES, *((built_at,) if built_at else ())),
+        )
+        if eurio_id in key_by_eid
+    }
+    n_gagnantes = len(classes_gagnantes - exemplaires)
 
     return DinoDrift(
         anchors_kind=anchors_kind,

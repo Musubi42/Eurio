@@ -113,3 +113,70 @@ def bank_class_ids_for_class(
     if not members:
         return [class_id]
     return bank_class_ids_for_many(conn, members)
+
+
+def builder_class_key_by_eurio_id(conn: sqlite3.Connection) -> dict[str, str]:
+    """Sous quel ``class_id`` le BUILDER rangera un crop, pièce par pièce.
+
+    C'est la fonction inverse de `bank_class_ids` : celle-ci part d'une pièce
+    (l'étiquette HUMAINE d'un crop, ``image_assets.eurio_id``) et rend la classe
+    de banque qui recevra l'exemplaire — commémorative : elle-même ; courante :
+    le représentant de son groupe de dessin.
+
+    ⛔ POURQUOI ELLE NE PEUT PAS ÊTRE REMPLACÉE PAR ``top1_eurio_id``.
+    La banque ne range pas un crop là où le MODÈLE le voit, mais là où l'HUMAIN
+    l'a mis (`training/foundation/anchors._candidate_crops_for_class` filtre sur
+    ``image_assets.eurio_id IN members``). Compter des acquis sur le top-1
+    promet des exemplaires à une classe qui n'en recevra aucun : mesuré le
+    2026-08-24, `lu-2025-…-throne-hologram` annonçait « +6 acquis » avec ZÉRO
+    crop à son nom (`/coins/…-hologram/assets` → `total: 0`), assez pour la
+    déclarer *pleine* et la sortir du travail.
+
+    Une pièce absente du dictionnaire est une pièce dont le builder ne fait
+    AUCUNE classe : une courante doublon (``canonical_eurio_id`` non nul), que
+    ``_select_2eur_standard_groups`` écarte de ses membres. Ses crops ne
+    deviendront jamais des exemplaires — les compter serait la même promesse
+    creuse.
+
+    Une commémorative se rend toujours elle-même, même sans ``numista_id``.
+    Le builder n'en ferait pas de spec, mais une classe absente de la banque
+    n'est de toute façon lue par personne (`class_need._build` n'itère que sur
+    ce que ``dino_class_references`` contient) : ajouter la condition ici ne
+    ferait que créer un écart de plus entre deux modules.
+
+    Miroir de ``anchors._class_specs_2eur_all`` — même WHERE, même tri. Les
+    deux doivent changer ensemble ; `tests/test_class_need.py` verrouille
+    l'essentiel (un membre d'ère rend son représentant) et
+    `BUILDER_VALIDATED_STATUSES` verrouille les statuts.
+    """
+    # Le représentant de chaque groupe standard : même WHERE et même ORDER BY
+    # que `_select_2eur_standard_groups`, donc même premier membre.
+    reps: dict[str, str] = {}
+    for row in conn.execute(
+        "SELECT COALESCE(design_group_id, eurio_id) AS grp, eurio_id "
+        "  FROM coins "
+        " WHERE face_value = 2.0 AND is_commemorative = 0 "
+        "   AND canonical_eurio_id IS NULL "
+        " ORDER BY year ASC, eurio_id ASC"
+    ):
+        grp = row[0] if not isinstance(row, sqlite3.Row) else row["grp"]
+        eid = row[1] if not isinstance(row, sqlite3.Row) else row["eurio_id"]
+        reps.setdefault(grp, eid)
+
+    out: dict[str, str] = {}
+    for row in conn.execute(
+        "SELECT eurio_id, COALESCE(design_group_id, eurio_id) AS grp, "
+        "       is_commemorative, numista_id, canonical_eurio_id "
+        "  FROM coins WHERE face_value = 2.0"
+    ):
+        vals = tuple(row)
+        eid, grp, is_commemo, _numista_id, canonical_eid = vals[:5]
+        if is_commemo:
+            out[eid] = eid
+            continue
+        if canonical_eid is not None:
+            continue
+        rep = reps.get(grp)
+        if rep is not None:
+            out[eid] = rep
+    return out

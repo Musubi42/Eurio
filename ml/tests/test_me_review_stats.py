@@ -57,15 +57,22 @@ def _coin(conn, eid, country):
     )
 
 
-def _asset(conn, ref, *, eligible=0, face=None, status="present"):
+def _asset(conn, ref, *, eligible=0, face=None, status="present", etiquette=None):
+    """Un crop. `etiquette` = la classe que la décision a écrite dans
+    `image_assets.eurio_id` — c'est elle qui fait l'ACQUIS (D15), pas le top-1
+    du modèle. Une décision réelle l'écrit toujours ; un crop non tranché, non.
+    """
     conn.execute(
         "INSERT INTO source_images (id, source, source_ref, storage_path)"
         " VALUES (?,'ebay',?,'x.jpg')", (f"si-{ref}", f"r-{ref}"),
     )
     conn.execute(
         "INSERT INTO image_assets (id, source_image_id, storage_path,"
-        " storage_status, training_eligible, face) VALUES (?,?,'c.jpg',?,?,?)",
-        (f"a-{ref}", f"si-{ref}", status, eligible, face),
+        " storage_status, training_eligible, face, eurio_id, resolution_status)"
+        " VALUES (?,?,'c.jpg',?,?,?,?,?)",
+        (f"a-{ref}", f"si-{ref}", status, eligible,
+         face if face is not None else ("obverse" if etiquette else None),
+         etiquette, "manual" if etiquette else "pending_match"),
     )
     return f"a-{ref}"
 
@@ -96,9 +103,15 @@ def _bank(conn, class_id, n_fps):
         )
 
 
-def _decided(conn, ref, top1, *, by, eligible=1, face=None):
-    """Une décision ARRIVÉE au canonique : `decided_by` porte son auteur."""
-    aid = _asset(conn, ref, eligible=eligible, face=face)
+def _decided(conn, ref, top1, *, by, eligible=1, face=None, etiquette=None):
+    """Une décision ARRIVÉE au canonique : `decided_by` porte son auteur.
+
+    Elle écrit aussi l'étiquette du crop — par défaut celle que le modèle
+    proposait (`top1`), qui est le cas nominal : l'opérateur accepte la
+    suggestion. `etiquette=` pour le cas où il tranche autrement.
+    """
+    aid = _asset(conn, ref, eligible=eligible, face=face,
+                 etiquette=etiquette if etiquette is not None else top1)
     _predict(conn, aid, top1)
     conn.execute(
         "INSERT INTO review_queue (id, image_asset_id, status, decided_by)"

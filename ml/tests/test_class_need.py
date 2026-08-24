@@ -88,7 +88,8 @@ def _bank(conn, class_id, n_fps, *, eurio_id=None, kind=KIND, enc=ENC, canonical
     conn.commit()
 
 
-def _asset(conn, ref, *, source="ebay", eurio_id=None, eligible=0, storage="present", face=None):
+def _asset(conn, ref, *, source="ebay", eurio_id=None, eligible=0, storage="present",
+           face=None, status="pending_match"):
     conn.execute(
         "INSERT OR IGNORE INTO source_images (id, source, source_ref, storage_path) "
         "VALUES (?,?,?,'x.jpg')",
@@ -96,8 +97,8 @@ def _asset(conn, ref, *, source="ebay", eurio_id=None, eligible=0, storage="pres
     )
     conn.execute(
         "INSERT INTO image_assets (id, source_image_id, storage_path, storage_status,"
-        " eurio_id, training_eligible, face) VALUES (?,?,?,?,?,?,?)",
-        (f"a-{ref}", f"si-{ref}", "c.jpg", storage, eurio_id, eligible, face),
+        " eurio_id, training_eligible, face, resolution_status) VALUES (?,?,?,?,?,?,?,?)",
+        (f"a-{ref}", f"si-{ref}", "c.jpg", storage, eurio_id, eligible, face, status),
     )
     return f"a-{ref}"
 
@@ -351,9 +352,23 @@ def test_le_label_est_lisible(conn):
 # poseraient un exemplaire — le reste tombe dans des classes déjà à leur cible.
 
 
-def _accepte(conn, ref, top1, *, storage="present", face=None):
-    """Un crop VALIDÉ par un humain, avec sa prédiction — pas encore en banque."""
-    aid = _asset(conn, ref, eligible=1, storage=storage, face=face)
+def _accepte(conn, ref, top1, *, storage="present", face="obverse", etiquette=None,
+             status="manual", resolu_le="2999-01-01T00:00:00Z"):
+    """Un crop VALIDÉ par un humain, avec sa prédiction — pas encore en banque.
+
+    `etiquette` = ce que l'HUMAIN a décidé (`image_assets.eurio_id`), qui décide
+    de la classe où le builder posera l'exemplaire. `top1` = ce que le MODÈLE
+    voit. Par défaut les deux coïncident ; les séparer est tout l'objet de D15.
+    """
+    aid = _asset(
+        conn, ref, eligible=1, storage=storage, face=face,
+        eurio_id=etiquette if etiquette is not None else top1, status=status,
+    )
+    # QUAND l'humain a tranché décide si le build servi a déjà pu le refuser
+    # (D15). Par défaut : après — c'est le cas nominal, on trie après avoir
+    # bâti. La date lointaine évite de dépendre de l'heure du test.
+    conn.execute("UPDATE image_assets SET resolved_at = ? WHERE id = ?",
+                 (resolu_le, aid))
     conn.execute(
         "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind,"
         " anchors_count, top_k_json, top1_eurio_id, top1_sim, spread)"
@@ -420,7 +435,12 @@ def test_un_crop_deja_en_banque_n_est_pas_compte_deux_fois(conn):
         "SELECT asset_id FROM dino_class_references "
         " WHERE method='fps' AND rank=0 AND class_id='fr-2016-c'",
     ).fetchone()[0]
-    conn.execute("UPDATE image_assets SET training_eligible=1 WHERE id=?", (aid,))
+    # Toutes les portes du builder franchies : le SEUL motif d'exclusion doit
+    # être « il est déjà en banque ». Sans cette ligne, le test passerait parce
+    # que l'asset n'a pas d'étiquette — et ne dirait plus rien.
+    conn.execute(
+        "UPDATE image_assets SET training_eligible=1, eurio_id='fr-2016-c',"
+        " face='obverse', resolution_status='manual' WHERE id=?", (aid,))
     conn.execute(
         "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind,"
         " anchors_count, top_k_json, top1_eurio_id, top1_sim, spread)"
@@ -450,11 +470,12 @@ def test_les_acquis_appliquent_les_memes_portes_que_le_builder(conn):
     assert n.accepted_pending == 1, "seul le crop exploitable compte"
 
 
-def test_les_acquis_ne_melangent_pas_les_banques(conn):
-    """Même exigence que `pending` : le couple (kind, encoder) est obligatoire."""
+def test_le_compte_du_modele_ne_melange_pas_les_banques(conn):
+    """`accepted_by_model` lit des PRÉDICTIONS : le couple (kind, encoder) est
+    obligatoire, sinon il compte l'avis d'une autre banque."""
     _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
     _bank(conn, "fr-2016-c", 1)
-    aid = _asset(conn, "autre", eligible=1)
+    aid = _asset(conn, "autre", eligible=1, face="obverse", status="manual")
     conn.execute(
         "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind,"
         " anchors_count, top_k_json, top1_eurio_id, top1_sim, spread)"
@@ -465,7 +486,122 @@ def test_les_acquis_ne_melangent_pas_les_banques(conn):
     conn.commit()
 
     n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
-    assert n.accepted_pending == 0
+    assert n.accepted_by_model == 0
+
+
+# ── D15 · l'acquis se compte à la clé du BUILDER, pas à celle du modèle ──────
+#
+# Le défaut réparé (mesuré le 2026-08-24) : `lu-2025-…-throne-hologram`
+# annonçait « +6 acquis » avec ZÉRO crop à son nom
+# (`/coins/…-hologram/assets` → `total: 0`). Six exemplaires promis par le
+# top-1 DINO, que le rebuild n'aurait jamais donnés à cette classe — et assez
+# pour la déclarer `pleine` et la sortir du travail.
+
+
+def test_l_acquis_va_a_la_classe_de_l_humain_pas_a_celle_du_modele(conn):
+    """LE test de D15. Le crop est étiqueté `fr-2016-commemo`, le modèle le voit
+    en `lu-2019-commemo` : c'est la première qui l'aura."""
+    _bank(conn, "fr-2016-commemo", 1)
+    _bank(conn, "lu-2019-commemo", 1)
+    _accepte(conn, "c1", "lu-2019-commemo", etiquette="fr-2016-commemo")
+
+    by = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))
+    assert by["fr-2016-commemo"].accepted_pending == 1, "le builder le posera ICI"
+    assert by["lu-2019-commemo"].accepted_pending == 0, (
+        "cette classe n'a aucun crop à son nom : lui promettre un exemplaire la "
+        "ferme pour rien"
+    )
+    # L'avis du modèle n'est pas perdu — il est juste rangé où il ne décide rien.
+    assert by["lu-2019-commemo"].accepted_by_model == 1
+    assert by["fr-2016-commemo"].accepted_by_model == 0
+
+
+def test_le_verdict_ignore_le_compte_du_modele(conn):
+    """7 en banque + 1 exemplaire que SEUL le modèle attribue = toujours 7.
+
+    Mutation attendue : remettre `accepted_by_model` dans `bottleneck_for` doit
+    faire rougir ce test.
+    """
+    _bank(conn, "lu-2019-commemo", 7)
+    _bank(conn, "fr-2016-commemo", 1)
+    _open(conn, "encore", "lu-2019-commemo")
+    _accepte(conn, "c1", "lu-2019-commemo", etiquette="fr-2016-commemo")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["lu-2019-commemo"]
+    assert (n.have, n.accepted_pending, n.accepted_by_model) == (7, 0, 1)
+    assert n.bottleneck == "review", "il manque toujours un VRAI exemplaire"
+
+
+def test_l_acquis_d_un_membre_va_au_representant(conn):
+    """Un crop étiqueté `it-2008-std` nourrit la classe `it-2002-std` — c'est
+    l'ère entière que le builder entraîne, sous son représentant."""
+    _bank(conn, "it-2002-std", 2)
+    _accepte(conn, "c1", "it-2002-std", etiquette="it-2008-std")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["it-2002-std"]
+    assert n.accepted_pending == 1
+
+
+def test_l_acquis_applique_les_statuts_du_builder(conn):
+    """Un crop `needs_review` est marqué, pas tranché : le builder l'ignore."""
+    _bank(conn, "fr-2016-commemo", 1)
+    _accepte(conn, "tranche", "fr-2016-commemo")
+    _accepte(conn, "marque", "fr-2016-commemo", status="needs_review")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-commemo"]
+    assert n.accepted_pending == 1
+
+
+def test_un_crop_que_le_build_a_deja_refuse_n_est_plus_un_acquis(conn):
+    """LE second test de D15 — celui du plancher de similarité.
+
+    Un crop éligible au SQL que le dernier build n'a PAS pris a été refusé
+    (`floor_sim = 0,45`, ou le FPS ne l'a pas choisi). Le prochain build le
+    refusera pareil, sur la même donnée. Le compter promet un `have` qui
+    n'arrivera jamais : la classe passe `pleine`, sort du travail, et n'en
+    revient plus — un état absorbant que rien ne peut satisfaire.
+
+    Mesuré le 2026-08-24 : 1 481 crops éligibles hors banque, 45 seulement
+    postérieurs au build servi.
+    """
+    _bank(conn, "fr-2016-commemo", 1)
+    conn.execute(
+        "UPDATE dino_class_references SET built_at = '2026-08-24T20:41:15+00:00'"
+    )
+    _accepte(conn, "avant", "fr-2016-commemo", resolu_le="2026-08-24T09:00:00Z")
+    _accepte(conn, "apres", "fr-2016-commemo", resolu_le="2026-08-24T21:00:00Z")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-commemo"]
+    assert n.accepted_pending == 1, "seul celui qu'aucun build n'a encore vu"
+
+
+def test_la_date_du_build_se_compare_en_datetime_pas_en_chaine(conn):
+    """Le piège des trois formats, déjà payé 12 454 fois par `encoder_bench`.
+
+    `' '` vaut 0x20 et `'T'` vaut 0x54 : `'2026-08-24T21:00:00Z' >
+    '2026-08-24 20:41:15'` en chaîne aussi bien qu'en date, mais
+    `'2026-08-24 21:00:00' > '2026-08-24T20:41:15+00:00'` est FAUX en chaîne et
+    VRAI en date. Ce test prend la seconde forme : sans `datetime()` des deux
+    côtés, l'acquis disparaît.
+    """
+    _bank(conn, "fr-2016-commemo", 1)
+    conn.execute(
+        "UPDATE dino_class_references SET built_at = '2026-08-24T20:41:15+00:00'"
+    )
+    _accepte(conn, "apres", "fr-2016-commemo", resolu_le="2026-08-24 21:00:00")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-commemo"]
+    assert n.accepted_pending == 1
+
+
+def test_les_statuts_valides_recopient_ceux_du_builder():
+    """`BUILDER_VALIDATED_STATUSES` recopie `anchors._VALIDATED_STATUSES` (torch).
+
+    Les deux doivent changer ensemble : élargir l'un sans l'autre ferait
+    promettre des exemplaires que le build refuse.
+    """
+    anchors = pytest.importorskip("training.foundation.anchors")
+    assert cn.BUILDER_VALIDATED_STATUSES == anchors._VALIDATED_STATUSES  # noqa: SLF001
 
 
 def test_bottleneck_for_accepte_les_acquis_en_argument():
