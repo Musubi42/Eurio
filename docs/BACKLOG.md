@@ -63,6 +63,28 @@
 | Q5 | **Recette d'un PAT réel bout en bout** (F4) | Génération + collage + appel authentifié, jamais joué en vrai | `archive/auth-redesign/PAT-WORKFLOW.md` |
 | Q6 | **Chemins post-rename `eurio_id`** | Vérifier que `ml/datasets/` colle au layout actuel, et confirmer le freeze auto de `cohort.status` vs `CohortDetailPage.vue` | `archive/cohort-capture-flow/` |
 
+## Doc — le reliquat de la revue du 2026-08-25
+
+Une revue adverse de la doc active a trouvé 58 affirmations fausses. Les **hautes et les
+moyennes sont corrigées** (commits `b4d81d2c`, `3e8c6bc4`). Restent ~28 items de gravité
+basse, sans impact sur l'action :
+
+| # | Item | Détail |
+|---|---|---|
+| DOC1 | **Numéros de ligne dérivés** | ~10 pointeurs `fichier:ligne` ont bougé de quelques dizaines de lignes (`parcours.md:72,81`, `adr/008:41,74`, `adr/004:11,57`, `eurio-enrichment:151`, `eurio-review:138`, `eurio-enrichment:63`). Le fichier et le symbole restent justes — un `grep` retrouve la cible |
+| DOC2 | **Chemins morts ou déplacés** | `architecture/README.md:243` cite `ml/swagger.yaml` (supprimé par `a5e6811d`) · `adr/004:172` cite un `datasets-minio-migration.md` inexistant · `parcours.md:83` `foundation/preflight.py` → `ml/training/foundation/preflight.py` · `eurio-backup:117` « `flake.nix` ligne 23 » → `nix/eurio-vps.nix:3-19` |
+| DOC3 | **Comptes à rafraîchir** | `eurio-enrichment:201` « 1533 ancres, 182 classes » → 1391/269 · `eurio-data-writes:82` « huit ou neuf SQLite » → 12 · `eurio-banque:786` dit `encoder_bench_runs` inexistante — elle existe (vide) · `adr/008:18` attend une clé `backbone` dans `model_meta.json`, absente · durée du drill backup 28 min vs ~1 h 15 selon la source, staging 7 Go vs 6,6 Go vs 6,130 GiB mesurés |
+| DOC4 | **`backup-pipeline/HANDOFF-NEXT-SESSION.md` est le plus périmé du chantier** | Il annonce « lots 0 à 4, **23 décisions** » quand `DECISIONS.md` en compte 32 et que le lot 6 est clos. Or `CLAUDE.md` le désigne comme **le hub** : le doc d'entrée est le moins à jour des trois |
+| DOC5 | **Orphelins résiduels** | `hardening-2026-07/HANDOFF.md`, `giga-cohorte/AUDIT-COHORTE.md`, `coin-richness/SESSION-KICKOFF-V3-V4.md`, `backup-pipeline/HANDOFF-VPS-restauration.md` ne sont référencés nulle part. La table des portes d'entrée de `work-in-progress/README.md` en couvre une partie ; le vrai remède est un `README` par chantier |
+| DOC6 | **`ml/state/schema.sql` n'est pas le schéma de vérité qu'il prétend être** | 15 tables du canonique en sont absentes, dont **toute la surface auth d'[ADR-010](./adr/010-authentik-oidc-et-pat.md)** (`users`, `roles`, `user_roles`, `pat_tokens`, `auth_audit`) plus `sync_outbox`, `sync_tombstones`, `coin_confusion_map` et l'i18n. `CLAUDE.md:296` le présente pourtant comme la source. **Le plus gênant de la liste** : il fait croire à une source unique qui n'en est pas une |
+| DOC7 | **`eurio-review` : le gating R0bis est incomplet et personne ne le dit** | La skill annonce « les cinq premières routes de review sont `meta.heavy` » ; seules `review/auto-accept` et `review/recover` le sont. Recoupe le finding F04 de [`hardening-2026-07/ETAT-2026-08-25.md`](./work-in-progress/hardening-2026-07/ETAT-2026-08-25.md) |
+
+> La revue n'a trouvé **aucun lien mort** sur 88 liens d'ADR et les 90 fichiers des 13
+> chantiers. Et `docs/BACKLOG.md` comme `architecture/dette-de-stockage.md` se sont
+> vérifiés au chiffre près — leurs seules erreurs venaient d'items recopiés de chantiers
+> archivés **sans relire le code**. C'est le mode de défaillance à surveiller : pas
+> l'écriture, la recopie.
+
 ## Ce qui est explicitement gelé — ne pas reprendre en l'état
 
 | Item | Pourquoi |
