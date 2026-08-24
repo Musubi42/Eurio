@@ -278,3 +278,56 @@ def test_les_classes_gagnantes_se_comptent_a_la_maille_classe(conn):
     d = dino_drift(conn, anchors_kind=KIND, encoder_version=ENCODER)
     assert d.n_classes_would_gain_anchor == 0, (
         "sa classe A un exemplaire — sous le nom du représentant")
+
+
+def test_le_job_n_efface_pas_le_flip_direction_a():
+    """`EURIO_DB_READONLY` ne doit PAS être vidé par la route.
+
+    🔴 Vécu depuis l'écran le 2026-08-24, quatre minutes après le déploiement.
+    Le premier jet le vidait, en croyant lever un garde-fou : `ml/tasks.yml`
+    prévient que le build « refuse de démarrer » sous le flip. Vidé, `Store`
+    tente d'ouvrir la RÉPLIQUE en écriture et la refuse pour la raison
+    INVERSE — `RuntimeError: Refus d'ouvrir la réplique en écriture`. Le job
+    mourait en une seconde.
+
+    La vérité : sous Direction A ce build n'a besoin d'AUCUNE base inscriptible.
+    `preflight_db_traceability` voit que le push est actif et envoie la trace au
+    canonique (`POST /ingest/dino-references`). La note de `tasks.yml` est
+    antérieure à ce chemin — un avertissement périmé qui a coûté un aller-retour.
+    """
+    src = (ML_DIR / "serving/dino_rebuild_routes.py").read_text()
+    for ligne in src.splitlines():
+        nu = ligne.strip()
+        if nu.startswith("#"):
+            continue
+        assert "EURIO_DB_READONLY" not in nu, (
+            f"la route ne doit pas toucher au flip : {nu!r}")
+
+
+def test_une_etape_ratee_remonte_sa_CAUSE_pas_sa_commande(tmp_path, monkeypatch):
+    """L'erreur affichée sur l'accueil doit dire POURQUOI.
+
+    Le premier jet levait `échec (1) : … build_dino_anchors --kind 2eur_all`,
+    affiché tel quel : de quoi savoir QUOI a raté, jamais pourquoi. Il a fallu
+    ouvrir le fichier de log à la main. Un job qu'on lance depuis un bouton doit
+    rendre compte depuis ce bouton.
+    """
+    import sys
+
+    from scripts.rebuild_dino_bank import _run
+
+    script = tmp_path / "rate.py"
+    script.write_text(
+        "import sys\n"
+        "print('bruit de contexte')\n"
+        "print('RuntimeError: la réplique est read-only', file=sys.stderr)\n"
+        "sys.exit(3)\n"
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        _run([sys.executable, str(script)])
+
+    message = str(exc.value)
+    assert "la réplique est read-only" in message, (
+        "la cause doit voyager avec l'échec, pas rester dans un fichier de log")
+    assert "(3)" in message, "le code de sortie reste utile pour trier"

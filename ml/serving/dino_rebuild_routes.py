@@ -113,6 +113,20 @@ def start_rebuild(
                    f"connues : {sorted(VERDICT_ENCODER_VERSION_FOR_KIND)}",
         )
 
+    # Sans `EURIO_API_URL`, la trace n'a nulle part où aller : le build
+    # retomberait sur la sonde d'écriture locale et mourrait au démarrage. On
+    # refuse ICI, avec la cause — plutôt que de laisser l'écran afficher un
+    # « failed » quatre secondes plus tard.
+    from client.http import sync_enabled
+
+    if not sync_enabled():
+        raise HTTPException(
+            status_code=409,
+            detail="EURIO_API_URL absent de l'environnement de l'API : la trace "
+                   "de la banque n'aurait aucune destination et le build "
+                   "échouerait au démarrage. Relance l'API depuis le devShell.",
+        )
+
     conn = _local_conn()
     reap_orphan_rebuilds(conn)
     running = latest_rebuild(conn, status="running")
@@ -134,11 +148,16 @@ def start_rebuild(
     env = dict(os.environ)
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(_ML_DIR) + (os.pathsep + existing if existing else "")
-    # ⛔ Le build `2eur_all` TRACE sa sélection en base et REFUSE de démarrer
-    # sous le flip du devShell. L'API hérite de l'environnement qui l'a lancée,
-    # donc du flip : sans cette ligne le job échoue immédiatement, et l'écran ne
-    # montrerait qu'un « failed » sans cause lisible.
-    env["EURIO_DB_READONLY"] = ""
+    # ⛔ NE PAS toucher à `EURIO_DB_READONLY`. Le premier jet le VIDAIT, en
+    # croyant lever un garde-fou : le build trace sa sélection en base, et
+    # `ml/tasks.yml` prévient qu'il « refuse de démarrer » sous le flip. Vidé,
+    # `Store` tente d'ouvrir la RÉPLIQUE en écriture et la refuse pour la raison
+    # INVERSE — le job mourait en une seconde. Vécu le 2026-08-24 depuis l'écran.
+    #
+    # La vérité est que sous Direction A ce build n'a besoin d'AUCUNE base
+    # inscriptible : `preflight_db_traceability` voit que le push est actif et
+    # envoie la trace au canonique par `POST /ingest/dino-references`. La note
+    # de `tasks.yml` est antérieure à ce chemin-là.
 
     with log_path.open("w") as logf:
         proc = subprocess.Popen(

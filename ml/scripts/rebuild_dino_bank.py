@@ -39,16 +39,36 @@ from store import local_state_store  # noqa: E402
 from store.dino_rebuild_jobs import rebuild_finish, rebuild_step  # noqa: E402
 
 
+#: Combien de lignes de sortie remonter dans le message d'erreur.
+_CONTEXTE_ERREUR = 12
+
+
 def _run(argv: list[str]) -> None:
     """Sous-processus synchrone. Une étape qui rate ARRÊTE le job.
 
     Surtout pas de `check=False` ici : enchaîner le backfill sur un build raté
     recalculerait 12 454 prédictions contre l'ancienne banque — du travail long,
     coûteux, et dont le résultat serait indiscernable d'un succès.
+
+    🔴 Et l'erreur porte la CAUSE, pas seulement la commande. Le premier jet
+    levait `échec (1) : … build_dino_anchors --kind 2eur_all --force`, ce qui
+    s'affichait tel quel sur l'écran d'accueil : de quoi savoir QUOI a raté,
+    jamais POURQUOI. Il a fallu aller ouvrir le fichier de log à la main pour
+    découvrir un `RuntimeError` de deux lignes. Un job qu'on lance depuis un
+    bouton doit rendre compte depuis ce bouton.
     """
-    proc = subprocess.run(argv, cwd=str(_ML))
-    if proc.returncode != 0:
-        raise RuntimeError(f"échec ({proc.returncode}) : {' '.join(argv)}")
+    proc = subprocess.run(argv, cwd=str(_ML), capture_output=True, text=True)
+    sortie = (proc.stdout or "") + (proc.stderr or "")
+    # Le log garde TOUT : c'est lui qu'on relit quand la queue ne suffit pas.
+    print(sortie, end="", flush=True)
+    if proc.returncode == 0:
+        return
+
+    lignes = [ligne for ligne in sortie.strip().splitlines() if ligne.strip()]
+    queue = "\n".join(lignes[-_CONTEXTE_ERREUR:])
+    raise RuntimeError(
+        f"échec ({proc.returncode}) de `{' '.join(argv[2:])}`\n{queue}"
+    )
 
 
 def main() -> int:
