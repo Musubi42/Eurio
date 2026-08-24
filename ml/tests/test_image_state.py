@@ -128,3 +128,40 @@ def test_cohort_job_lifecycle(tmp_path):
                    "FROM cohort_jobs WHERE id=?", (jid,)).fetchone()
     assert r2["status"] == "done" and r2["n_produced"] == 0
     assert r2["note"] == "épuisé à τ=0.55" and r2["finished_at"] is not None
+
+
+class TestDetailObservationnel:
+    """``detail`` observe, ``detail_fields`` affecte — et la nuance compte.
+
+    La bbox d'origine du détecteur est journalisée en ``detail`` (cf.
+    ``sources/_base/steps/detect_crop.py``). Si elle passait par
+    ``detail_fields``, le replay distant la RÉAFFECTERAIT à
+    ``image_assets.bbox_json`` — et écraserait un recadrage humain arrivé
+    entre-temps par un autre chemin. Ce test fige la distinction.
+    """
+
+    def test_detail_seul_ne_produit_ni_v_ni_fields(self, conn):
+        import json
+
+        emit_state_event(
+            conn, asset_id="a1", to_state="detected", actor="pipeline",
+            reason="crop_detected",
+            detail={"bbox": {"x": 1.0, "y": 2.0, "w": 3.0, "h": 4.0},
+                    "detection_method": "hough"},
+        )
+        body = json.loads(_events(conn)[-1]["detail_json"])
+        assert body["bbox"] == {"x": 1.0, "y": 2.0, "w": 3.0, "h": 4.0}
+        assert body["detection_method"] == "hough"
+        # Le replay distant ne matérialise que ce qui est sous "fields".
+        assert "fields" not in body and "v" not in body
+
+    def test_detail_fields_lui_produit_bien_v_et_fields(self, conn):
+        import json
+
+        emit_state_event(
+            conn, asset_id="a1", to_state="queued", actor="human",
+            reason="manual_recrop",
+            detail_fields={"image_assets.bbox_json": "{}"},
+        )
+        body = json.loads(_events(conn)[-1]["detail_json"])
+        assert body["v"] == 1 and "image_assets.bbox_json" in body["fields"]

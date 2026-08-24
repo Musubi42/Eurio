@@ -338,6 +338,16 @@ def run_detect_crop(
                 reason="phash_match" if status == "auto_phash" else "crop_detected",
                 eurio_id=eurio_id, target_eurio_id=row["target_eurio_id"],
                 run_id=run.run_id,
+                # La bbox D'ORIGINE, celle du détecteur. Sans elle, l'IoU du
+                # PREMIER recadrage humain est irrécupérable : `image_assets`
+                # ne garde que la valeur courante, et un recadrage l'écrase.
+                # Mesuré le 2026-08-25 : 0 des 11 655 `crop_detected` portait
+                # sa bbox, donc « le détecteur s'est-il trompé de cible, ou
+                # l'humain a-t-il juste ajusté ? » n'avait aucune réponse.
+                # `detail` et non `detail_fields` : c'est une OBSERVATION, pas
+                # une affectation — le replay distant ne doit rien
+                # rematérialiser, `upsert_image_asset` a déjà écrit la colonne.
+                detail={"bbox": bbox_dict, "detection_method": result.method},
             )
             n_crops_added += 1
             crops_for_image += 1
