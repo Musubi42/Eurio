@@ -958,8 +958,15 @@ def _lot_scope(
 
     ``run_ids`` (crops créés par ces runs, ``a.run_id``) s'AJOUTE au périmètre
     choisi, pêche comprise — c'est un filtre sur les crops, donc sur les
-    listings qui en ont encore un d'ouvert. Il va dans ``where_clause`` et ses
-    args passent en tête, conformément à l'ordre ``where`` puis ``match``.
+    listings qui en ont encore un d'ouvert. Il va dans ``where_clause``.
+
+    ⛔ L'ORDRE DES ARGS SUIT L'ORDRE **TEXTUEL** DES ``?``, PAS L'ORDRE LOGIQUE.
+    sqlite3 substitue les paramètres positionnels dans l'ordre où ils
+    APPARAISSENT dans le SQL. Or les deux appelants (``list_lots``,
+    ``_lot_keys_in_scope``) posent ``match_expr`` dans le **SELECT** et
+    ``where_clause`` dans le **WHERE** : le match vient donc en premier, et ses
+    args doivent passer en tête. Cette docstring affirmait l'inverse — cf. le
+    défaut ci-dessous.
 
     ``need_only`` (crops dont le top-1 tombe dans une classe en besoin, D2)
     suit exactement le même chemin que ``run_ids`` : un filtre sur les crops,
@@ -983,7 +990,23 @@ def _lot_scope(
             suggestions_join_sql("ps"),
             run_clause,
             f"CASE WHEN {scope.sql} THEN 1 ELSE 0 END",
-            [*run_args, *scope.args],
+            # 🔴 CORRIGÉ LE 2026-08-24 — c'était `[*run_args, *scope.args]`, et
+            # la pêche en LOTS rendait « plus de lot à trancher » au-dessus
+            # d'une page qui venait d'en annoncer 3.
+            #
+            # Seule cette branche porte À LA FOIS un `match_expr` et un
+            # `where_clause` : les autres n'ont pas de match, donc l'ordre y est
+            # sans effet. Ici, les args du WHERE partaient en tête alors que le
+            # `?` du SELECT vient en premier dans le texte — les valeurs du
+            # filtre de besoin (562 `class_id` + la banque) atterrissaient dans
+            # le `CASE WHEN` de la classe pêchée, et réciproquement.
+            #
+            # La panne est MUETTE : aucune erreur SQL, aucun 500, juste zéro
+            # ligne. Et elle n'existait pas avant D9 (2026-08-23) — `need_only`
+            # est devenu le défaut de `/review/peche`, ce qui a rendu
+            # `where_clause` non vide à chaque appel. Avant, seul `run_ids`,
+            # rarement posé, pouvait l'activer.
+            [*scope.args, *run_args],
         )
 
     if design_group:
