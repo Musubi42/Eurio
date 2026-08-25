@@ -110,12 +110,12 @@ Répartition des 68 classes riches : 8 à `10-14`, 9 à `15-19`, 23 à `20-29`,
 | # | Étape | Machine | État |
 |---|---|---|---|
 | **1** | Backfill `quality_score` + tilt sur le parc | Mac | ✅ **fait** 2026-08-26 — `{"updated": 17658, "skipped": 20, "missing": 0}`, couverture `quality` 5,6 % → **61,6 %**, `tilt` → **99,5 %**. Détail : [`ETAPE1-2.md`](./ETAPE1-2.md) |
-| **2** | Prélever 5 crops d'éval × 60 classes, les marquer, les exclure de l'entraînement, propager MinIO + API | Mac | 🟡 **prêt, PAS appliqué** — règle écrite et testée, plan à **60 classes / 300 crops**, migration `0014` + route `/ingest/eval-corpus` + les 2 prédicats écrits et **mutés**. ⛔ Attend le PO : **la colonne au canonique D'ABORD** (cf. [`ETAPE1-2.md`](./ETAPE1-2.md) §Ce qui attend le PO) |
+| **2** | Prélever 5 crops d'éval × 60 classes, les marquer, les exclure de l'entraînement, propager MinIO + API | Mac | 🟡 **prêt, PAS appliqué** — règle écrite et testée, plan à **60 classes / 300 crops**, migration `0014` + route `/ingest/eval-corpus` + les 2 prédicats écrits et **mutés**. ✅ **`0014` appliquée au canonique le 2026-08-26**, `/ingest/eval-corpus` servie (vérifiée dans l'OpenAPI), réplique à jour. ⛔ Reste : régénérer le plan (le pool a bougé), `select_eval_holdout --apply` → `{"updated": 300, "missing": 0}`, re-vérifier `training-readiness` |
 | **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — bloqué par l'application de l'étape 2 |
 | **4** | Sous-banque DINO restreinte aux 60 classes | Mac | 🔜 |
 | **5** | La matrice — ~8 bras sur les mêmes 300 frames | Mac | 🔜 |
 
-⚠️ **L'étape 2 n'est pas « faite » tant que `0014` n'est pas au canonique.** Le
+✅ **`0014` est au canonique depuis le 2026-08-26.** Ce qui suit reste vrai comme RÈGLE : Le
 prédicat `eval_corpus IS NULL` est en place dans les deux collectes ; sur une base
 qui n'a pas la colonne il lève `no such column`, et sous un job détaché ça donne
 **HTTP 200 + silence**. L'ordre de déploiement n'est pas négociable.
