@@ -182,6 +182,12 @@ app.include_router(augmentation_routes.router)
 benchmark_routes.bind(_store)
 app.include_router(benchmark_routes.router)
 
+# Corpus d'évaluation (juge-et-banc L5) — voir les photos qui jugent une classe
+# sur la fiche pièce, et agir dessus (remap, garder/écarter). Store isolé
+# `scan_corpus.db` ; la seule lecture d'eurio.db est le garde-fou eurio_id.
+from serving import scan_corpus_routes  # noqa: E402
+app.include_router(scan_corpus_routes.router)
+
 # Wire lab routes — orchestrates training + benchmark as "iterations".
 _iteration_runner = iteration_runner_module.bind(_store, _runner)
 lab_routes.bind(_store, _iteration_runner)
@@ -307,6 +313,7 @@ def _benchmark_startup() -> None:
     """Sweep stale benchmark thumbnails (TTL = 24h) at each API startup."""
     try:
         benchmark_routes.cleanup_expired_thumbnails()
+        scan_corpus_routes.cleanup_expired_thumbnails()
     except Exception as exc:  # noqa: BLE001
         import logging
         logging.getLogger(__name__).warning(

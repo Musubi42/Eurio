@@ -7,7 +7,6 @@ heavy PyTorch imports stay outside the API process.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import subprocess
@@ -19,10 +18,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from PIL import Image
 from pydantic import BaseModel
 
 from store import Store
+
+from .thumbnails import ThumbnailCache, safe_child
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,13 @@ REPORTS_DIR = ML_DIR / "reports"
 THUMBNAIL_ROOT = ML_DIR / "output" / "benchmark_thumbnails"
 THUMBNAIL_TTL_SECONDS = 24 * 3600
 THUMBNAIL_SIZE = (256, 256)
+
+#: Cache partagé (``serving/thumbnails.py``) — même TTL, même garde de traversée
+#: que ``scan_corpus_routes``. Extrait ici le jour du deuxième appelant : deux
+#: copies auraient dérivé sur le TTL et sur le nettoyage au boot.
+_thumbs = ThumbnailCache(
+    THUMBNAIL_ROOT, size=THUMBNAIL_SIZE, ttl_seconds=THUMBNAIL_TTL_SECONDS
+)
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
 
@@ -83,37 +90,15 @@ def _validate_zones(zones: list[str] | None) -> None:
 
 def _safe_real_photo_path(relative: str) -> Path:
     """Resolve a path inside REAL_PHOTOS_ROOT — refuses anything that escapes."""
-    if relative.startswith("/") or ".." in relative.split("/"):
-        raise HTTPException(status_code=400, detail="Chemin invalide")
-    target = (REAL_PHOTOS_ROOT / relative).resolve()
-    try:
-        target.relative_to(REAL_PHOTOS_ROOT)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Chemin hors hold-out") from None
-    return target
+    return safe_child(REAL_PHOTOS_ROOT, relative)
 
 
 def _thumbnail_path(rel_path: str) -> Path:
-    digest = hashlib.sha256(rel_path.encode("utf-8")).hexdigest()[:24]
-    return THUMBNAIL_ROOT / f"{digest}.jpg"
+    return _thumbs.path_for(rel_path)
 
 
 def _ensure_thumbnail(rel_path: str) -> Path:
-    src = _safe_real_photo_path(rel_path)
-    if not src.exists():
-        raise HTTPException(status_code=404, detail="Photo introuvable")
-    dst = _thumbnail_path(rel_path)
-    if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
-        return dst
-    THUMBNAIL_ROOT.mkdir(parents=True, exist_ok=True)
-    try:
-        with Image.open(src) as im:
-            im = im.convert("RGB")
-            im.thumbnail(THUMBNAIL_SIZE, Image.LANCZOS)
-            im.save(dst, "JPEG", quality=80)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Thumbnail error: {exc}") from exc
-    return dst
+    return _thumbs.ensure(rel_path, _safe_real_photo_path(rel_path))
 
 
 def _load_manifest() -> dict | None:
@@ -128,18 +113,7 @@ def _load_manifest() -> dict | None:
 
 def cleanup_expired_thumbnails() -> int:
     """Evict thumbnails older than TTL. Called at server startup."""
-    if not THUMBNAIL_ROOT.exists():
-        return 0
-    cutoff = time.time() - THUMBNAIL_TTL_SECONDS
-    removed = 0
-    for entry in THUMBNAIL_ROOT.iterdir():
-        if entry.is_file() and entry.stat().st_mtime < cutoff:
-            try:
-                entry.unlink()
-                removed += 1
-            except OSError:
-                continue
-    return removed
+    return _thumbs.cleanup_expired()
 
 
 def _row_to_summary(row) -> dict:

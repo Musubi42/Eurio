@@ -47,6 +47,15 @@ const router = createRouter({
           component: () => import('@/features/coins/pages/CoinsPage.vue'),
         },
         {
+          // La MAQUETTE de la section « images d'évaluation » de la fiche
+          // pièce, sur fixtures — hors nav, sans réseau. Elle monte le
+          // composant définitif : ce qu'on y regarde est ce qu'on livre.
+          // ⚠️ PAS `meta.heavy` : la maquette ne tape rien.
+          path: 'coins/eval-images/maquette',
+          component: () =>
+            import('@/features/coins/pages/EvalImagesMaquettePage.vue'),
+        },
+        {
           path: 'coins/arbitrage',
           component: () => import('@/features/coins/pages/CoinArbitragePage.vue'),
           meta: heavy,

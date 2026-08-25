@@ -58,6 +58,7 @@ import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
 import PecheCallout from '../components/PecheCallout.vue'
 import DinoReferencesSection from '../components/DinoReferencesSection.vue'
+import EvalImagesSection from '../components/EvalImagesSection.vue'
 import VariantBadge from '../components/VariantBadge.vue'
 
 const route = useRoute()
@@ -1007,6 +1008,12 @@ const numistaTotalMintage = computed<number | null>(() => {
         <!-- Références Dino (B) : ce qui sert au calcul (canonique + exemplaires
              divers), avec épingler / bannir. -->
         <DinoReferencesSection :eurio-id="coin.eurio_id" />
+
+        <!-- Images d'évaluation (juge-et-banc L5) : les captures device qui
+             NOTENT cette classe, avec remap et garder/écarter par photo.
+             ⚠️ La section se gate elle-même (`HAS_LOCAL_ML_API`) — cette route
+             n'est PAS `meta.heavy`, la marquer griserait toute la fiche. -->
+        <EvalImagesSection :eurio-id="coin.eurio_id" />
       </div>
 
       <!-- ═══ RIGHT : Metadata ═══ -->
