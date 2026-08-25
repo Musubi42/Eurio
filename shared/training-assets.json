@@ -1,6 +1,6 @@
 {
   "_comment": "\u00c9pingle les artefacts n\u00e9cessaires \u00e0 un r\u00e9-entra\u00eenement. G\u00e9n\u00e9r\u00e9 par `go-task ml:training-assets:publish` \u2014 ne pas \u00e9diter \u00e0 la main. Une machine de compute les rapatrie via `go-task ml:training-assets:fetch`.",
-  "generated_at": "2026-08-16T14:41:25+00:00",
+  "generated_at": "2026-08-25T13:27:42+00:00",
   "bucket": "model-artifacts",
   "assets": [
     {
@@ -24,6 +24,39 @@
       "content_size": 6221866,
       "object_sha256": "ab6e746976ef51ffa72607f4dc6313b30f26a400b05f487d54c724f79bcd99a6",
       "object_size": 6221866
+    },
+    {
+      "name": "device_debug_pull",
+      "kind": "tree",
+      "dest": "debug_pull",
+      "key": "training/device_debug_pull/83f103e0074a/device_debug_pull.tar.gz",
+      "content_digest": "83f103e0074a6ad29f4e9413b891e23e5760b01642f798421f20a356e20ea404",
+      "n_files": 2968,
+      "content_size": 76330291,
+      "object_sha256": "393f4ef90d2053a1352149844093c8e46983dffa50b74cd8c5e11a663ef3a1b0",
+      "object_size": 74676028
+    },
+    {
+      "name": "eval_real_norm",
+      "kind": "tree",
+      "dest": "ml/datasets/eval_real_norm",
+      "key": "training/eval_real_norm/697e80ca36c0/eval_real_norm.tar.gz",
+      "content_digest": "697e80ca36c047c9632046b6f254f16b0511810cc09f5756061bdcbe4bb2550f",
+      "n_files": 114,
+      "content_size": 2367074,
+      "object_sha256": "fee3c4279e7317d7ff808258768985d4ddb00b421013b7c3d86908b8f85b5703",
+      "object_size": 2302211
+    },
+    {
+      "name": "scan_corpus_frames",
+      "kind": "tree",
+      "dest": "ml/state/scan_corpus",
+      "key": "training/scan_corpus_frames/287fc454e403/scan_corpus_frames.tar.gz",
+      "content_digest": "287fc454e403db44c446ea853debf82b6f7e569c1d21ba7ef50e2331a07af005",
+      "n_files": 902,
+      "content_size": 53271495,
+      "object_sha256": "d04a2019f4a7f92746c23a1fb9481b60564cf73e6bb74ccd5802ccd9f3ae8191",
+      "object_size": 53267445
     }
   ]
 }

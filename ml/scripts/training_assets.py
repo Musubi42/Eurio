@@ -58,6 +58,35 @@ MANIFEST_PATH = REPO_ROOT / "shared" / "training-assets.json"
 ASSETS: list[tuple[str, str, str]] = [
     ("detection_dataset", "tree", "ml/datasets/detection"),
     ("coin_detector_weights", "file", "ml/output/detection/coin_detector/weights/best.pt"),
+    # Corpus device : frames de caméra réelles, en UN seul exemplaire sur le Mac,
+    # gitignorées (`.gitignore:221` pour `debug_pull/`, `:54` pour `ml/datasets/*`).
+    # Irremplaçables : elles ne se reproduisent qu'en refaisant les prises de vue.
+    # Cf. `docs/work-in-progress/scan-quality/DURABILITE-CORPUS.md` §4 — « une
+    # capture qui n'est pas dans MinIO n'existe pas ».
+    #
+    # Bucket : `model-artifacts` (ARTIFACTS_BUCKET), et ce n'est pas indifférent.
+    # `infra/backup/eurio-backup.sh:74` porte `MIRROR_BUCKETS` en DUR ; un bucket
+    # neuf serait invisible de la chaîne de sauvegarde, et cet oubli serait muet.
+    #
+    # `app-android/debug_pull/` est volontairement EXCLU : re-mesuré le
+    # 2026-08-25, ses 879 fichiers portent 857 hachés distincts, et les 857 sont
+    # tous présents sous la racine `debug_pull/` — zéro contenu propre, 26 Mo
+    # pour zéro information. La racine `debug_pull/` ne le contient pas : rien
+    # à filtrer, seulement à ne pas ajouter.
+    ("device_debug_pull", "tree", "debug_pull"),
+    ("eval_real_norm", "tree", "ml/datasets/eval_real_norm"),
+    # Le corpus de jugement lui-même (451 captures). ⚠️ REDONDANT en grande
+    # partie avec `device_debug_pull` : les `raw` y sont des copies octet pour
+    # octet (`capture_id = sha256(raw)`), seuls les crops sont dérivés
+    # (transcodage JPEG→PNG). Il se régénère en une commande :
+    #   go-task ml:scan-corpus:import-pull …
+    # On le publie quand même, et c'est un choix assumé : ces prises de vue ne
+    # se refont pas — leur photographe est le PO, et il ne recommencera pas.
+    # 53 Mo d'assurance contre une dépendance à un script qui doit continuer de
+    # marcher. La règle du dépôt reste que le MANIFESTE
+    # (`ml/state/validation_gold/device_corpus_manifest.jsonl`) est ce qui est
+    # committé ; ceci n'est qu'un filet.
+    ("scan_corpus_frames", "tree", "ml/state/scan_corpus"),
 ]
 
 # Résidus d'outils qui n'appartiennent pas au contenu du dataset. Les inclure
