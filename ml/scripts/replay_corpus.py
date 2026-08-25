@@ -20,6 +20,31 @@ Deux chemins (§7) :
   - ``--path full``  : raw.jpg → ``vision.normalize_snap.normalize_device``
     (port bit-for-bit de ``SnapNormalizer.kt``) → crop → embed → match.
 
+⚠️ **Sur le corpus device, la notation se fait en ``--path full``.** Les crops
+stockés des pulls d'avril et de juin 2026 ont été produits par DEUX normaliseurs
+différents (``hough_tight`` puis ``hough_strict``, lisible dans
+``quality_json.normalize.method``). En ``--path fast`` on comparerait des crops
+incomparables et l'écart mesuré serait celui des normaliseurs, pas des modèles.
+
+Le protocole se filtre avec ``--bundle-source`` (csv) — pas avec
+``--conditions`` : les deux protocoles partagent ``bright_plain`` et
+``bright_textured``.
+
+🔴 **Les captures écartées à la main ne sont PAS notées** (``eval_decision =
+'exclude'``, posé depuis la fiche pièce de ``studio-local``). C'est le défaut,
+et c'est le sens du geste : une photo que le PO a jugée inexploitable ne doit
+pas juger. ``--include-rejected`` les remet dans le jeu, pour diagnostic
+seulement.
+
+⚠️ Ce que ça implique, et que la scorecard doit porter : l'ensemble noté dépend
+d'une décision humaine **mutable**. ``corpus_version`` est donc calculée sur
+l'ensemble RÉELLEMENT noté (après exclusion), jamais sur le pool brut — sinon
+deux runs à deux jours d'écart porteraient la même version en ayant noté des
+jeux différents, exactement le défaut que ``review.bench_gold`` a été écrit
+pour tuer. Et le bloc ``excluded`` de la scorecard dit combien de captures ont
+été écartées et pourquoi : un ``n`` qui baisse sans explication est un ``n``
+qui inquiète.
+
 Parité (§7, non négociable) : matching = ``match_topk`` + ``compute_hits`` de
 ``training.eval.evaluate_real_photos`` (mêmes règles que le matcher Android,
 obverse-only) ; l'eq design_group est résolue via
@@ -27,10 +52,23 @@ obverse-only) ; l'eq design_group est résolue via
 LECTURE SEULE (même source que le §5 / ``sync_live_tests``). La table
 ``scan_corpus`` ne joint jamais le canonique (§4).
 
+Une **itération du lab** n'est pas un dossier de candidat : elle range ses deux
+pièces dans deux sous-dossiers (``checkpoints/best_model.pth`` et
+``embeddings/embeddings_v1.json``). ``--iteration <iid>`` construit le candidat
+depuis ces chemins **explicites** — on n'assouplit pas ``load_candidate``, dont
+le contrat « un dossier = un candidat » reste intact. Bénéfice mesuré : les
+chemins explicites ne traversent pas ``dataset/train``, qui est un symlink mort
+sur certaines itérations anciennes.
+
 Usage :
     python -m scripts.replay_corpus --candidate <dir> [--baseline <dir>]
         [--cohort-id b0299ca0252b] [--conditions bright,dim,tilt]
-        [--iteration 5bf8edb0ad7d] [--path fast|full] [--out <dir>]
+        [--bundle-source device_pull_20260601]
+        [--source-iteration-id 5bf8edb0ad7d]
+        [--path fast|full] [--out <dir>]
+
+    python -m scripts.replay_corpus --iteration caf98145032c --path full \\
+        --bundle-source device_pull_20260601
 """
 from __future__ import annotations
 
@@ -49,6 +87,7 @@ from shared.stats.paired import mcnemar_exact as _mcnemar_exact  # noqa: E402
 from store.scan_corpus import ScanCapture, ScanCorpusStore, corpus_version  # noqa: E402
 
 DEFAULT_RUNS_DIR = ML_DIR / "state" / "scan_corpus_runs"
+DEFAULT_LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
 
 
 # ─── Candidat ───────────────────────────────────────────────────────────────
@@ -92,6 +131,74 @@ def load_candidate(dir_path: Path, label: str | None = None) -> Candidate:
     )
 
 
+ITERATION_MODEL_KINDS = ("checkpoint", "tflite")
+
+
+def _iteration_model_path(iter_dir: Path, kind: str) -> Path:
+    if kind == "checkpoint":
+        return iter_dir / "checkpoints" / "best_model.pth"
+    if kind == "tflite":
+        found = sorted((iter_dir / "tflite").glob("*.tflite"))
+        if not found:
+            raise SystemExit(f"{iter_dir}: aucun *.tflite dans tflite/")
+        return found[0]
+    raise SystemExit(f"kind de modèle inconnu : {kind}")
+
+
+def candidate_from_iteration(
+    iteration_id: str,
+    lab_root: Path | None = None,
+    label: str | None = None,
+    model_kind: str = "checkpoint",
+) -> Candidate:
+    """Construit un ``Candidate`` depuis une itération du lab.
+
+    Une itération range ses artefacts dans deux sous-dossiers
+    (``checkpoints/`` et ``embeddings/``) : ce n'est PAS un dossier de
+    candidat au sens de ``load_candidate``, et on ne relâche pas ce
+    contrat — on nomme l'intention ici, avec des chemins explicites.
+    """
+    root = lab_root or DEFAULT_LAB_ITERATIONS_DIR
+    iter_dir = root / iteration_id
+    if not iter_dir.is_dir():
+        raise SystemExit(f"Itération introuvable : {iter_dir}")
+    centroids = iter_dir / "embeddings" / "embeddings_v1.json"
+    if not centroids.exists():
+        raise SystemExit(
+            f"{iteration_id}: {centroids} introuvable — l'itération n'a pas "
+            "produit ses centroïdes (compute_embeddings non joué ?)"
+        )
+    model = _iteration_model_path(iter_dir, model_kind)
+    if not model.exists():
+        raise SystemExit(
+            f"{iteration_id}: {model} introuvable "
+            "(fichier absent, ou symlink cassé — vérifie `ls -la`)"
+        )
+    top1_min = margin_min = None
+    thresholds = iter_dir / "thresholds.json"
+    if thresholds.exists():
+        t = json.loads(thresholds.read_text(encoding="utf-8"))
+        top1_min = t.get("top1_min")
+        margin_min = t.get("margin_min")
+    return Candidate(
+        label=label or iteration_id,
+        centroids_path=centroids,
+        model_path=model,
+        top1_min=top1_min,
+        margin_min=margin_min,
+    )
+
+
+def centroid_class_ids(centroids_path: Path) -> set[str]:
+    """Les ``class_id`` d'un fichier de centroïdes — stdlib seule.
+
+    Sert au garde d'espace de labels (§8 de ``corpus-spec``) : il doit pouvoir
+    refuser AVANT de charger le moindre modèle.
+    """
+    data = json.loads(Path(centroids_path).read_text(encoding="utf-8"))
+    return set(data.get("coins", {}))
+
+
 # ─── Replay d'un candidat ───────────────────────────────────────────────────
 
 
@@ -106,6 +213,13 @@ class FramePrediction:
     correct_eq_top1: bool
     correct_eq_top5: bool
     error: str | None = None
+    coverable: bool = True
+    """La bonne réponse existe-t-elle dans l'espace de labels du candidat ?
+
+    Faux = la frame est fausse PAR CONSTRUCTION : aucun centroïde ne peut la
+    satisfaire. Elle compte quand même dans ``n_frames`` (c'est le corpus
+    demandé), et c'est exactement pourquoi le r@1 global ne se lit jamais seul.
+    """
 
     @property
     def answered_correct_eq(self) -> bool:
@@ -123,6 +237,7 @@ class FramePrediction:
             "correct_eq_top1": self.correct_eq_top1,
             "correct_eq_top5": self.correct_eq_top5,
             "error": self.error,
+            "coverable": self.coverable,
         }
 
 
@@ -148,16 +263,20 @@ def replay_candidate(
 
     preds: list[FramePrediction] = []
     for cap in captures:
+        # Calculée AVANT toute lecture d'image : une frame illisible dont la
+        # classe n'est pas dans le modèle reste non couvrable, et le dire
+        # sépare les deux causes au lieu de les fondre.
+        coverable = is_coverable(cap.eurio_id, centroids, equivalence)
         try:
             if path_mode == "full":
                 image = _normalize_full(frames_root / cap.raw_path)
                 if image is None:
-                    preds.append(_error_pred(cap, "normalize_failed"))
+                    preds.append(_error_pred(cap, "normalize_failed", coverable))
                     continue
             else:
                 image = Image.open(frames_root / cap.crop_path).convert("RGB")
         except (OSError, FileNotFoundError) as exc:
-            preds.append(_error_pred(cap, f"load_failed: {exc}"))
+            preds.append(_error_pred(cap, f"load_failed: {exc}", coverable))
             continue
 
         emb = embedder.embed(image)
@@ -186,12 +305,33 @@ def replay_candidate(
                 correct_strict_top1=hits[1],
                 correct_eq_top1=hits_eq[1],
                 correct_eq_top5=hits_eq[5],
+                coverable=coverable,
             )
         )
     return preds
 
 
-def _error_pred(cap: ScanCapture, error: str) -> FramePrediction:
+def is_coverable(ground_truth: str, centroids, equivalence) -> bool:
+    """Un centroïde du candidat peut-il seulement être juste sur cette frame ?
+
+    Parité stricte avec ``compute_hits`` : un centroïde compte s'il ``covers``
+    la vérité terrain, ou s'il lui est équivalent en ``design_group``. Si aucun
+    ne le fait, ``correct_eq_top1`` est faux quoi que fasse le modèle — la
+    frame est perdue par construction, pas par erreur de prédiction.
+    """
+    for c in centroids:
+        if c.covers(ground_truth):
+            return True
+        if equivalence is not None and equivalence.are_equivalent(
+            c.class_id, ground_truth
+        ):
+            return True
+    return False
+
+
+def _error_pred(
+    cap: ScanCapture, error: str, coverable: bool = True
+) -> FramePrediction:
     return FramePrediction(
         capture_id=cap.capture_id,
         eurio_id=cap.eurio_id,
@@ -202,6 +342,7 @@ def _error_pred(cap: ScanCapture, error: str) -> FramePrediction:
         correct_eq_top1=False,
         correct_eq_top5=False,
         error=error,
+        coverable=coverable,
     )
 
 
@@ -225,22 +366,79 @@ def _rate(num: int, den: int) -> float | None:
     return round(num / den, 4) if den else None
 
 
+def excluded_block(rejected: list[ScanCapture], active: bool) -> dict:
+    """Ce que le juge a REFUSÉ de noter, et pourquoi — à côté de ``label_space``.
+
+    Un ``n`` qui baisse sans explication est un ``n`` qui inquiète. La scorecard
+    doit donc porter le compte des captures écartées par un humain, leur raison,
+    et le fait que l'exclusion était **active** — sinon deux scorecards de
+    tailles différentes sont indiscernables d'un corpus qui aurait bougé.
+    """
+    by_reason: dict[str, int] = {}
+    for c in rejected:
+        key = c.eval_decision_reason or "∅ (sans raison)"
+        by_reason[key] = by_reason.get(key, 0) + 1
+    return {
+        # ``active`` faux = --include-rejected : les captures ci-dessous ONT été
+        # notées. Le bloc reste rendu, il ne disparaît pas quand on désarme le
+        # filtre — c'est justement là qu'il faut le voir.
+        "active": active,
+        "n": len(rejected),
+        "by_reason": dict(sorted(by_reason.items())),
+        "capture_ids": sorted(c.capture_id for c in rejected),
+    }
+
+
 def build_scorecard(
     candidate: Candidate,
     preds: list[FramePrediction],
     baseline_label: str | None,
     filter_desc: dict,
     version: str,
+    candidate_class_ids: set[str] | None = None,
+    excluded: dict | None = None,
 ) -> dict:
     n = len(preds)
     answered = [p for p in preds if not p.abstained and p.error is None]
+    # ⚠️ Le dénominateur du r@1 global compte des frames dont la bonne réponse
+    # n'est PAS dans le candidat. Elles sont fausses par construction : le
+    # nombre reste plausible et devient faux. On rend donc TOUJOURS les deux —
+    # global et sur-couvrables — et jamais l'un sans l'autre.
+    covered = [p for p in preds if p.coverable]
     by_condition: dict[str, dict] = {}
     for cond in sorted({p.condition for p in preds}):
         cp = [p for p in preds if p.condition == cond]
+        cc = [p for p in cp if p.coverable]
         by_condition[cond] = {
             "n": len(cp),
             "r_at_1_eq": _rate(sum(p.correct_eq_top1 for p in cp), len(cp)),
+            "n_covered": len(cc),
+            "r_at_1_on_covered": _rate(sum(p.correct_eq_top1 for p in cc), len(cc)),
         }
+    gt_classes = {p.eurio_id for p in preds}
+    covered_classes = {p.eurio_id for p in covered}
+    uncoverable_classes = sorted(gt_classes - covered_classes)
+    label_space = {
+        "n_candidate_classes": (
+            len(candidate_class_ids) if candidate_class_ids is not None else None
+        ),
+        "n_ground_truth_classes": len(gt_classes),
+        "n_covered_classes": len(covered_classes),
+        "n_uncoverable_classes": len(uncoverable_classes),
+        "uncoverable_classes": uncoverable_classes,
+        "n_frames_covered": len(covered),
+        "n_frames_uncoverable": n - len(covered),
+        "frame_coverage": _rate(len(covered), n),
+    }
+    # ``coverage`` seul confond deux choses : une abstention (le candidat a vu
+    # la frame et s'est tu) et un échec (la frame n'a jamais atteint le
+    # modèle). Un run où tout le raw échoue à se normaliser sortirait
+    # ``r@1 = 0.0`` sans qu'aucune clé ne le dise. On le dit.
+    errored = [p for p in preds if p.error is not None]
+    errors_by_kind: dict[str, int] = {}
+    for p in errored:
+        kind = str(p.error).split(":")[0]
+        errors_by_kind[kind] = errors_by_kind.get(kind, 0) + 1
     model_mb = round(candidate.model_path.stat().st_size / (1024 * 1024), 2)
     return {
         "candidate": candidate.label,
@@ -248,12 +446,23 @@ def build_scorecard(
         "corpus_version": version,
         "n_frames": n,
         "filter": filter_desc,
+        "label_space": label_space,
+        "excluded": excluded if excluded is not None else excluded_block([], True),
         "primary": {
             "r_at_1_eq": _rate(sum(p.correct_eq_top1 for p in preds), n),
             "r_at_5_eq": _rate(sum(p.correct_eq_top5 for p in preds), n),
             "r_at_1_strict": _rate(sum(p.correct_strict_top1 for p in preds), n),
+            "r_at_1_on_covered": _rate(
+                sum(p.correct_eq_top1 for p in covered), len(covered)
+            ),
+            "n_on_covered": len(covered),
         },
         "by_condition": by_condition,
+        "errors": {
+            "n": len(errored),
+            "rate": _rate(len(errored), n),
+            "by_kind": errors_by_kind,
+        },
         "abstention": {
             "coverage": _rate(len(answered), n),
             "precision_at_coverage": _rate(
@@ -322,6 +531,50 @@ def _flip(cid: str, bp: FramePrediction, cp: FramePrediction) -> dict:
     }
 
 
+def assert_same_label_space(
+    candidate: Candidate, baseline: Candidate, equivalence
+) -> None:
+    """Refuse de comparer deux candidats qui ne jouent pas au même jeu.
+
+    Un McNemar apparié croise des verdicts frame par frame : si une classe est
+    dans l'espace de l'un et pas de l'autre, chaque frame de cette classe est
+    perdue d'avance pour un seul des deux. Le test reste « valide » et mesure
+    en réalité l'écart des cohortes, pas l'écart des modèles. **Un garde qui
+    refuse vaut mieux qu'un p-value qu'on ne saura pas relire.**
+
+    La comparaison se fait sur la maille où la correction est jugée
+    (``COALESCE(design_group, eurio_id)``) : deux candidats entraînés l'un en
+    ``eurio_id`` et l'autre en ``design_group`` ne sont PAS différents pour
+    autant.
+    """
+    def mesh(cand: Candidate) -> set[str]:
+        ids = centroid_class_ids(cand.centroids_path)
+        if equivalence is None:
+            return ids
+        return {equivalence.coalesce(i) or i for i in ids}
+
+    cand_mesh, base_mesh = mesh(candidate), mesh(baseline)
+    if cand_mesh == base_mesh:
+        return
+    only_cand = sorted(cand_mesh - base_mesh)
+    only_base = sorted(base_mesh - cand_mesh)
+
+    def sample(ids: list[str]) -> str:
+        head = ", ".join(ids[:5])
+        return head + (f", … (+{len(ids) - 5})" if len(ids) > 5 else "")
+
+    raise SystemExit(
+        "Espaces de labels différents — comparaison REFUSÉE.\n"
+        f"  candidat {candidate.label} : {len(cand_mesh)} classes\n"
+        f"  baseline {baseline.label} : {len(base_mesh)} classes\n"
+        f"  {len(only_cand)} seulement chez le candidat : {sample(only_cand)}\n"
+        f"  {len(only_base)} seulement chez la baseline : {sample(only_base)}\n"
+        "Le McNemar croiserait alors l'écart des COHORTES, pas celui des "
+        "modèles. Recalcule les centroïdes des deux candidats sur le même "
+        "ensemble de classes, puis relance."
+    )
+
+
 # ─── Main ───────────────────────────────────────────────────────────────────
 
 
@@ -334,13 +587,53 @@ def _write_predictions(path: Path, preds: list[FramePrediction]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--candidate", type=Path, required=True, help="dossier candidat")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--candidate", type=Path, default=None, help="dossier candidat")
+    source.add_argument(
+        "--iteration",
+        default=None,
+        help=(
+            "id d'itération du lab (ml/lab/iterations/<iid>) : le candidat est "
+            "construit depuis checkpoints/best_model.pth + "
+            "embeddings/embeddings_v1.json. Pour filtrer le CORPUS par "
+            "provenance, c'est --source-iteration-id."
+        ),
+    )
+    parser.add_argument(
+        "--iteration-model",
+        choices=ITERATION_MODEL_KINDS,
+        default="checkpoint",
+        help="artefact de l'itération à noter (défaut : checkpoint = best_model.pth)",
+    )
+    parser.add_argument(
+        "--lab-root",
+        type=Path,
+        default=None,
+        help="override de ml/lab/iterations (tests)",
+    )
     parser.add_argument("--candidate-label", default=None)
     parser.add_argument("--baseline", type=Path, default=None, help="dossier baseline (§9)")
     parser.add_argument("--baseline-label", default=None)
     parser.add_argument("--cohort-id", default=None)
     parser.add_argument("--conditions", default=None, help="csv, ex. bright,dim,tilt")
-    parser.add_argument("--iteration", default=None, help="filtre source_iteration_id")
+    parser.add_argument(
+        "--bundle-source",
+        default=None,
+        help=(
+            "csv de protocoles de prise de vue, ex. "
+            "device_pull_20260429,device_pull_20260601. Deux protocoles partagent "
+            "des noms d'étape : c'est le SEUL filtre qui les sépare."
+        ),
+    )
+    parser.add_argument(
+        "--source-iteration-id",
+        dest="source_iteration_id",
+        default=None,
+        help=(
+            "filtre du CORPUS sur scan_corpus.source_iteration_id (provenance "
+            "des frames). Ne construit aucun candidat — cf. --iteration."
+        ),
+    )
     parser.add_argument("--path", choices=("fast", "full"), default="fast")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--db", type=Path, default=None, help="override scan_corpus.db (tests)")
@@ -355,23 +648,72 @@ def main() -> None:
         action="store_true",
         help="sans map d'équivalence (eq=strict) — tests uniquement",
     )
+    parser.add_argument(
+        "--include-rejected",
+        action="store_true",
+        help=(
+            "note AUSSI les captures écartées à la main (eval_decision="
+            "'exclude'). DIAGNOSTIC uniquement : le défaut est de ne pas les "
+            "noter — c'est le sens du geste du PO."
+        ),
+    )
     args = parser.parse_args()
 
     store = ScanCorpusStore(db_path=args.db)
     conditions = args.conditions.split(",") if args.conditions else None
-    captures = store.list_captures(
+    bundle_sources = args.bundle_source.split(",") if args.bundle_source else None
+    common = dict(
         cohort_id=args.cohort_id,
         conditions=conditions,
-        source_iteration_id=args.iteration,
+        source_iteration_id=args.source_iteration_id,
+        bundle_sources=bundle_sources,
     )
+    # DEUX lectures du MÊME filtre, et la différence est DÉRIVÉE, jamais
+    # ré-implémentée : le prédicat « écartée » vit dans le SQL du store et
+    # nulle part ailleurs. Le rejouer ici en Python le ferait dériver le jour
+    # où la colonne gagne une troisième valeur.
+    pool = store.list_captures(**common)
+    kept = store.list_captures(**common, exclude_rejected=True)
+    kept_ids = {c.capture_id for c in kept}
+    rejected = [c for c in pool if c.capture_id not in kept_ids]
+    captures = pool if args.include_rejected else kept
+
     if not captures:
-        raise SystemExit("Corpus vide pour ce filtre — rien à rejouer.")
+        raise SystemExit(
+            "Corpus vide pour ce filtre — rien à rejouer."
+            + (
+                f" ({len(rejected)} capture(s) écartée(s) à la main ; "
+                "--include-rejected pour les noter quand même)"
+                if rejected
+                else ""
+            )
+        )
+
+    # 🔴 LA VERSION PORTE L'ENSEMBLE RÉELLEMENT NOTÉ, jamais le pool brut.
+    # Exclure des captures rend le jeu noté dépendant d'une décision humaine
+    # MUTABLE : deux runs à deux jours d'écart peuvent noter des ensembles
+    # différents. C'est exactement le défaut que ``review.bench_gold`` a été
+    # écrit pour tuer. Si ``corpus_version`` était calculée sur ``pool``, deux
+    # scorecards porteraient la même version en ayant noté des jeux
+    # différents — et ce serait INDÉTECTABLE.
     version = corpus_version([c.capture_id for c in captures])
+    excluded = excluded_block(rejected, active=not args.include_rejected)
+    # Un filtre qui n'apparaît pas dans la scorecard est un filtre qu'on
+    # oubliera : ``bundle_source`` y figure au même titre que les autres, et
+    # ``include_rejected`` avec eux — c'est LE réglage qui change le jeu noté.
     filter_desc = {
         "cohort_id": args.cohort_id,
         "conditions": conditions,
-        "source_iteration_id": args.iteration,
+        "source_iteration_id": args.source_iteration_id,
+        "bundle_sources": bundle_sources,
+        "include_rejected": bool(args.include_rejected),
     }
+    if rejected:
+        verbe = "notée(s) QUAND MÊME" if args.include_rejected else "NON notée(s)"
+        print(
+            f"⚖️  {len(rejected)} capture(s) écartée(s) à la main → {verbe} "
+            f"({len(captures)} frames au total)"
+        )
 
     if args.no_eq:
         equivalence = None
@@ -380,7 +722,24 @@ def main() -> None:
 
         equivalence = build_equivalence_map(db_path=args.eq_db)
 
-    candidate = load_candidate(args.candidate, args.candidate_label)
+    if args.iteration:
+        candidate = candidate_from_iteration(
+            args.iteration,
+            lab_root=args.lab_root,
+            label=args.candidate_label,
+            model_kind=args.iteration_model,
+        )
+    else:
+        candidate = load_candidate(args.candidate, args.candidate_label)
+    cand_class_ids = centroid_class_ids(candidate.centroids_path)
+
+    # Le garde d'espace de labels s'exécute AVANT la première inférence : il ne
+    # lit que deux JSON de centroïdes. Refuser après 20 s de replay laisserait
+    # sur disque des prédictions qu'on serait tenté de lire quand même.
+    baseline = load_candidate(args.baseline, args.baseline_label) if args.baseline else None
+    if baseline is not None:
+        assert_same_label_space(candidate, baseline, equivalence)
+
     out_dir = args.out or (DEFAULT_RUNS_DIR / f"{candidate.label}__{version}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -393,17 +752,25 @@ def main() -> None:
 
     baseline_label = None
     scorecard: dict
-    if args.baseline:
-        baseline = load_candidate(args.baseline, args.baseline_label)
+    if baseline is not None:
         baseline_label = baseline.label
         print(f"Baseline : {baseline.label} ({baseline.model_path.name})")
         base_preds = replay_candidate(
             baseline, captures, store.frames_root, equivalence, args.path
         )
         _write_predictions(out_dir / "predictions.baseline.jsonl", base_preds)
-        scorecard = build_scorecard(candidate, cand_preds, baseline_label, filter_desc, version)
+        scorecard = build_scorecard(
+            candidate, cand_preds, baseline_label, filter_desc, version,
+            cand_class_ids, excluded,
+        )
         baseline_scorecard = build_scorecard(
-            baseline, base_preds, None, filter_desc, version
+            baseline,
+            base_preds,
+            None,
+            filter_desc,
+            version,
+            centroid_class_ids(baseline.centroids_path),
+            excluded,
         )
         scorecard["size"]["delta_vs_baseline_mb"] = round(
             scorecard["size"]["model_mb"] - baseline_scorecard["size"]["model_mb"], 2
@@ -412,7 +779,10 @@ def main() -> None:
         scorecard["baseline_by_condition"] = baseline_scorecard["by_condition"]
         scorecard["mcnemar"] = crossed_stats(base_preds, cand_preds)
     else:
-        scorecard = build_scorecard(candidate, cand_preds, None, filter_desc, version)
+        scorecard = build_scorecard(
+            candidate, cand_preds, None, filter_desc, version, cand_class_ids,
+            excluded,
+        )
 
     (out_dir / "scorecard.json").write_text(
         json.dumps(scorecard, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -420,6 +790,24 @@ def main() -> None:
 
     print(f"\nScorecard → {out_dir / 'scorecard.json'}")
     print(json.dumps(scorecard["primary"], indent=2))
+    ls = scorecard["label_space"]
+    print(
+        f"Espace de labels : {ls['n_candidate_classes']} classes au candidat, "
+        f"{ls['n_ground_truth_classes']} en vérité terrain, "
+        f"{ls['n_covered_classes']} couvertes."
+    )
+    ex = scorecard["excluded"]
+    if ex["n"]:
+        etat = "NON notées" if ex["active"] else "notées (--include-rejected)"
+        print(f"⚖️  Écartées à la main : {ex['n']} capture(s), {etat}.")
+        for raison, n in ex["by_reason"].items():
+            print(f"      {n}× {raison}")
+    if ls["n_uncoverable_classes"]:
+        print(
+            f"⚠️  {ls['n_frames_uncoverable']}/{scorecard['n_frames']} frames sont "
+            f"FAUSSES PAR CONSTRUCTION ({ls['n_uncoverable_classes']} classes hors "
+            "du candidat) : lis r_at_1_on_covered, pas r_at_1_eq."
+        )
     if "mcnemar" in scorecard:
         m = scorecard["mcnemar"]
         print(

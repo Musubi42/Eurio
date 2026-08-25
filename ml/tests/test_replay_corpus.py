@@ -269,3 +269,127 @@ def test_replay_missing_crop_is_error_pred(
     assert len(errored) == 1
     assert errored[0].capture_id == "aa00000000000002"
     assert errored[0].abstained is True
+
+
+# ─── Exclusion humaine : le juge cesse de noter ce que le PO a écarté ───────
+#
+# Brancher l'exclusion rend l'ensemble noté dépendant d'une décision humaine
+# MUTABLE. C'est exactement le défaut que `review.bench_gold` a été écrit pour
+# tuer : deux runs à deux semaines d'écart ne mesuraient pas la même chose, et
+# rien ne le signalait. D'où le test central ci-dessous — `corpus_version` DOIT
+# bouger quand on écarte une capture.
+
+
+def _run_replay(corpus: ScanCorpusStore, tmp_path: Path, *extra: str) -> dict:
+    """Joue `main()` de bout en bout (embedder stub) et rend la scorecard."""
+    import training.eval.evaluate_real_photos as erp
+    from scripts import replay_corpus as rc
+
+    cand_dir = tmp_path / "cand"
+    cand_dir.mkdir(exist_ok=True)
+    _stub_centroids_json(cand_dir / "embeddings_v1.json")
+    (cand_dir / "model.tflite").write_bytes(b"stub")
+    out_dir = tmp_path / f"out{len(extra)}{'-'.join(extra)}"
+
+    argv = [
+        "replay_corpus",
+        "--candidate", str(cand_dir),
+        "--db", str(corpus.db_path),
+        "--out", str(out_dir),
+        "--no-eq",
+        *extra,
+    ]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(erp, "load_embedder", lambda p: _StubEmbedder())
+        mp.setattr(rc.sys, "argv", argv)
+        rc.main()
+    return json.loads((out_dir / "scorecard.json").read_text(encoding="utf-8"))
+
+
+def test_juge_ne_note_pas_les_captures_ecartees(
+    corpus: ScanCorpusStore, tmp_path: Path
+) -> None:
+    """Défaut = exclusion ACTIVE. Sans ça, l'écran donne l'illusion d'agir."""
+    avant = _run_replay(corpus, tmp_path)
+    assert avant["n_frames"] == 3
+    assert avant["excluded"] == {
+        "active": True, "n": 0, "by_reason": {}, "capture_ids": [],
+    }
+
+    corpus.set_eval_decision(
+        "aa00000000000003", "exclude", reason="cadrage raté", decided_by="po"
+    )
+    apres = _run_replay(corpus, tmp_path, "--conditions", "bright,dim,tilt")
+
+    assert apres["n_frames"] == 2
+    assert apres["excluded"]["active"] is True
+    assert apres["excluded"]["n"] == 1
+    assert apres["excluded"]["by_reason"] == {"cadrage raté": 1}
+    assert apres["excluded"]["capture_ids"] == ["aa00000000000003"]
+    # La frame écartée était la seule mal classée : le r@1 doit s'en ressentir.
+    assert apres["primary"]["r_at_1_eq"] == 1.0
+
+
+def test_corpus_version_porte_l_ensemble_REELLEMENT_note(
+    corpus: ScanCorpusStore, tmp_path: Path
+) -> None:
+    """🔴 LE test. Si la version était calculée sur le pool brut, deux
+    scorecards porteraient la MÊME version en ayant noté des jeux différents —
+    indétectable. C'est le défaut que `bench_gold` a été écrit pour tuer."""
+    avant = _run_replay(corpus, tmp_path)
+    corpus.set_eval_decision("aa00000000000003", "exclude", reason="doublon")
+    apres = _run_replay(corpus, tmp_path, "--conditions", "bright,dim,tilt")
+
+    assert apres["corpus_version"] != avant["corpus_version"]
+    assert apres["n_frames"] < avant["n_frames"]
+
+    # Et le geste inverse la rend à l'identique : la version est bien une
+    # fonction de l'ENSEMBLE noté, pas un compteur qui avance.
+    corpus.set_eval_decision("aa00000000000003", None, reason="rouvert")
+    rendu = _run_replay(corpus, tmp_path, "--path", "fast")
+    assert rendu["corpus_version"] == avant["corpus_version"]
+    assert rendu["n_frames"] == avant["n_frames"]
+
+    # Les trois gestes sont au journal — un avis sans trace ne se re-discute pas.
+    journal = corpus.list_decisions("aa00000000000003")
+    assert [(j["old_value"], j["new_value"]) for j in journal] == [
+        (None, "exclude"), ("exclude", None),
+    ]
+
+
+def test_include_rejected_remet_la_capture_et_le_dit(
+    corpus: ScanCorpusStore, tmp_path: Path
+) -> None:
+    """`--include-rejected` est du DIAGNOSTIC : il note quand même, et le bloc
+    `excluded` reste rendu (`active: false`) — c'est là qu'il faut le voir."""
+    corpus.set_eval_decision("aa00000000000003", "exclude", reason="flou")
+    strict = _run_replay(corpus, tmp_path)
+    large = _run_replay(corpus, tmp_path, "--include-rejected")
+
+    assert large["n_frames"] == 3 and strict["n_frames"] == 2
+    assert large["excluded"]["active"] is False
+    assert large["excluded"]["n"] == 1
+    assert large["filter"]["include_rejected"] is True
+    assert strict["filter"]["include_rejected"] is False
+    # Deux jeux différents ⇒ deux versions différentes. Toujours.
+    assert large["corpus_version"] != strict["corpus_version"]
+
+
+def test_tout_ecarter_echoue_franchement(
+    corpus: ScanCorpusStore, tmp_path: Path
+) -> None:
+    """Un corpus intégralement écarté ne rend pas un r@1 sur zéro frame : il
+    lève, et le message dit POURQUOI il est vide."""
+    for cid in ("aa00000000000001", "aa00000000000002", "aa00000000000003"):
+        corpus.set_eval_decision(cid, "exclude", reason="séance à refaire")
+    with pytest.raises(SystemExit) as exc:
+        _run_replay(corpus, tmp_path)
+    assert "écartée(s) à la main" in str(exc.value)
+    assert "--include-rejected" in str(exc.value)
+
+
+def test_excluded_block_sans_raison(corpus: ScanCorpusStore, tmp_path: Path) -> None:
+    """Une exclusion sans raison reste comptée — et se voit comme telle."""
+    corpus.set_eval_decision("aa00000000000003", "exclude")
+    sc = _run_replay(corpus, tmp_path)
+    assert sc["excluded"]["by_reason"] == {"∅ (sans raison)": 1}

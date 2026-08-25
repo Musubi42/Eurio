@@ -174,7 +174,13 @@ Le **cœur du funnel S0**. Prend un **candidat** + un **filtre corpus** → une
   - *Rapide (modèle/centroïdes/seuils)* : charge `crop.png` → embed candidat →
     cosine vs centroïdes candidat → top-k + abstention. Pas de détection.
   - *Complet (normalisation/détection)* : charge `raw.jpg` → détection+normalise
-    candidat → crop → embed → match. Plus lent, réservé aux exp de géométrie.
+    candidat → crop → embed → match. Plus lent.
+    ⚠️ **Sur le corpus device, `--path full` n'est pas « réservé aux exp de
+    géométrie » : il est OBLIGATOIRE.** Les crops stockés sortent de **quatre**
+    normaliseurs (`hough_tight` 113, `hough_relaxed` 1, `hough_strict` 280,
+    `hough_loose` 57 — 17 % du pull de juin). En `fast`, l'écart mesuré serait
+    celui des normaliseurs. Mesure :
+    [`../juge-et-banc/LOT1-IMPORT.md`](../juge-et-banc/LOT1-IMPORT.md) §4.
 - **Sortie :** `scorecard.json` (§8) **+** `predictions.jsonl`
   (`capture_id → top-k, abstain`) pour le McNemar (§8bis).
 
@@ -191,14 +197,27 @@ le delta offline ne prédit pas le device (cf. `feedback_output_contract_parity`
   "candidate": "exp-01-centroids/train_mean",     // libellé
   "baseline":  "prod@<bundle_sha>",
   "corpus_version": "a1b2c3d4e5f6", "n_frames": 48,
-  "filter": { "cohort_id": "b0299ca0252b", "conditions": ["bright","dim","tilt"] },
+  "filter": { "cohort_id": "b0299ca0252b", "conditions": ["bright","dim","tilt"],
+              "bundle_sources": ["device_pull_20260601"] },
+
+  "label_space": {                                 // §8ter — le dénominateur
+    "n_candidate_classes": 24,                     // centroïdes du candidat
+    "n_ground_truth_classes": 20,                  // classes du corpus filtré
+    "n_covered_classes": 18,
+    "n_uncoverable_classes": 2,
+    "uncoverable_classes": ["mt-2euro-standard-t1", "…"],
+    "n_frames_covered": 44, "n_frames_uncoverable": 4,
+    "frame_coverage": 0.9167 },
 
   "primary":   { "r_at_1_eq": 0.71, "r_at_5_eq": 0.90,
-                 "r_at_1_strict": 0.69 },          // eq = maille design_group
+                 "r_at_1_strict": 0.69,            // eq = maille design_group
+                 "r_at_1_on_covered": 0.77,        // §8ter — JAMAIS sans le global
+                 "n_on_covered": 44 },             // …ni sans son n
   "by_condition": {                                // garde-fou régression
-    "bright": { "n": 16, "r_at_1_eq": 1.00 },
-    "dim":    { "n": 16, "r_at_1_eq": 0.75 },
-    "tilt":   { "n": 16, "r_at_1_eq": 0.81 } },
+    "bright": { "n": 16, "r_at_1_eq": 1.00, "n_covered": 15, "r_at_1_on_covered": 1.00 },
+    "dim":    { "n": 16, "r_at_1_eq": 0.75, "n_covered": 15, "r_at_1_on_covered": 0.80 },
+    "tilt":   { "n": 16, "r_at_1_eq": 0.81, "n_covered": 14, "r_at_1_on_covered": 0.93 } },
+  "errors": { "n": 0, "rate": 0.0, "by_kind": {} },// §8ter — échec ≠ abstention
   "abstention": { "coverage": 0.94,                // % de frames où on ose répondre
                   "precision_at_coverage": 0.80 }, // parmi celles-ci, % correct
   "latency_ms": { "p50": null, "p95": null,        // rempli en S2 (device)
@@ -220,6 +239,59 @@ le delta offline ne prédit pas le device (cf. `feedback_output_contract_parity`
   Le best-of (produit) est dérivable en groupant par `(eurio_id, condition,
   session)` — reporté à part quand pertinent.
 
+## 8ter. L'espace de labels — ajouté au contrat le 2026-08-25
+
+> **Pourquoi ce paragraphe existe.** Le 2026-08-25, le run témoin du lot 3
+> (`--iteration caf98145032c --bundle-source device_pull_20260601`) a rendu
+> `r_at_1_eq = 0,1751` sur 337 frames. Le vrai chiffre est **98,3 % sur 60
+> frames** : l'itération ne porte que **3 centroïdes** quand le corpus filtré
+> porte **17 classes**, donc **277 frames sur 337 étaient fausses par
+> construction** — aucun modèle ne pouvait les réussir. Le nombre était
+> plausible, faux, et **muet**. Cf.
+> [`../juge-et-banc/LOT3-JUGE.md`](../juge-et-banc/LOT3-JUGE.md) §3.
+
+**Définition.** Une frame est **couvrable** ssi il existe un centroïde du
+candidat qui `covers()` sa vérité terrain, **ou** qui lui est équivalent en
+`design_group`. C'est la négation exacte de la règle de `compute_hits` : une
+frame non couvrable a `correct_eq_top1 = false` **quoi que fasse le modèle**.
+Le drapeau est porté par chaque ligne de `predictions.jsonl` (`coverable`).
+
+**Trois obligations, non négociables :**
+
+1. **`label_space` est obligatoire** dans toute scorecard. Sans lui, `n_frames`
+   fait croire à un dénominateur honnête alors qu'il compte des frames dont la
+   réponse n'est pas dans le modèle.
+2. **`r_at_1_on_covered` et `r_at_1_eq` se rendent ensemble, avec `n_on_covered`.**
+   Jamais l'un sans l'autre : le global est comparable entre candidats d'espaces
+   différents (mais dilué), le sur-couvrables mesure le modèle (mais sur un
+   sous-ensemble qui change avec lui). **Citer un seul des deux est une faute de
+   lecture**, dans un `exp-*.md` comme dans une conversation.
+3. **Une comparaison entre espaces de labels différents est REFUSÉE.** Un
+   `--baseline` dont l'espace diffère de celui du candidat fait sortir
+   `replay_corpus.py` en erreur explicite, **avant la première inférence et
+   avant d'écrire quoi que ce soit sur disque**. Le McNemar croiserait sinon
+   l'écart des **cohortes** et non celui des **modèles**, et rien ne le dirait.
+   La comparaison se fait sur la maille `COALESCE(design_group, eurio_id)` :
+   deux candidats entraînés l'un en `eurio_id`, l'autre en `design_group`, ne
+   sont pas pour autant deux espaces différents.
+
+⚠️ **Conséquence pour le départage ArcFace ↔ DINO** ([`MATRICE.md`](../juge-et-banc/MATRICE.md)) :
+les deux voies n'ont **pas** le même espace de labels par défaut (la banque DINO
+couvre bien plus de classes qu'une cohorte d'entraînement). Les opposer demande
+de **recalculer les centroïdes des deux sur le même ensemble de classes** — ce
+n'est pas une option de confort, c'est la condition pour que le p-value veuille
+dire quelque chose.
+
+### `errors` — un échec n'est pas une abstention
+
+Même famille de silence, corrigée le même jour. `abstention.coverage` seul
+confond deux choses : une **abstention** (le candidat a vu la frame et s'est tu)
+et un **échec** (la frame n'a jamais atteint le modèle : `normalize_failed`,
+`load_failed`). Un run où tout le raw échouerait sortait `r_at_1 = 0.0` et
+`coverage = 0.0` — deux nombres plausibles, indiscernables d'un modèle prudent.
+Le bloc **`errors` `{n, rate, by_kind}` est obligatoire**, et vaut
+`{0, 0.0, {}}` explicitement quand tout va bien.
+
 ## 8bis. Stat appariée — McNemar (obligatoire vu le petit n)
 
 On ne compare **jamais** deux R@1 indépendants (à n=48, IC95 ≈ ±13 pts). On croise
@@ -231,6 +303,8 @@ On ne compare **jamais** deux R@1 indépendants (à n=48, IC95 ≈ ±13 pts). On
   que sur un delta **franc** (≥ ~5 pts) ou un **shift net par condition**, tant
   que le corpus n'a pas grossi (~150–300 frames, cf. `README.md` §4).
 - `replay_corpus.py` sort la p-value McNemar baseline↔candidat.
+- ⚠️ Le croisement n'a lieu que si les deux candidats partagent le **même espace
+  de labels** (§8ter, obligation 3) — sinon le script refuse.
 
 ---
 
