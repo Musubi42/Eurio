@@ -1,0 +1,19 @@
+{
+  "builder": "Musubi42s-MacBook-Air-Oim",
+  "built_at": "2026-08-25T17:03:33+00:00",
+  "contains_predictions": false,
+  "corpus_version": "494c71b726bf",
+  "git_commit": "c6101c48d038fb424f2ee3d20ae57d00a6384b42",
+  "n_by_bundle_source": {
+    "device_pull_20260429": 114,
+    "device_pull_20260601": 337
+  },
+  "n_captures": 451,
+  "n_eurio_ids": 20,
+  "n_eurio_ids_by_bundle_source": {
+    "device_pull_20260429": 19,
+    "device_pull_20260601": 17
+  },
+  "scoring_path": "full",
+  "scoring_path_reason": "Les crops STOCKÉS ont été produits par QUATRE normaliseurs différents (mesuré : hough_tight 113 + hough_relaxed 1 pour avril, hough_strict 280 + hough_loose 57 pour juin — cf. quality_json.normalize.method). Noter en --path fast comparerait des crops incomparables et mesurerait l'écart des normaliseurs, pas celui des modèles. La notation se fait en --path full (renormalisation depuis le raw, port bit-for-bit de SnapNormalizer.kt)."
+}
