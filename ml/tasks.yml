@@ -799,7 +799,7 @@ tasks:
   augment-textures-check:
     desc: "Validate that overlay textures are present and readable"
     cmds:
-      - "{{.VENV}}/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'"
+      - "{{.VENV}}/python -c 'from training.augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'"
 
   augment-textures-generate:
     desc: "Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)"
@@ -1144,15 +1144,20 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.import_scan_corpus --iteration {{.ITERATION}} {{.CLI_ARGS}}"
 
+  scan-corpus:import-pull:
+    desc: "Import d'un pull device eval_real (arbre de fichiers + sidecars JSON) dans scan_corpus.db, étiqueté par protocole. DRY-RUN par défaut ; --execute pour écrire. Remappe les slugs d'APK morts (remap_bench_golden_set.MAPPING, puis EXTRA_MAPPING mesuré) et REFUSE tout eurio_id absent du référentiel. cohort_id et source_iteration_id restent NULL : ces pulls précèdent toute cohorte. Régénère ml/state/validation_gold/device_corpus_manifest.jsonl (committé, sans aucune prédiction). ⚠️ La notation de ce corpus se fait en --path full : avril et juin ont deux normaliseurs différents. Usage: go-task ml:scan-corpus:import-pull -- --pull ../debug_pull/20260601_154135 --bundle-source device_pull_20260601 [--execute]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.import_device_pull {{.CLI_ARGS}}"
+
   scan-corpus:replay:
-    desc: "Replay d'un candidat {centroïdes, modèle, seuils} sur le corpus → scorecard + predictions + McNemar vs baseline. Usage: go-task ml:scan-corpus:replay -- --candidate <dir|label> [--baseline <dir>] [--cohort-id <id>]"
+    desc: "Replay d'un candidat {centroïdes, modèle, seuils} sur le corpus → scorecard + predictions + McNemar vs baseline. Sur le corpus device : --path full OBLIGATOIRE (4 normaliseurs cohabitent). Les captures ÉCARTÉES à la main (eval_decision='exclude', posé depuis la fiche pièce) ne sont PAS notées — c'est le défaut ; --include-rejected les remet, pour diagnostic seulement. corpus_version porte l'ensemble RÉELLEMENT noté, donc écarter une capture la fait changer, et la scorecard porte un bloc excluded {n, by_reason}. Usage: go-task ml:scan-corpus:replay -- (--iteration <iid> | --candidate <dir>) --path full [--include-rejected] [--baseline <dir>]"
     cmds:
       - "{{.VENV}}/python -m scripts.replay_corpus {{.CLI_ARGS}}"
 
   scan-corpus:test:
-    desc: "Tests unitaires du corpus rejouable (store + import + replay/McNemar)."
+    desc: "Tests unitaires du corpus rejouable (store + import + routes + replay/McNemar)."
     cmds:
-      - "{{.VENV}}/python -m pytest tests/test_scan_corpus_store.py tests/test_import_scan_corpus.py tests/test_replay_corpus.py tests/test_build_scan_prescription.py -v"
+      - "{{.VENV}}/python -m pytest tests/test_scan_corpus_store.py tests/test_import_scan_corpus.py tests/test_import_device_pull.py tests/test_scan_corpus_routes.py tests/test_replay_corpus.py tests/test_replay_corpus_iteration.py tests/test_build_scan_prescription.py -v"
 
   # ─── Bench best-frame-capture (chunk 7) ───────────────────────────────────
   # Le pull device vit côté android (go-task android:bench:pull). Doc boucle

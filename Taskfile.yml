@@ -200,7 +200,7 @@ tasks:
     desc: Validate that overlay textures are present and readable
     dir: ./ml
     cmds:
-      - ./.venv/bin/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'
+      - ./.venv/bin/python -c 'from training.augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'
 
   # ccproxy est un service GLOBAL partagé entre projets (~/Taskfile.yml,
   # namespace global:ccproxy:*), plus une instance locale à Eurio. Ces tâches

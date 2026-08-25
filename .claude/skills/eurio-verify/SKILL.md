@@ -77,9 +77,71 @@ rend le statut de `tail`, pas celui de la commande. Un refus manifeste a ainsi
 | Un plan chiffré « impossible à dépasser » | Le préflight qui devait l'arrêter comptait sur `source_runs.n_calls` (3 pour 740 appels réels) et rendait `estimate=8` pour une vague à 1040 (S3). **Un garde branché sur un compteur faux est un garde absent** |
 | Une file de review qui sert **une autre classe** sous le bon en-tête | Le périmètre vit dans l'URL et l'URL se complète en **deux temps** : la vue se monte, demande la file GLOBALE, puis `router.replace` ajoute `dino_class` et une seconde demande part. Deux requêtes à 2 ms d'écart, **et c'est la latence qui décide** laquelle s'affiche. Mesuré le 2026-08-25 : une pièce autrichienne servie sous « PÊCHE lu-2025-…-throne ». Rien ne casse, rien ne loge |
 | Un correctif d'affichage qui « marche » après un `location.reload()` | Le rechargement dur **change l'ordonnancement** et cache la course. Rejoue toujours par le **chemin réel** (le lien que l'écran fabrique), pas par une URL collée : le bug de la pêche ci-dessus est invisible en rechargement direct |
+| Un garde « strict hold-out » qui protège un **répertoire inexistant** | `REAL_PHOTOS_DIR = ml/data/real_photos` (`train_embedder.py:53`) — un dossier legacy, `test -d` répond « n'existe pas ». Le juge réel (`ml/datasets/eval_real_norm/`) n'y figurait pas. Et **ses deux tests fabriquaient leurs chemins SOUS ce dossier mort** (`tests/test_benchmark.py:122`, `fake_root = tmp_path / "real_photos"`) : ils passaient, ils ne prouvaient rien. Corrigé le 2026-08-25 en `REAL_PHOTO_ROOTS` (3 racines) + un garde de **contenu** sur `val/` |
+| Un garde qui ne peut **pas s'importer** | `go-task ml:augment-textures-check` importait `augmentations.overlays` au lieu de `training.augmentations.overlays` — **dans deux fichiers** (`ml/tasks.yml:802` ET `Taskfile.yml:203`). `ModuleNotFoundError` avant tout verdict, depuis la création de la tâche. ⚠️ **Le code de sortie ne le distingue pas** : import cassé et verdict négatif rendent tous les deux `1` (`201` à travers go-task). Seule la SORTIE distingue les deux |
+| Une base SQLite « vide » qui contient 451 lignes | `sqlite3 -readonly` sur une base **WAL sans `-shm`** échoue en `unable to open database file (14)`, message qui ne dit rien de WAL et invite à conclure « base absente ou vide ». Voir la fiche WAL ci-dessous |
+| Un instantané périmé, `exit=0`, **sans un mot** | `immutable=1` **ignore le `-wal`** : dès qu'un écrivain tourne, il rend le contenu du fichier principal seul. Voir la fiche WAL ci-dessous |
+| « La réplique n'a pas bougé de la journée » | **Le `mtime` du `.db` ment en WAL.** Mesuré le 2026-08-25 pendant un `VACUUM INTO` : `.db` à **01:31**, `-wal` à **17:21** — *seize heures d'écart*, et les itérations venaient d'y être écrites. Juger la fraîcheur sur le `.db` fait conclure à une panne ou déclencher un pull inutile |
+| Un paramètre accepté par la route, **jamais transporté** | `POST /lab/cohorts/{id}/iterations` acceptait `augmentations_seed` sans le porter : `IterationCreatePayload` n'avait pas le champ, le runner tirait une graine **au hasard** (`iteration_runner.py:314`). Deux runs « jumeaux » auraient reçu des augmentations différentes — **et la scorecard n'affiche pas la graine**, donc l'expérience aurait été fausse sans laisser de trace. Un champ accepté n'est transporté que si un test l'affirme de bout en bout |
+| `HTTP 200`, `status: pending`, `error: null` — et rien ne tourne | `POST …/launch-training` sous le flip Direction A : `create_run_row` écrit `training_runs` dans la réplique, le job détaché meurt **en moins d'une seconde** sur `attempt to write a readonly database`. Ni le code HTTP, ni le statut d'itération, ni le champ `error` ne le disent. La vérité est la table `jobs` (`status`, `error`, `log_path`) |
+| Une moyenne qui rend **`p = 1,0`** sur un effet massif | La fuite de centroïdes vaut **+14,7 pts** sur les photos qu'elle a vues (McNemar `b/c = 15/0`, `p = 6,1 × 10⁻⁵`) et **−4,4 pts** sur les autres. Le global rend **+0,24 pt, `p = 1,0`** — lu seul : « pas de fuite ». **Le nombre qui trahit est `87 discordantes`** sur 451 : deux modèles qui répondent différemment 87 fois ne font pas « la même chose », ils font deux erreurs opposées qui s'annulent. Une moyenne sur deux populations dont une seule est exposée ne mesure rien |
+| Un build qui ne s'exécute pas et sort en **succès** | `pnpm --filter studio-local build` → `No projects matched the filters`, **`exit=0`**. Le paquet s'appelle `eurio-studio-local`. Forme sûre : `pnpm -C packages/studio-local build` (ou `--filter eurio-studio-local`) |
 
 Le motif commun : **une valeur par défaut plausible** (0, vide, absent) là où il
 aurait fallu une erreur.
+
+### La fiche WAL — deux pièges **opposés**, à lire ensemble
+
+Ils tirent dans des directions contraires, et corriger l'un en ignorant l'autre
+fabrique la panne inverse. **Il n'y a pas de forme universellement sûre.**
+
+| | `-readonly base.db` | `-readonly "file:base.db?immutable=1"` | `"file:base.db?mode=ro"` |
+|---|---|---|---|
+| Base WAL **au repos**, `-shm` absent | ⛔ `error 14` | ✅ | ✅ |
+| Un **écrivain** tourne (`:8042`, un job) | ✅ | ⛔ **sous-compte en silence** | ✅ |
+
+**La règle : `immutable=1` au repos, `mode=ro` sinon.**
+
+Reproduction complète, dans un bac à sable — les deux pièges, dans l'ordre :
+
+```bash
+mkdir -p /tmp/waldemo && cd /tmp/waldemo
+sqlite3 t.db "PRAGMA journal_mode=WAL; CREATE TABLE x(i INTEGER); INSERT INTO x VALUES(1),(2),(3);"
+
+# ── Piège A : la base au repos rend « erreur », pas « 3 »
+rm -f t.db-shm ; chmod 555 .          # -readonly ne peut plus créer le -shm
+sqlite3 -readonly t.db                    "SELECT COUNT(*) FROM x;" ; echo "exit=$?"
+# Error: in prepare, unable to open database file (14)
+# exit=14                    ← le message ne dit RIEN de WAL
+sqlite3 -readonly "file:t.db?immutable=1" "SELECT COUNT(*) FROM x;" ; echo "exit=$?"
+# 3
+# exit=0                     ← immutable=1 n'a besoin d'aucun -shm
+chmod 755 .
+
+# ── Piège B : un écrivain tourne, immutable=1 rend un instantané périmé
+# (une connexion python ouverte qui a inséré 4 et 5 sans checkpoint)
+sqlite3 -readonly "file:t.db?immutable=1" "SELECT COUNT(*) FROM x;" ; echo "exit=$?"
+# 3
+# exit=0                     ← FAUX, et parfaitement plausible
+sqlite3           "file:t.db?mode=ro"     "SELECT COUNT(*) FROM x;" ; echo "exit=$?"
+# 5
+# exit=0                     ← le vrai compte, le -wal est lu
+```
+
+⚠️ **Piège B est le plus dangereux des deux** : A crie (`exit=14`), B se tait
+(`exit=0`, un nombre plausible, aucun message). Et il s'est armé tout seul le
+jour où l'API a commencé à écrire dans `scan_corpus.db` — la recommandation
+`immutable=1` de `LOT1-IMPORT.md` §1 était juste **quand elle a été écrite**, et
+fausse trois heures plus tard. Une recette de lecture de base porte donc une
+condition d'emploi, jamais seulement une commande.
+
+Dans la même démonstration, la troisième forme du mensonge :
+
+```
+db mtime : 23:45:00
+wal mtime: 23:45:45     ← les 2 lignes de plus sont là, pas dans le .db
+```
+
 
 ## Réflexes
 
@@ -112,9 +174,23 @@ cd ml && ./.venv/bin/python -m pytest tests/test_lab_api.py tests/test_lab_write
 go-task front:typecheck        # via nix develop si hors devShell
 ```
 
-Il n'y a **pas** de tâche « toute la suite », et la suite complète a des échecs
-pré-existants hors-scope. Cible les fichiers liés à ton changement, et dis
-lesquels tu as lancés.
+Il n'y a **pas** de tâche « toute la suite ». Cible les fichiers liés à ton
+changement, et dis lesquels tu as lancés.
+
+⚠️ **La phrase « la suite complète a des échecs pré-existants hors-scope » est
+périmée sur le Mac.** Mesuré le 2026-08-25, sans pipe :
+
+```bash
+cd ml && ./.venv/bin/python -m pytest tests -q -p no:randomly ; echo "exit=$?"
+# 2358 passed, 40 warnings in 98.18s
+# exit=0
+```
+
+**0 failed.** La suite entière est donc un filet utilisable, et toute ligne
+rouge appartient au changement en cours. Elle a grossi vite — 1878 le
+2026-08-20, 2258 le 25 au matin, 2358 le 25 au soir : **cite toujours la
+mesure du jour, jamais un chiffre lu dans une doc.** Les 40 warnings sont
+préexistants (`datetime.utcnow()`, `EURIO_DB` déprécié) : pas un signal.
 
 ⚠️ Sur le PC, `test_sources_base` / `test_ingest_crops` échouent sur
 `sqlite3.OperationalError: unable to open database file` — problème
