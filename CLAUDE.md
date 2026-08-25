@@ -362,3 +362,11 @@ ci-dessus s'applique.
 - ❌ Utiliser `git add -A` ou `git add .` (staging explicite par fichier pour éviter les fuites de secrets)
 - ❌ Éditer `secrets/dev.env` directement ou créer un `.env` en clair (fichier chiffré — utiliser `go-task secrets:edit`)
 - ❌ Utiliser `task` au lieu de `go-task` dans les commandes ou les docs
+- ❌ **Proposer, relancer ou planifier des séances de CAPTURE DEVICE.** Décision du
+  PO, 2026-08-26 : on n'en fait plus. Ne suggère pas de « compléter le corpus »,
+  de « refaire une session de prises de vue », ni de brancher l'app de capture.
+  Les **451 captures existantes sont conservées** (archivées, répliquées sur
+  MinIO) et restent lisibles comme témoin — mais **le jeu d'évaluation vient
+  désormais des crops eBay**. Suivi : [`docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md`](docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md).
+  *(Le PO juge par ailleurs que l'app de capture est inadaptée — elle prend une
+  photo là où il faudrait un scan. Sujet distinct, à rouvrir par lui seul.)*
