@@ -25,7 +25,39 @@ et le même ensemble de classes — pour savoir lequel part dans l'APK.
 | D6 | L'entraînement ArcFace se fait **sur le PC** (1080 Ti), pas sur le Mac | 2026-08-26 |
 | D7 | Le critère géométrique de D5 est **`tilt_deg`**, pas `quality_score` : après backfill il couvre **99,9 %** du pool éligible contre 65,4 % — aucune imputation, donc aucune règle qui choisirait en fait l'imputation | 2026-08-26 |
 | D8 | Le marquage vit dans **`image_assets.eval_corpus` (TEXTE)**, pas dans `training_eligible=0` : `training_eligible` porte le verdict de la REVIEW, `eval_corpus` porte un RÔLE. Les confondre ferait disparaître les 300 crops des compteurs de review | 2026-08-26 |
-| D9 | **« Propager côté MinIO » n'a pas de sens technique** : la clé S3 est immuable et sert de jointure partout ; c'est la LIGNE qui porte le rôle. Un tag d'objet reste possible pour l'œil humain, mais rien du pipeline ne le lit — il serait décoratif | 2026-08-26 |
+| ~~D9~~ | ~~« Propager côté MinIO » n'a pas de sens technique~~ — **RÉOUVERTE le 2026-08-26, voir ci-dessous. Décidée trop vite, et sur un argument de COÛT présenté comme un argument de PRINCIPE** | 2026-08-26 |
+
+### 🔴 D9 réouverte — le PO a raison, et l'argument était mal posé
+
+Réponse initiale : « la clé S3 est immuable, c'est la ligne qui porte le rôle,
+un déplacement d'objets serait décoratif ». **Objection du PO, et elle porte :**
+un crop qui passe en évaluation **n'est plus le même objet fonctionnellement**.
+Il sort du pool d'entraînement. Que le stockage n'en sache rien signifie que la
+séparation ne tient que par un `WHERE` — et qu'un oubli de prédicat la fait
+fuir en silence.
+
+**L'incohérence est de notre côté** : quelques heures plus tôt, on a choisi de
+mettre le corpus de jugement dans une **base isolée** (`scan_corpus.db`)
+exactement pour cette raison — *« l'entraînement ne la lit pas, donc il ne PEUT
+pas la prendre, même par bug »*. Le même raisonnement vaut pour les octets. On
+l'a appliqué à la base et refusé au stockage, sans justifier la différence.
+
+Ce qui était **vrai** dans la réponse initiale relève du coût, pas du principe :
+
+- `storage_path` est une clé S3 qui sert de jointure partout, et le bucket est
+  **dérivé de la source** (`bucket_for_asset`), pas du rôle ;
+- déplacer 300 objets impose de réécrire 300 `storage_path`, de rendre
+  `bucket_for_asset` conscient du rôle, et d'invalider le cache local
+  correspondant.
+
+C'est un **lot**, pas une ligne — mais c'est la bonne cible. ⚠️ À noter : le
+fichier ne « disparaît » pas de MinIO, il change de rôle ; ce que le PO demande
+est que le **rangement** reflète ce rôle, comme la base le fait désormais.
+
+**Statut : à trancher.** Options : (a) préfixe ou bucket dédié aux crops
+d'éval, `bucket_for_asset` devenant conscient du rôle — la séparation devient
+physique ; (b) statu quo, le rôle en base seul, et on assume que deux prédicats
+la portent. Ne pas reconduire (b) par défaut faute d'avoir tranché.
 
 ### Sur D5 — pourquoi pas « les plus éloignées de la canonique selon DINO »
 
@@ -163,11 +195,61 @@ Préparée ici, jouée là-bas. La revue de préparation dira si elle est prête
   déclarés par l'appelant — à fermer avant qu'une page ne fonde un choix
   d'encodeur dessus.
 
+## ✅ L'autopull de la réplique ne menace PAS un entraînement long
+
+Question du PO : *« toutes les deux minutes il y a un pull ; si mon entraînement
+dure plusieurs heures, est-ce qu'il va écraser les images qu'on a pull ? »*
+
+**Non.** Vérifié au code le 2026-08-26 :
+
+- `client/replica.py` ne contient **aucune** référence à `cache`, `datasets`,
+  `augmentations` ou `enrichment-crops` :
+  `grep -cE "cache|datasets|augmentations|enrichment-crops" ml/client/replica.py`
+  → **0** ;
+- l'autopull rafraîchit **uniquement** `state/eurio.replica.db`, par
+  **`sqlite3_rsync` incrémental** (~3 s toutes les 2 min), sous verrou
+  (`_REPLICA_LOCK`) — pas un remplacement de fichier en vrac ;
+- les **images** vivent ailleurs et ne sont jamais touchées : le cache
+  read-through `~/.cache/eurio/<bucket>/<clé>` et le bake
+  `ml/datasets/<numista_id>/augmentations/<iteration_id>/sample_NNN.jpg`, qui
+  sont de vrais fichiers.
+
+**Interrupteur si tu veux la déterminisme absolu pendant un run :**
+`EURIO_REPLICA_AUTOPULL=0` (ou ne pas lancer l'API sur la machine qui entraîne
+— c'est `serving/server.py:291` qui démarre le thread, et il est no-op si le
+transport rsync n'est pas provisionné).
+
+⚠️ **Ce qui reste vrai, et qui est un autre sujet** : la réplique étant
+rafraîchie, le **pool de sources** peut bouger entre deux lectures. Le bake lit
+ses sources **une fois**, au début — donc un run est cohérent avec lui-même.
+Mais deux runs à deux semaines d'écart ne bakent pas la même chose (5 051 →
+6 594 samples, +30,5 %), et rien ne le dit. C'est ce que `inputs_digest`
+persisté fermerait (cf. §Reste-à-faire).
+
+## Deux lots que le plan ne contenait pas — trouvés par la revue adversariale
+
+Ils s'intercalent **avant** l'étape 5, et sans eux la matrice ne peut pas être
+calculée. Ce ne sont pas des réglages.
+
+| Lot | Ce qui manque | Preuve |
+|---|---|---|
+| **A — noter des crops eBay** | `replay_corpus` ne lit qu'une table, `scan_corpus` (`replay_corpus.py:662`). 7 points à changer, dont la double identité `truth_eurio_id`/`class_id` du gold, `by_condition` qui dégénère, et `normalize_device_path` ≠ `normalize_listing_path` | `REVUE-ETAPE3.md` §B2 |
+| **B — un adaptateur DINO** | `load_embedder` n'accepte que `.pth/.pt/.tflite` ; la banque est un `.npz` (2 062 ancres, 671 classes, dim 1024). Restreindre la banque à 60 classes est **nécessaire mais insuffisant** | `REVUE-ETAPE3.md` §B3 |
+
+⚠️ Et une **faille du garde d'espace de labels** : il ne se déclenche que si
+`--baseline` est passé (`replay_corpus.py:739-741`). Deux runs notés séparément
+passent sans un mot — le garde se contourne en ne l'appelant pas.
+
 ## Journal
 
 | Date | Ce qui s'est passé |
 |---|---|
 | 2026-08-26 | Document ouvert. D1..D6 posées. Quotas mesurés : 5/classe × 60 classes = 300 frames. |
+| 2026-08-26 | Étape 1 **faite** (backfill, `missing=0`, tilt 21,5 % → 99,9 %). Étape 2 **préparée**, non appliquée. |
+| 2026-08-26 | Migration `0014` **appliquée au canonique**, `/ingest/eval-corpus` servie, réplique à jour. Suite : 2373 passed. |
+| 2026-08-26 | **D9 réouverte** : le PO conteste le refus de propager côté MinIO, et il a raison — l'argument était un coût déguisé en principe. |
+| 2026-08-26 | Autopull vérifié **inoffensif** pour un entraînement long (il ne touche que la base, jamais les images). |
+| 2026-08-26 | Deux lots ajoutés au plan (noter des crops eBay ; adaptateur DINO), trouvés par la revue adversariale. |
 | 2026-08-26 | **Étape 1 jouée.** `EURIO_CACHE_MAX_GB=0` pour la passe — tranché sur mesure : le cache (15 Go) est **sous** son plafond (20 Go), l'éviction n'aurait rien évincé, et son `rglob` coûtait 1,35 s × 1 579 téléchargements ≈ **35 min** pour ~7,4 min de CPU utile. `{"updated": 17658, "skipped": 20, "missing": 0}`. |
 | 2026-08-26 | **Étape 2 préparée, non appliquée.** Règle de sélection déterministe (quantiles de la moitié la plus inclinée, `tilt_deg` desc + `id` en bris d'égalité, **aucun aléatoire donc aucune graine**), ancres `2eur_all` exclues (751 écartées). Plan : **60 classes × 5 = 300**, tilt moyen **16,43°** contre 12,75° pour le pool restant. Migration `0014` (`image_assets.eval_corpus`), route `POST /ingest/eval-corpus`, prédicat dans les DEUX collectes. Préflight **`ready=True` avant ET après**, `n_ebay` 2 208 → 1 908 (−300 exactement), aucune classe ne tombe. |
 | 2026-08-26 | **Trois mutations jouées, trois tests rouges** (ArcFace, ancres DINO, `_ensure_column` pre-bootstrap) ; sur le **vrai** point d'entrée, la mutation ArcFace fait remonter `n_ebay` à 2 208 — le hold-out fuit. Suite complète : **2373 passed, exit=0** (2358 + 15 neufs). |
