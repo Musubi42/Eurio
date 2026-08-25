@@ -23,6 +23,40 @@ from training.train_embedder import build_embedder, get_device, get_val_transfor
 CATALOG_PATH = Path(__file__).parent.parent / "datasets" / "coin_catalog.json"
 
 
+def describe_auto_source(dataset_root: Path, *, explicit: bool = False) -> str:
+    """Message WARNING nommant la source que `--centroid-source auto` retiendra.
+
+    `auto` bascule val_mean → arcface_w selon que `val/` est peuplé ou non, et
+    cette bascule silencieuse est exactement le motif « valeur par défaut
+    plausible » du catalogue `eurio-verify`. Le défaut est conservé pour les
+    appels manuels ; il n'est plus muet.
+
+    ⚠️ `explicit` dit si la valeur `auto` a été **passée** sur la ligne de
+    commande ou **héritée** de l'absence de drapeau. Le message ne les
+    distinguait pas jusqu'au 2026-08-25 : il annonçait « --centroid-source
+    absent » alors que `training/pipeline.py` le passe explicitement depuis
+    le lot 2, et
+    accusait donc une cause fausse (LOT4-RESULTATS.md §6).
+    """
+    val_dir = Path(dataset_root) / "val"
+    n_val = (
+        sum(1 for f in val_dir.rglob("*") if f.is_file()) if val_dir.exists() else 0
+    )
+    effective = "val_mean (+ arcface_w en repli)" if n_val else "arcface_w"
+    provenance = (
+        "--centroid-source auto passé explicitement"
+        if explicit
+        else "--centroid-source absent → défaut 'auto'"
+    )
+    return (
+        f"WARNING: {provenance}. "
+        f"Source réellement retenue : {effective} "
+        f"(val/ contient {n_val} fichier(s) sous {val_dir}). "
+        "Un appelant automatisé DOIT passer une valeur explicite AUTRE que "
+        "'auto' (cf. docs/work-in-progress/juge-et-banc/PROBLEME.md §1bis)."
+    )
+
+
 def load_display_names() -> dict[str, str]:
     if CATALOG_PATH.exists():
         with open(CATALOG_PATH) as f:
@@ -58,25 +92,34 @@ def compute(args: argparse.Namespace) -> None:
             "class_kind will default to eurio_id."
         )
 
-    # Per-class deployed centroid strategy (see docs/scan-normalization/, fix
-    # to the ArcFace-W misalignment observed at the end of run F2):
+    # Stratégie de centroïde par classe — trois sources possibles :
     #
-    #   (a) Preferred — mean of val embeddings per class. With prepare_dataset
-    #       injecting eval_real_norm/<class>/<step>.jpg into val/, this is the
-    #       empirical center of the cluster the model genuinely produces on
-    #       device-pulled images.
-    #   (b) Fallback — ArcFace W prototype, but only for classes that had no
-    #       val coverage (or for entire runs where val was empty).
-    #   (c) Legacy fallback — average across all splits, used only for
-    #       non-arcface checkpoints (classify / triplet) where W is absent.
+    #   (a) train_mean — moyenne des embeddings du split train. **C'est la
+    #       source à préférer**, et c'est celle que `training/pipeline.py`
+    #       passe explicitement.
+    #   (b) arcface_w — prototype ArcFace W.
+    #   (c) val_mean — moyenne des embeddings du split val.
     #
-    # Why prefer (a) over (b): ArcFace loss frequently converges to ~0 mid-run
-    # (the F2 best epoch was 6, loss already 0.0000). With zero loss, W's slow
-    # SGD updates stop, but the embedding head keeps moving via Adam — so W
-    # ends up pointing at where the embeddings *used to be*, not where they
-    # are. The diagnostic was R@1=95.83% by KNN on val (clusters are clean)
-    # but 50% deployed via W on the same images, with one class becoming an
-    # attractor for the others.
+    # ⚠️ Le commentaire qui vivait ici jusqu'au 2026-08-25 argumentait
+    # l'inverse : il recommandait (c) en s'appuyant sur un diagnostic
+    # « R@1 = 95,83 % par KNN sur val contre 50 % déployé via W ». Ce chiffre
+    # porte sur **24 images / 4 classes, avril 2026, zéro crop eBay en base** —
+    # il n'a jamais été reproduit à l'échelle, et il a été **réfuté deux fois** :
+    #
+    #   • docs/model-efficiency/C1-reliable-centroids.md — 2026-06-11, n = 317
+    #     photos : train_mean 82,97 % > arcface_w 82,65 % > val_mean 77,60 %,
+    #     val_mean est le PIRE des trois ; il ne couvrait que 27 classes / 546.
+    #   • docs/work-in-progress/scan-quality/exp-02-centroids-arcfacew.md —
+    #     2026-07-06, n = 73 frames appariées, test de McNemar :
+    #     train_mean 0,7671 (+8,2 pts) > arcface_w 0,7397 > val_mean 0,6849 ;
+    #     p = 0,180 — un défaut de PUISSANCE (n = 73), pas un défaut de
+    #     train_mean.
+    #
+    # 🔴 Et surtout : `prepare_dataset` remplit `val/` avec le corpus device
+    # `ml/datasets/eval_real_norm/`, qui est **le juge du benchmark**. Prendre
+    # val_mean, c'est fabriquer le prototype d'une classe à partir des photos
+    # qui la testent — une fuite d'étiquette directe, pas un biais de quelques
+    # points. Cf. docs/work-in-progress/juge-et-banc/PROBLEME.md §1bis.
     class_embeddings: dict[str, list[np.ndarray]] = {}
     centroid_sources: dict[str, str] = {}
 
@@ -85,7 +128,13 @@ def compute(args: argparse.Namespace) -> None:
     #   val_mean   : moyenne d'images val uniquement
     #   train_mean : moyenne d'images train (couvre toutes les classes)
     #   arcface_w  : prototype ArcFace-W pour toutes les classes
-    source = getattr(args, "centroid_source", "auto")
+    # `None` = le drapeau n'a pas été fourni (sentinelle d'argparse) ; une
+    # Namespace fabriquée à la main n'a pas l'attribut du tout. Les deux cas
+    # retombent sur `auto`, mais ils ne se journalisent pas pareil.
+    raw_source = getattr(args, "centroid_source", None)
+    source = raw_source if raw_source is not None else "auto"
+    if source == "auto":
+        print(describe_auto_source(dataset_root, explicit=raw_source is not None))
 
     def _split_means(split: str) -> None:
         split_dir = dataset_root / split
@@ -228,8 +277,11 @@ def main():
     parser.add_argument(
         "--centroid-source",
         choices=["auto", "val_mean", "train_mean", "arcface_w"],
-        default="auto",
-        help="Per-class centroid source (cf. C1). auto=val-mean+W fallback (legacy).",
+        default=None,  # sentinelle : distingue « absent » de « auto passé »
+        help="Source du centroïde par classe. 'train_mean' est la valeur à "
+             "utiliser (C1 2026-06-11 n=317 ; exp-02 2026-07-06 n=73). "
+             "'val_mean' fuite le juge quand val/ = eval_real_norm. 'auto' est "
+             "conservé pour les appels manuels et journalise un WARNING.",
     )
     parser.add_argument(
         "--device",

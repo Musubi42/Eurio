@@ -259,7 +259,21 @@ class TrainingPipeline:
             cmd.extend(["--only-classes", only])
         class_kind = row.config.get("class_kind", "design_group")
         cmd.extend(["--class-kind", class_kind])
+        # `--val-source` dit d'où vient le split de validation. En mode lab
+        # (`--skip-train-split`) prepare_dataset l'EXIGE : l'ambiguïté est
+        # précisément ce qui a laissé le corpus device servir à la fois de val
+        # et de juge. Aucun défaut ici — la valeur vient de la config du run.
+        val_source = row.config.get("val_source")
+        if val_source:
+            cmd.extend(["--val-source", str(val_source)])
         if iter_dir is not None:
+            if not val_source:
+                raise RuntimeError(
+                    "config['val_source'] manquant pour un run d'itération "
+                    "(mode lab). Valeurs attendues : device|ebay|none. "
+                    "IterationRunner doit le poser explicitement — cf. "
+                    "docs/work-in-progress/juge-et-banc/PROBLEME.md §1."
+                )
             dataset_dir = iter_dir / "dataset"
             cmd.extend(["--output-dir", str(dataset_dir), "--skip-train-split"])
             # Mode prebaked (lab iteration) : les augmentations sont déjà bakées
@@ -334,10 +348,18 @@ class TrainingPipeline:
         return f"{cfg['epochs']} epochs ({version_str}){suffix}"
 
     def _compute_embeddings(self, row: RunRow, version_str: str) -> str:
+        # `--centroid-source` est passé TOUJOURS, jamais laissé implicite.
+        # Sans lui, compute_embeddings retombe sur son défaut `auto` → moyenne
+        # du split val/ → et val/ est le corpus device, c'est-à-dire le juge du
+        # benchmark : le prototype d'une classe devenait la moyenne des photos
+        # qui la testent (fuite d'étiquette, cf.
+        # docs/work-in-progress/juge-et-banc/PROBLEME.md §1bis).
+        centroid_source = row.config.get("centroid_source", "train_mean")
         cmd = [
             VENV_PYTHON,
             str(ML_DIR / "training" / "compute_embeddings.py"),
             "--model-version", version_str,
+            "--centroid-source", str(centroid_source),
         ]
         iter_dir = _iter_dir(row)
         if iter_dir is not None:

@@ -50,28 +50,52 @@ from training.coin_dataset import EurioCoinDataset, EurioValDataset
 from training.zone_resolver import fetch_eurio_zones, resolve_class_zones
 
 
-REAL_PHOTOS_DIR = (ML_DIR / "data" / "real_photos").resolve()
+# Racines du juge réel — TOUTES les photos qui servent à ANNONCER une
+# performance. Aucune ne doit jamais être pointée comme dataset d'entraînement.
+#
+# ⚠️ Historique : jusqu'au 2026-08-25 ce garde ne connaissait que
+# `ml/data/real_photos` — un répertoire legacy qui **n'existe plus sur disque**,
+# tandis que le juge réellement utilisé (`ml/datasets/eval_real_norm/`) n'y
+# figurait pas. Le garde gardait donc un chemin mort ; les deux tests qui
+# l'exerçaient fabriquaient leurs chemins sous ce même dossier mort et ne
+# prouvaient rien (cf. docs/work-in-progress/juge-et-banc/PROBLEME.md §1bis, et
+# le motif « un garde posé, testé, muté — et jamais appelé » du catalogue
+# `eurio-verify`).
+#
+# 🔴 Et ce garde ne suffit pas : il compare des CHEMINS de dataset, or la fuite
+# principale passe par une COPIE de fichiers dans `val/`
+# (`prepare_dataset._override_val_with_eval_real`). Le garde de contenu qui
+# couvre ce chemin-là vit dans `prepare_dataset._assert_val_holdout_free`.
+REAL_PHOTO_ROOTS: tuple[Path, ...] = (
+    (ML_DIR / "data" / "real_photos").resolve(),       # legacy, absent du disque
+    (ML_DIR / "datasets" / "eval_real_norm").resolve(),  # le juge device actuel
+    (ML_DIR / "state" / "scan_corpus").resolve(),        # frames de scan rejouables
+)
 
 
 def _assert_no_real_photos(path_str: str, *, role: str) -> None:
-    """Hard-fail if a training path resolves to the real-photo hold-out.
+    """Hard-fail if a training path resolves under one of the real-photo hold-outs.
 
-    PRD Bloc 3 §7 R1 — the photos in `ml/data/real_photos/` are reserved for
-    benchmarking and must never leak into training. Data leak would gonfler
-    artificially R@1 and invalidate every recipe tuning decision.
+    PRD Bloc 3 §7 R1 — les photos des racines `REAL_PHOTO_ROOTS` sont réservées
+    au benchmark et ne doivent jamais entrer dans l'entraînement. Une fuite
+    gonflerait artificiellement le R@1 et invaliderait toute décision de réglage.
+
+    Le message nomme **laquelle** des racines a déclenché : sans ça, un `resolve()`
+    inattendu (symlink, `..`) reste indiagnosticable.
     """
     if not path_str:
         return
     resolved = Path(path_str).resolve()
-    try:
-        resolved.relative_to(REAL_PHOTOS_DIR)
-    except ValueError:
-        return
-    raise SystemExit(
-        f"Data leak detected: {role} dataset points to "
-        f"{resolved} which lives under the real-photo hold-out "
-        f"({REAL_PHOTOS_DIR}). See PRD Bloc 3 §7 R1."
-    )
+    for root in REAL_PHOTO_ROOTS:
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        raise SystemExit(
+            f"Data leak detected: {role} dataset points to "
+            f"{resolved} which lives under the real-photo hold-out "
+            f"{root}. See PRD Bloc 3 §7 R1."
+        )
 
 
 # ---------------------------------------------------------------------------

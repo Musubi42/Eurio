@@ -198,6 +198,7 @@ def split_dataset(
     output_dir: Path,
     resolver: Resolver,
     class_kind: str,
+    val_source: str,
     train_ratio: float = 0.7,
     val_ratio: float = 0.2,
     seed: int = 42,
@@ -239,9 +240,13 @@ def split_dataset(
         manifest_path = output_dir / MANIFEST_FILENAME
         write_manifest(manifest_path, descriptors)
         print(f"Manifest: {manifest_path} ({len(descriptors)} classes)")
-        _override_val_with_eval_real(
-            raw_dir, output_dir, descriptors, class_kind,
-        )
+        if val_source == "device":
+            _override_val_with_eval_real(
+                raw_dir, output_dir, descriptors, class_kind,
+            )
+        else:
+            _announce_no_device_val(val_source)
+        _assert_val_holdout_free(output_dir, val_source)
         return
 
     header = f"{'Class':<55} {'Total':>5} {'Train':>5} {'Val':>5} {'Test':>5}"
@@ -306,7 +311,54 @@ def split_dataset(
     write_manifest(manifest_path, descriptors)
     print(f"Manifest: {manifest_path} ({len(descriptors)} classes)")
 
-    _override_val_with_eval_real(raw_dir, output_dir, descriptors, class_kind)
+    if val_source == "device":
+        _override_val_with_eval_real(raw_dir, output_dir, descriptors, class_kind)
+    else:
+        _announce_no_device_val(val_source)
+
+
+def _announce_no_device_val(val_source: str) -> None:
+    """Dit à voix haute qu'aucun snap device n'entre dans val/."""
+    if val_source == "ebay":
+        raise SystemExit(
+            "--val-source=ebay : le prélèvement eBay de validation n'existe pas "
+            "encore (chantier juge-et-banc, §3 « prélèvement eBay (nouveau) »). "
+            "Le construire silencieusement vide serait exactement le défaut "
+            "qu'on corrige. Utilise --val-source=none en attendant."
+        )
+    print(
+        f"\n[val-source={val_source}] Aucun snap device n'entre dans val/ — "
+        "le split de validation reste vide en mode lab. La sélection de "
+        "checkpoint retombera sur le dernier epoch (cf. juge-et-banc Q4)."
+    )
+
+
+def _assert_val_holdout_free(output_dir: Path, val_source: str) -> None:
+    """Garde de CONTENU : hors ``--val-source=device``, ``val/`` doit être vide.
+
+    Le garde de chemin (`train_embedder._assert_no_real_photos`) compare des
+    chemins de dataset. La fuite réelle, elle, passe par une **copie de
+    fichiers** dans ``val/`` (``_override_val_with_eval_real``) : aucun chemin
+    de hold-out n'apparaît jamais dans une ligne de commande. Ce garde-ci est
+    posé sur le chemin réellement emprunté — la sortie de la préparation.
+    """
+    if val_source == "device":
+        return
+    val_dir = output_dir / "val"
+    if not val_dir.exists():
+        return
+    leaked = [f for f in val_dir.rglob("*") if f.is_file()]
+    if not leaked:
+        return
+    sample = ", ".join(str(f.relative_to(val_dir)) for f in leaked[:5])
+    raise SystemExit(
+        f"Fuite de hold-out : --val-source={val_source} mais {val_dir} contient "
+        f"{len(leaked)} fichier(s) (ex. {sample}). En dehors de "
+        "--val-source=device, val/ doit être VIDE : tout fichier qui s'y "
+        "trouve a été copié depuis un corpus de jugement et rendrait la "
+        "sélection de checkpoint non interprétable. Cf. "
+        "docs/work-in-progress/juge-et-banc/PROBLEME.md §1."
+    )
 
 
 def _override_val_with_eval_real(
@@ -332,7 +384,15 @@ def _override_val_with_eval_real(
         return
 
     (output_dir / "val").mkdir(parents=True, exist_ok=True)
-    print(f"\nDevice val set: {eval_real_dir}")
+    print(
+        "\nWARNING [--val-source=device] : le corpus device sert ICI de split "
+        "de validation, et il sert AILLEURS de juge au benchmark "
+        f"({eval_real_dir}). Le checkpoint sera donc choisi en regardant les "
+        "photos sur lesquelles il sera noté : ce run N'EST PAS comparable au "
+        "juge, et son r@1 n'est pas interprétable. Cf. "
+        "docs/work-in-progress/juge-et-banc/PROBLEME.md §1."
+    )
+    print(f"Device val set: {eval_real_dir}")
     device_val_total = 0
     missing: list[str] = []
     for descriptor in descriptors:
@@ -416,6 +476,17 @@ def main():
              "docs/operations/crop-ablation-pc-runbook.md.",
     )
     parser.add_argument(
+        "--val-source",
+        choices=["device", "ebay", "none"],
+        default=None,
+        help="D'où vient le split de validation. 'device' = les snaps de "
+             "ml/datasets/eval_real_norm/ — c'est AUSSI le juge du benchmark, "
+             "donc un run val-source=device n'est pas comparable au juge. "
+             "'ebay' = prélèvement de crops eBay (pas encore implémenté). "
+             "'none' = pas de val (sélection de checkpoint = dernier epoch). "
+             "OBLIGATOIRE avec --skip-train-split : pas de défaut implicite.",
+    )
+    parser.add_argument(
         "--skip-train-split",
         action="store_true",
         help="Mode lab iteration : ne génère que val/ + manifest. train/ "
@@ -474,6 +545,25 @@ def main():
         )
         print(f"\n[ablation] Using non-default CropConfig: {crop_config}\n")
 
+    if args.skip_train_split and args.val_source is None:
+        raise SystemExit(
+            "--val-source est OBLIGATOIRE avec --skip-train-split (mode lab). "
+            "Choisis device|ebay|none. Il n'y a pas de défaut : l'ambiguïté est "
+            "exactement ce qui a laissé le corpus device servir de split de "
+            "validation ET de juge du benchmark (cf. "
+            "docs/work-in-progress/juge-et-banc/PROBLEME.md §1)."
+        )
+    val_source = args.val_source
+    if val_source is None:
+        # Mode legacy (split studio complet) : comportement historique conservé,
+        # mais jamais muet.
+        val_source = "device"
+        print(
+            "WARNING: --val-source absent en mode legacy → 'device' "
+            "(comportement historique). Le val/ sera écrasé par le corpus "
+            "device, qui est aussi le juge."
+        )
+
     from training.train_embedder import _assert_no_real_photos
 
     _assert_no_real_photos(str(args.raw_dir), role="raw")
@@ -516,6 +606,7 @@ def main():
         args.output_dir,
         resolver,
         class_kind=args.class_kind,
+        val_source=val_source,
         seed=args.seed,
         only_classes=only_classes,
         skip_train_split=args.skip_train_split,

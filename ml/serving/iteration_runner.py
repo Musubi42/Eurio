@@ -979,6 +979,21 @@ class IterationRunner:
         # (--only-classes doit matcher le label space) est préservé : on stage
         # les class_id design_group ET on prépare en class_kind="design_group".
         config["class_kind"] = "design_group"
+        # Origine du split de validation, posée EXPLICITEMENT : prepare_dataset
+        # refuse de deviner en mode lab. `training_config` fait autorité ; à
+        # défaut on reste sur le comportement historique ("device"), mais
+        # nommé — et prepare_dataset journalise alors que le run n'est pas
+        # comparable au juge. Cf.
+        # docs/work-in-progress/juge-et-banc/PROBLEME.md §1.
+        config["val_source"] = (iteration.training_config or {}).get(
+            "val_source", "device"
+        )
+        # Source du centroïde, posée EXPLICITEMENT elle aussi : le défaut
+        # `auto` de compute_embeddings fabrique le prototype d'une classe à
+        # partir du split val — donc des photos du juge. Cf. §1bis.
+        config["centroid_source"] = (iteration.training_config or {}).get(
+            "centroid_source", "train_mean"
+        )
         if iteration.recipe_id:
             config["aug_recipe"] = iteration.recipe_id
 

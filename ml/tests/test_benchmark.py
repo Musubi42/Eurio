@@ -113,13 +113,16 @@ def test_store_list_filters_by_model_and_recipe(store: Store):
 
 
 def test_hold_out_gate_rejects_real_photos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    # Redirect REAL_PHOTOS_DIR to our tmpdir so we can construct paths under it.
+    # Redirect REAL_PHOTO_ROOTS to our tmpdir so we can construct paths under it.
+    # ⚠️ Ce test (comme celui d'origine) n'exerce QU'UNE racine fabriquée : il
+    # prouve le prédicat, pas le câblage. Les deux tests qui suivent, eux,
+    # tapent les racines RÉELLES — c'est là que se jouait la fuite.
     import training.train_embedder as te
 
     fake_root = (tmp_path / "real_photos").resolve()
     fake_root.mkdir()
     (fake_root / "fr-2007-2eur").mkdir()
-    monkeypatch.setattr(te, "REAL_PHOTOS_DIR", fake_root)
+    monkeypatch.setattr(te, "REAL_PHOTO_ROOTS", (fake_root,))
 
     # Allowed: anywhere else
     te._assert_no_real_photos(str(tmp_path / "eurio-poc" / "train"), role="train")
@@ -128,6 +131,38 @@ def test_hold_out_gate_rejects_real_photos(tmp_path: Path, monkeypatch: pytest.M
     with pytest.raises(SystemExit) as exc:
         te._assert_no_real_photos(str(fake_root / "fr-2007-2eur"), role="train")
     assert "Data leak" in str(exc.value)
+
+
+def test_hold_out_gate_covers_eval_real_norm():
+    """Le juge device réel — la racine qui manquait au garde jusqu'au 2026-08-25.
+
+    Aucun monkeypatch : on tape `REAL_PHOTO_ROOTS` tel qu'il est en production.
+    """
+    import training.train_embedder as te
+
+    target = te.ML_DIR / "datasets" / "eval_real_norm" / "fr-2euro-standard-t1"
+    with pytest.raises(SystemExit) as exc:
+        te._assert_no_real_photos(str(target), role="val")
+    msg = str(exc.value)
+    assert "Data leak" in msg
+    # Le message doit NOMMER la racine déclenchée, sinon il est indiagnosticable.
+    assert "eval_real_norm" in msg
+
+
+def test_hold_out_gate_covers_scan_corpus():
+    """Les frames de scan rejouables (`ml/state/scan_corpus/frames/`).
+
+    Le répertoire n'existe pas encore sur toutes les machines — le garde est
+    lexical (`Path.resolve()` non strict), il n'a pas besoin qu'il existe.
+    """
+    import training.train_embedder as te
+
+    target = te.ML_DIR / "state" / "scan_corpus" / "frames" / "abc123.jpg"
+    with pytest.raises(SystemExit) as exc:
+        te._assert_no_real_photos(str(target), role="train")
+    msg = str(exc.value)
+    assert "Data leak" in msg
+    assert "scan_corpus" in msg
 
 
 # ─── check_real_photos ──────────────────────────────────────────────────────
