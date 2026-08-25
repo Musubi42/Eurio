@@ -184,6 +184,12 @@ class IterationCreatePayload(BaseModel):
     recipe_id: str | None = None
     variant_count: int = 100
     training_config: dict = {}
+    # Graine du BAKE, posable explicitement. Sans elle, `create_iteration`
+    # en tire une au hasard (`iteration_runner._generate_seed`) : deux
+    # itérations « jumelles » ne partagent alors PAS leurs augmentations, et
+    # tout écart mesuré entre elles mélange le facteur étudié et le tirage.
+    # Cf. docs/work-in-progress/juge-et-banc/LOT4-PREPARATION.md.
+    augmentations_seed: int | None = None
 
 
 class IterationPreviewPayload(BaseModel):
@@ -698,6 +704,7 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
             recipe_id=payload.recipe_id,
             variant_count=payload.variant_count,
             training_config=frozen,
+            augmentations_seed=payload.augmentations_seed,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
