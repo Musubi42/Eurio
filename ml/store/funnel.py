@@ -86,7 +86,7 @@ def _class_state(conn: sqlite3.Connection, d: ClassDescriptor, min_real: int) ->
     rows = conn.execute(
         f"""
         SELECT a.id, a.eurio_id, a.face, a.denom, a.quality_score,
-               a.training_eligible, a.resolution_status, s.source,
+               a.training_eligible, a.resolution_status, a.eval_corpus, s.source,
                EXISTS(
                  SELECT 1 FROM review_queue rq
                   WHERE rq.image_asset_id = a.id AND rq.status = 'open'
@@ -117,13 +117,23 @@ def _class_state(conn: sqlite3.Connection, d: ClassDescriptor, min_real: int) ->
             "quality_score": r["quality_score"],
             "training_eligible": bool(r["training_eligible"]),
             "resolution_status": r["resolution_status"],
+            # Hold-out d'évaluation (migration 0014). Non NULL = ce crop est
+            # RÉSERVÉ à un corpus d'éval : il reste visible et reviewable, mais
+            # le bake ne le prendra pas. C'est ainsi que le marquage est
+            # « visible côté API » — les octets, eux, ne bougent pas.
+            "eval_corpus": r["eval_corpus"],
             "routed": bool(r["routed"]),
         }
         for r in rows
     ]
 
+    # « part au train », compté À L'IDENTIQUE du bake : un crop réservé à un
+    # corpus d'éval n'y va pas (cf. `_ebay_training_sources`). L'oublier ferait
+    # afficher au panneau un effectif que le bake ne prendra jamais — et le
+    # verdict `underfed` mentirait dans le sens rassurant.
     n_eligible = sum(
-        1 for c in crops if c["training_eligible"] and c["face"] != "reverse"
+        1 for c in crops
+        if c["training_eligible"] and c["face"] != "reverse" and not c["eval_corpus"]
     )
     n_unknown = sum(
         1 for c in crops

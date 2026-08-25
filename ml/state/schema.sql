@@ -458,6 +458,15 @@ CREATE TABLE IF NOT EXISTS image_assets (
   axis_ratio               REAL,
   tilt_trustworthy         INTEGER DEFAULT 0,
 
+  -- Chantier juge-et-banc (2026-08-26, migration 0014) : nom du CORPUS
+  -- D'ÉVALUATION auquel ce crop est réservé. NULL = pas d'éval (le défaut de
+  -- tout le parc). Un crop nommé ici est EXCLU des deux collectes
+  -- d'entraînement (ArcFace `_ebay_training_sources`, ancres DINO
+  -- `_candidate_crops_for_class`) — c'est ce qui rend une mesure honnête.
+  -- Texte et pas booléen : plusieurs corpus doivent pouvoir coexister, et une
+  -- mesure doit pouvoir nommer celui sur lequel elle a été faite.
+  eval_corpus              TEXT,
+
   UNIQUE (source_image_id, crop_index)
 );
 
@@ -470,6 +479,8 @@ CREATE INDEX IF NOT EXISTS idx_image_assets_run      ON image_assets(run_id);
 CREATE INDEX IF NOT EXISTS idx_image_assets_face     ON image_assets(face);
 CREATE INDEX IF NOT EXISTS idx_image_assets_storage_status
   ON image_assets(storage_status) WHERE storage_status != 'present';
+CREATE INDEX IF NOT EXISTS idx_image_assets_eval_corpus
+  ON image_assets(eval_corpus) WHERE eval_corpus IS NOT NULL;
 
 -- ─── Auto-validation: Dino predictions per crop ───────────────────────────
 -- Voir docs/sources-refacto/auto-validation/dino-verifier-kickoff.md.

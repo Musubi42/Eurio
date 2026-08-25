@@ -252,6 +252,12 @@ def _ebay_training_sources(eurio_id: str, store: Store) -> list[Path]:
            AND a.training_eligible = 1
            AND a.storage_status = 'present'
            AND (a.face IS NULL OR a.face != 'reverse')
+           -- Hold-out d'évaluation (juge-et-banc, migration 0014) : un crop
+           -- réservé à un corpus d'éval n'entre JAMAIS au train. Le prédicat
+           -- est écrit ici ET dans `foundation/anchors.py` — les deux
+           -- collectes divergent (intersection 2888, ArcFace seul 79, DINO
+           -- seul 1), il n'existe pas de point unique en amont.
+           AND a.eval_corpus IS NULL
          ORDER BY a.id
         """,
         (eurio_id,),

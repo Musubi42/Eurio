@@ -840,6 +840,13 @@ def _candidate_crops_for_class(
            AND resolution_status IN ({status_ph})
            AND training_eligible = 1
            AND storage_status = 'present'
+           -- Hold-out d'évaluation (juge-et-banc, migration 0014) : un crop
+           -- réservé à un corpus d'éval ne devient JAMAIS une ancre — sinon
+           -- la banque le reconnaîtrait à similarité 1,0 avec lui-même et la
+           -- mesure serait truquée. Prédicat jumeau dans
+           -- `training/iteration_augmentations.py` (les deux collectes
+           -- divergent ; il n'y a pas de point unique en amont).
+           AND eval_corpus IS NULL
          ORDER BY id
          LIMIT ?
         """,

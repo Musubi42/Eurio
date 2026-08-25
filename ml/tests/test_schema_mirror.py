@@ -157,6 +157,18 @@ def test_toute_migration_neuve_est_declaree_ou_exclue_sciemment():
         # `test_recadrage_a_distance` prouve qu'un recadrage la pose et que le
         # backfill la lit.
         "0013_dino_prediction_perimee_par_recadrage.sql",
+        # 0014 ajoute `eval_corpus` à `image_assets` par un ALTER NU, même forme
+        # que 0013 et exclue pour la même raison : `image_assets` est déclarée
+        # par `schema.sql`, pas par une migration, donc la migration n'est pas
+        # applicable sur une base vide et n'est pas comparable au miroir.
+        #
+        # Les trois branches du contrat sont tenues, et vérifiées :
+        # la colonne ET son index partiel sont dans `schema.sql` (une base neuve
+        # naît avec), `store.connection._ensure_column` la rattrape sur une base
+        # antérieure — sans quoi l'index partiel échouerait en « no such
+        # column » —, et `test_eval_holdout` prouve que les DEUX collectes
+        # d'entraînement l'honorent.
+        "0014_eval_corpus_holdout.sql",
     }
     connues = set(MIROIR_ATTENDU) | exclues
     presentes = {f.name for f in MIGRATIONS.glob("*.sql")}

@@ -109,6 +109,26 @@ def push_quality_scores(scores: list[dict[str, Any]]) -> dict | None:
     return _http.post_json("/ingest/quality-scores", {"scores": scores})
 
 
+def push_eval_corpus(rows: list[dict[str, Any]]) -> dict | None:
+    """POST ``/ingest/eval-corpus`` si la sync est activée, sinon no-op (``None``).
+
+    ``rows`` = ``{asset_id, eval_corpus, expect?}``. La SÉLECTION reste ici —
+    c'est elle qui a besoin de lire les mesures géométriques du parc et de
+    tirer un rang déterministe par classe — seules les lignes voyagent. Même
+    doctrine que ``push_quality_scores``.
+
+    Les erreurs HTTP/réseau sont levées à l'appelant : sous Direction A un
+    marquage non poussé n'existe nulle part, ce n'est pas du best-effort.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle
+
+    if not rows or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/eval-corpus", {"rows": rows})
+
+
 def push_exclude_crops(run_id: str, asset_ids: list[str]) -> dict | None:
     """POST ``/ingest/crops/exclude`` si la sync est activée, sinon no-op (``None``).
 

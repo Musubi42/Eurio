@@ -25,6 +25,9 @@ class TrainingCropState(BaseModel):
     quality_score: float | None = None
     training_eligible: bool
     resolution_status: str
+    # Hold-out d'évaluation (migration 0014) : nom du corpus auquel ce crop est
+    # réservé, `None` sinon. Non NULL = le bake ne le prendra pas.
+    eval_corpus: str | None = None
     routed: bool = False
 
 

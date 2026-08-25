@@ -2111,6 +2111,9 @@ class TrainingCrop(BaseModel):
     quality_score: float | None = None
     training_eligible: bool
     resolution_status: str
+    # Hold-out d'évaluation (migration 0014) : nom du corpus auquel ce crop est
+    # réservé, `None` sinon. Non NULL = le bake ne le prendra pas.
+    eval_corpus: str | None = None
     # « routé » = une row review_queue OUVERTE existe pour ce crop → il atteindra
     # l'écran de review (compté par §C4 « Review crops »). Un needs_review NON
     # routé est bloqué : jamais enfilé, invisible à la review (cf. n_unrouted).

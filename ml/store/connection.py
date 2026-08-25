@@ -320,6 +320,20 @@ class StoreBase:
                 # L'ancien index unique n'a pas l'encodeur : le laisser
                 # empêcherait deux banques du même kind de coexister.
                 conn.execute("DROP INDEX IF EXISTS idx_dino_class_refs_canonical")
+            # Migration 0014 pre-bootstrap : `image_assets.eval_corpus` AVANT
+            # executescript, car schema.sql crée l'index PARTIEL
+            # idx_image_assets_eval_corpus ON (eval_corpus) WHERE eval_corpus IS
+            # NOT NULL → sur une base antérieure il planterait en « no such
+            # column: eval_corpus » avant que quoi que ce soit d'autre tourne.
+            # Base fraîche : la table n'existe pas encore, executescript la crée
+            # avec la colonne. Même patron que run_id / stale_since ci-dessus.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='image_assets'"
+            ).fetchone():
+                self._ensure_column(
+                    conn, table="image_assets", column="eval_corpus", decl="TEXT",
+                )
             conn.executescript(schema)
             # Seed source_registry (idempotent, INSERT OR IGNORE) : la FK
             # coin_source_refs.source → source_registry (ON DELETE RESTRICT) est

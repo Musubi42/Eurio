@@ -24,6 +24,7 @@ from store.crops import (
     apply_ingest_detections,
 )
 from store.dino import apply_ingest_dino
+from store.eval_corpus import apply_ingest_eval_corpus
 from store.faces import apply_ingest_faces
 from store.gate import ENGINE_VERSION as _GATE_ENGINE_VERSION
 from store.gate import apply_gate_reject
@@ -263,6 +264,57 @@ def ingest_quality_scores_route(payload: IngestQualityScoresPayload) -> dict:
     try:
         result = apply_ingest_quality_scores(
             conn, [s.model_dump() for s in payload.scores])
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class EvalCorpusRow(BaseModel):
+    """Un crop et le corpus d'évaluation auquel il est réservé.
+
+    ``eval_corpus`` ``None`` = retrait ; il exige alors ``expect`` (le corpus
+    courant), sinon la ligne part en ``conflict``. Rien ne s'efface par
+    omission."""
+
+    asset_id: str
+    eval_corpus: str | None = None
+    expect: str | None = None
+
+
+class IngestEvalCorpusPayload(BaseModel):
+    rows: list[EvalCorpusRow] = []
+
+
+@router.post("/eval-corpus", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_eval_corpus_route(payload: IngestEvalCorpusPayload) -> dict:
+    """Marque des crops comme JEU D'ÉVALUATION, donc hors entraînement.
+
+    Pourquoi cette route existe : la sélection (chantier `juge-et-banc`,
+    étape 2) doit lire les mesures géométriques du parc et tirer un rang
+    déterministe par classe — elle tourne donc sur le Mac, qui lit une réplique
+    read-only. Le VPS écrit mais ne fait pas ce calcul. Sans transport, le
+    marquage n'a aucun endroit où atterrir : le même constat que
+    ``/ingest/quality-scores``, ``/ingest/consensus`` et ``/ingest/faces``.
+
+    ⚠️ **Les octets ne bougent pas.** La clé S3 d'un crop est immuable et sert
+    de jointure partout ; c'est la LIGNE qui porte le rôle. « Propager côté
+    MinIO » n'a pas de sens ici, et déplacer les objets casserait chaque
+    référence sans rien apporter.
+
+    Deux gardes (cf. ``store/eval_corpus.py``) : un crop ne change jamais de
+    corpus en silence (``conflict``), et ``training_eligible`` — le verdict de
+    la review — n'est pas touché.
+
+    Retourne ``{updated, skipped, conflict, missing}``. SQL pur, atomique.
+    """
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_eval_corpus(conn, [r.model_dump() for r in payload.rows])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
