@@ -137,9 +137,10 @@ def main() -> None:
             (si["si_id"],),
         ).fetchall()
 
-        raw_p = _raw_local_path(si["raw_sp"])
-        if not raw_p.exists():
-            n["si_skip_noraw"] += 1
+        try:
+            raw_p = _raw_local_path(si["raw_sp"])
+        except FileNotFoundError:
+            n["si_skip_noraw"] += 1  # absence CONFIRMÉE du bucket
             continue
         bgr = cv2.imread(str(raw_p))
         if bgr is None:

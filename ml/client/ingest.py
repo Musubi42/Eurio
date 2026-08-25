@@ -89,6 +89,26 @@ def push_consensus(verdicts: list[dict[str, Any]]) -> dict | None:
     return _http.post_json("/ingest/consensus", {"verdicts": verdicts})
 
 
+def push_quality_scores(scores: list[dict[str, Any]]) -> dict | None:
+    """POST ``/ingest/quality-scores`` si la sync est activée, sinon no-op (``None``).
+
+    ``scores`` = mesures DÉJÀ calculées (asset_id, quality_pipeline_version,
+    quality_score?, tilt_deg?, axis_ratio?, tilt_trustworthy?). Le calcul reste
+    ici — c'est lui qui a besoin des raws en cache local (~12 Go) que le VPS n'a
+    pas — seules les lignes voyagent. Même doctrine que ``push_consensus``.
+
+    Les erreurs HTTP/réseau sont levées à l'appelant : sous Direction A une
+    mesure non poussée n'existe nulle part, ce n'est pas du best-effort.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle
+
+    if not scores or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/quality-scores", {"scores": scores})
+
+
 def push_exclude_crops(run_id: str, asset_ids: list[str]) -> dict | None:
     """POST ``/ingest/crops/exclude`` si la sync est activée, sinon no-op (``None``).
 

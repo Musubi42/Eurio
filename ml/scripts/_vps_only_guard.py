@@ -1,12 +1,18 @@
 """Garde-fou C7 (migration Direction A) pour les migrations one-shot.
 
 Sous Direction A (docs/work-in-progress/local-sync/migration-direction-a.md),
-``eurio.db`` canonique n'existe qu'au VPS. Les scripts ``backfill_face.py``,
-``backfill_denom.py`` et ``backfill_quality_score.py`` mutent des colonnes
-canoniques (``face``/``denom``/``quality_score``) via des ``UPDATE`` bruts,
-non transportés par aucune route ``/ingest`` (contrairement aux writers §C4).
-Les lancer contre une réplique locale (Mac/PC) écrirait une divergence
-invisible et jamais synchronisée.
+``eurio.db`` canonique n'existe qu'au VPS. Les scripts ``backfill_face.py`` et
+``backfill_denom.py`` mutent des colonnes canoniques (``face``/``denom``) via
+des ``UPDATE`` bruts, non transportés par aucune route ``/ingest`` (contrairement
+aux writers §C4). Les lancer contre une réplique locale (Mac/PC) écrirait une
+divergence invisible et jamais synchronisée.
+
+⚠️ **Ce garde est conditionnel à l'absence de route, et pas à autre chose.**
+``backfill_quality_score.py`` en est sorti le 2026-08-25 : sa colonne a
+désormais un transport (``POST /ingest/quality-scores``), donc le garde n'y
+protégeait plus de rien — et un garde qui protège d'un danger disparu est un
+garde décoratif, qu'on finit par contourner par réflexe. Le jour où ``face`` et
+``denom`` auront leur route, ce module doit disparaître, pas se durcir.
 
 Signal de détection (réutilise l'infra existante, pas de heuristique fragile
 sur le chemin du fichier) :

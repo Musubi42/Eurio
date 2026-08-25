@@ -112,9 +112,10 @@ def main() -> None:
         if "rimrefine" in method0 and not args.force:
             n["skip_refined"] += 1
             continue
-        raw_p = _raw_local_path(r["raw_sp"])
-        if not raw_p.exists():
-            n["skip_noraw"] += 1
+        try:
+            raw_p = _raw_local_path(r["raw_sp"])
+        except FileNotFoundError:
+            n["skip_noraw"] += 1  # absence CONFIRMÉE du bucket, pas cache froid
             continue
         bgr = cv2.imread(str(raw_p))
         if bgr is None:

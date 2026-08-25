@@ -27,6 +27,7 @@ from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
 from store.gate import ENGINE_VERSION as _GATE_ENGINE_VERSION
 from store.gate import apply_gate_reject
+from store.quality import apply_ingest_quality_scores
 from store.referential_fix import ReferentialFixConflict, apply_referential_fix
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,65 @@ def ingest_faces_route(payload: IngestFacesPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_faces(conn, payload.faces)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class QualityScoreRow(BaseModel):
+    """Une mesure de CADRAGE déjà calculée. Le canonique ne la recalcule pas :
+    l'oracle a besoin des raws (~12 Go de cache local) qu'il n'a pas."""
+
+    asset_id: str
+    quality_pipeline_version: int
+    quality_score: float | None = None
+    tilt_deg: float | None = None
+    axis_ratio: float | None = None
+    tilt_trustworthy: int | None = None
+
+
+class IngestQualityScoresPayload(BaseModel):
+    scores: list[QualityScoreRow] = []
+
+
+@router.post("/quality-scores", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_quality_scores_route(payload: IngestQualityScoresPayload) -> dict:
+    """Écrit les mesures de cadrage de crop calculées client-side. SQL pur,
+    atomique. Retourne ``{updated, skipped, missing}``.
+
+    Pourquoi cette route existe : l'oracle (Otsu ``_probe_true_rim`` +
+    ``measure_tilt``) tourne sur les RAWS, et les raws sont en cache sur le Mac,
+    pas au VPS. Le Mac a le moteur et les images mais lit une réplique
+    read-only ; le VPS écrit mais n'a pas les images. Sans transport, ce calcul
+    n'a aucun endroit où atterrir — le même constat, mot pour mot, que celui qui
+    a fait écrire ``/ingest/consensus`` et ``/ingest/faces``.
+
+    C'est cette route qui remplace le garde ``guard_vps_only`` de
+    ``scripts/backfill_quality_score.py`` : le garde existait parce qu'aucune
+    voie ne transportait cette écriture. Une fois la voie ouverte, le laisser en
+    ferait un garde décoratif protégeant d'un danger disparu.
+
+    ⚠️ **Limite de méthode — à lire avant d'appeler cette colonne « qualité ».**
+    ``quality_score`` mesure le **CADRAGE** (distance du rayon croppé au rim
+    vrai), pas la qualité de l'image. L'oracle **plafonne** (~35 % du parc reste
+    NULL = *non mesuré*, jamais *mauvais*) et il est **AVEUGLE aux vraies
+    pannes** : un crop sur le mauvais objet (capsule, coincard, tissu, pièce
+    voisine) est scoré « ok » parce qu'Otsu re-probe autour du centre choisi par
+    le pipeline. La vraie question se lit avec le DINO ``top1_sim``.
+
+    Deux gardes (cf. ``store/quality.py``) : jamais de rétrogradation d'un
+    ``quality_pipeline_version`` supérieur ou égal, et ``quality_reason`` —
+    labels HUMAINS — n'est jamais touchée.
+    """
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_quality_scores(
+            conn, [s.model_dump() for s in payload.scores])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

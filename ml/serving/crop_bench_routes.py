@@ -406,8 +406,14 @@ def get_crop_bench_sample(
 
         if axis_ratio_val is None and meta.get("raw_storage_path"):
             # Raw disponible → mesure fraîche.
-            raw_path = _raw_local_path(meta["raw_storage_path"])
-            if raw_path.exists():
+            # ``_raw_local_path`` télécharge désormais ce qui manque et lève
+            # sur une absence CONFIRMÉE du bucket — le tilt reste alors non
+            # mesuré, comme avant, mais pour une raison qu'on peut nommer.
+            try:
+                raw_path = _raw_local_path(meta["raw_storage_path"])
+            except FileNotFoundError:
+                raw_path = None
+            if raw_path is not None:
                 raw_img = cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
                 if raw_img is not None:
                     oracle = _oracle_from_raw(raw_img, meta.get("bbox_json"))
@@ -477,9 +483,13 @@ def _load_raw(asset_id: str) -> tuple[np.ndarray, dict]:
     meta = _asset_map().get(asset_id)
     if meta is None:
         raise HTTPException(status_code=404, detail=f"asset {asset_id} inconnu (eBay présent).")
-    raw_path = _raw_local_path(meta["raw_storage_path"])
-    if not raw_path.exists():
-        raise HTTPException(status_code=404, detail=f"raw absent du cache : {raw_path}")
+    try:
+        raw_path = _raw_local_path(meta["raw_storage_path"])
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"raw absent du stockage : {meta['raw_storage_path']}",
+        ) from exc
     raw = cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
     if raw is None:
         raise HTTPException(status_code=422, detail="raw illisible.")

@@ -10,9 +10,20 @@ les valeurs que ``training/foundation/auto_validate.py`` consomme aujourd'hui �
 un verdict reconstruit depuis eux est identique au verdict canonique. Gate :
 tests/test_validation_experts.py.
 
-Données crop (2026-06-08) : ``quality_score`` peuplé sur **~46 %** des crops
-(oracle r_ratio rétro-rempli depuis ``state/crop_diag/results.csv`` via
-``scripts/backfill_quality_score.py`` — couverture Otsu) ; NULL ailleurs.
+Données crop — **la couverture réelle, avec sa requête** (mesurée le
+2026-08-25, réplique ``ml/state/eurio.replica.db``) ::
+
+    sqlite3 -readonly ml/state/eurio.replica.db \\
+      "SELECT COUNT(*), SUM(quality_score IS NOT NULL) FROM image_assets;"
+    -- 18730|1052                                   → 5,6 % du parc
+    -- …WHERE training_eligible=1 → 2969|262        → 8,8 % du pool éligible
+
+Le « ~46 % » qui figurait ici datait du 2026-06-08 et parlait d'un parc de 2 274
+crops : c'était la couverture *de l'échantillon diagnostiqué*, pas celle de la
+base, et le parc a quadruplé depuis sans que rien ne soit re-mesuré (cf.
+``scripts/backfill_quality_score.py``, qui a été refait pour ça). ~46 % reste le
+plafond attendu de l'oracle Otsu *sur les crops qu'il examine* — ce n'est pas la
+même phrase. NULL = **non mesuré**, jamais *mauvais* : l'expert s'abstient.
 ``quality_reason`` ne porte que des états de review
 (``rejected_in_review``/``vision_standard_gate``) — sauf ``too_tilted`` (label
 humain du banc). Le tilt fiable (``tilt_trustworthy=1``) complète sur les crops

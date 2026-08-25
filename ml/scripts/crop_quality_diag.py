@@ -33,6 +33,8 @@ if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
 from scripts.bench_listing_bimetal import _probe_true_rim  # noqa: E402
+from shared.storage import bucket_for_asset, bucket_for_source_image  # noqa: E402
+from shared.storage.local_cache import local_path  # noqa: E402
 from store import resolve_db_path  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -105,20 +107,53 @@ _CONTACT_MAX_WORST = 100      # nombre de pires crops dans la planche
 
 _BG = (24, 24, 24)
 
-# Sample size cap (pour limiter le temps : on prend tous les présents si <= MAX)
-_MAX_SAMPLE = 2274  # tous les crops eBay présents
+# Plafond d'échantillon : ``--limit`` (défaut None = TOUT le pool).
+#
+# ⚠️ Il valait 2274 EN DUR jusqu'au 2026-08-25 — « tous les crops eBay présents »
+# au 5 juin 2026. C'est cette constante, et elle seule, qui a gelé la couverture
+# de ``quality_score`` : le parc est passé à 18 730 crops, le diagnostic
+# continuait d'en tirer 2 274 au hasard (seed 42), et les 16 369 arrivés depuis
+# n'ont jamais été touchés. Un chiffre juste un jour devient un plafond muet le
+# lendemain — il n'a rien à faire dans le code.
+_DEFAULT_LIMIT: int | None = None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _crop_local_path(storage_path: str) -> Path:
-    return _CACHE / "enrichment-crops" / storage_path
+# ─── Chemins de cache : PASSER PAR ``local_path``, jamais reconstruire ───────
+#
+# Ces deux fonctions fabriquaient ``~/.cache/eurio/<bucket>/<key>`` à la main,
+# court-circuitant ``shared/storage/local_cache.local_path``. Deux conséquences,
+# toutes deux muettes :
+#
+#   - un objet absent du cache n'était PAS téléchargé : l'appelant voyait un
+#     chemin inexistant et sautait le crop en silence (compté « cache
+#     manquant ») — c'est ainsi qu'un diagnostic « complet » pouvait ignorer un
+#     quart du parc sans le dire ;
+#   - le bucket était deviné, alors qu'il se DÉRIVE (``bucket_for_asset`` :
+#     'numista' → ``numista-canonical``, tout le reste → ``enrichment-crops``).
+#     ``image_assets.storage_path`` est la CLÉ S3, pas un chemin — le bucket ne
+#     se reconstruit jamais à la main.
+#
+# ``local_path`` télécharge au besoin, respecte ``EURIO_CACHE_ROOT``, retente
+# les 403 transitoires de MinIO, et lève ``FileNotFoundError`` sur une absence
+# CONFIRMÉE (en marquant la row ``missing_in_storage``). L'appelant doit donc
+# attraper cette exception ; c'est la différence entre « absent du cache » (un
+# non-événement) et « absent du stockage » (un fait).
+
+
+def _crop_local_path(storage_path: str, source: str = "ebay") -> Path:
+    """Chemin local du CROP, téléchargé si besoin. Lève ``FileNotFoundError``
+    si la clé n'existe pas dans le bucket."""
+    return local_path(bucket_for_asset(source), storage_path)
 
 
 def _raw_local_path(storage_path: str) -> Path:
-    return _CACHE / "enrichment-raws" / storage_path
+    """Chemin local du RAW, téléchargé si besoin. Lève ``FileNotFoundError``
+    si la clé n'existe pas dans le bucket."""
+    return local_path(bucket_for_source_image(), storage_path)
 
 
 def _estimate_fill_ratio(crop_bgr: np.ndarray) -> float:
@@ -272,6 +307,57 @@ def _oracle_from_raw(raw_bgr: np.ndarray, bbox_json: str | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Mesure persistable (backfill quality_score) — oracle + tilt, un seul passage
+# ---------------------------------------------------------------------------
+
+def quality_score_from_r_ratio(r_ratio: float) -> float:
+    """closeness symétrique au rim vrai, clampée [0,1].
+
+    r_ratio = 1.0 (parfait) → 1.0 ; undercrop 0.60 → 0.60 ; overcrop 1.20 → 0.80.
+    """
+    return max(0.0, min(1.0, min(r_ratio, 2.0 - r_ratio)))
+
+
+def measure_crop_quality(raw_bgr: np.ndarray, bbox_json: str | None) -> dict:
+    """Les mesures PERSISTABLES d'un crop, depuis son RAW, en un seul passage.
+
+    Retourne ``{quality_score, r_ratio, tilt_deg, axis_ratio, tilt_trustworthy}``
+    — chaque champ ``None`` quand la mesure n'a pas abouti. C'est le payload de
+    ``POST /ingest/quality-scores`` (moins l'``asset_id`` et la version).
+
+    Oracle et tilt partagent le MÊME hint (centre + rayon du bbox pipeline) :
+    c'est ce qui garantit que le chiffre persisté et le cercle dessiné par
+    ``/crop-bench`` parlent du même cercle.
+
+    ⚠️ Mesure de **CADRAGE**, pas de qualité : l'oracle re-probe autour du centre
+    choisi par le pipeline, donc un crop sur le mauvais objet est scoré « ok ».
+    """
+    from vision.crop_detectors import measure_tilt  # noqa: PLC0415 — cv2 lourd
+
+    oracle = _oracle_from_raw(raw_bgr, bbox_json)
+    r_ratio = oracle.get("r_ratio")
+    tilt = measure_tilt(raw_bgr, {
+        "cx": oracle["hint_cx"], "cy": oracle["hint_cy"], "r": oracle["r_pipe"],
+    })
+    tilt_deg = tilt.get("tilt_deg") if tilt.get("ok") else None
+    return {
+        "quality_score": (
+            round(quality_score_from_r_ratio(r_ratio), 4)
+            if r_ratio is not None else None
+        ),
+        "r_ratio": r_ratio,
+        "tilt_deg": round(float(tilt_deg), 4) if tilt_deg is not None else None,
+        "axis_ratio": (
+            round(float(tilt["axis_ratio"]), 4)
+            if tilt_deg is not None and tilt.get("axis_ratio") is not None else None
+        ),
+        "tilt_trustworthy": (
+            int(bool(tilt.get("trustworthy"))) if tilt_deg is not None else None
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Classify crop
 # ---------------------------------------------------------------------------
 
@@ -299,7 +385,7 @@ def _classify(fill_ratio: float, r_ratio: float | None) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
-def _select_assets(n: int, seed: int = 42) -> list[dict]:
+def _select_assets(n: int | None = None, seed: int = 42) -> list[dict]:
     conn = sqlite3.connect(str(_DB))
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
@@ -309,6 +395,7 @@ def _select_assets(n: int, seed: int = 42) -> list[dict]:
             a.bbox_json,
             a.detection_method,
             si.storage_path AS raw_path,
+            si.source AS source,
             COALESCE(a.eurio_id, si.target_eurio_id) AS eurio_id,
             c.face_value,
             c.is_commemorative,
@@ -339,12 +426,13 @@ def _select_assets(n: int, seed: int = 42) -> list[dict]:
 
 
 def _process_asset(row: dict) -> dict | None:
-    crop_local = _crop_local_path(row["crop_path"])
-    raw_local = _raw_local_path(row["raw_path"])
-
-    if not crop_local.exists():
-        return None  # manque en cache
-    if not raw_local.exists():
+    # ``local_path`` télécharge ce qui manque ; un ``FileNotFoundError`` est donc
+    # une absence CONFIRMÉE du bucket (la row a été marquée
+    # ``missing_in_storage`` au passage), pas un simple cache froid.
+    try:
+        crop_local = _crop_local_path(row["crop_path"], row.get("source") or "ebay")
+        raw_local = _raw_local_path(row["raw_path"])
+    except FileNotFoundError:
         return None
 
     crop_bgr = cv2.imread(str(crop_local), cv2.IMREAD_COLOR)
@@ -549,8 +637,20 @@ def _listing_stats(results: list[dict]) -> dict[str, dict]:
     return _group_stats(results, "listing_type")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    import argparse
     import time
+
+    ap = argparse.ArgumentParser(description="Diagnostic qualité des crops eBay.")
+    ap.add_argument(
+        "--limit", type=int, default=_DEFAULT_LIMIT,
+        help="nombre max de crops échantillonnés (défaut : TOUT le pool). "
+             "N'existe que pour écourter une passe de mise au point — ne pas "
+             "s'en servir pour produire un chiffre de couverture.",
+    )
+    ap.add_argument("--seed", type=int, default=42)
+    args = ap.parse_args(argv)
+
     _OUT.mkdir(parents=True, exist_ok=True)
 
     print(f"=== Diagnostic qualité crops eBay ===")
@@ -559,7 +659,7 @@ def main() -> None:
     print(f"Sortie : {_OUT}")
     print()
 
-    assets = _select_assets(_MAX_SAMPLE)
+    assets = _select_assets(args.limit, seed=args.seed)
     print(f"Assets sélectionnés (DB) : {len(assets)}")
 
     results = []
