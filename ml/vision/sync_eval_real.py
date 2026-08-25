@@ -16,8 +16,23 @@ The mapping is read from ``class_manifest.json`` produced by
 to the raw ``eurio_id`` (backward-compatible for commemoratives, where
 class_id == eurio_id anyway).
 
+⚠️ **Le nom de fichier porte le PROTOCOLE de prise de vue**, en premier token :
+``<protocole>_<step>.jpg``. Ce n'est pas cosmétique. Mesuré le 2026-08-25 : les
+pulls d'avril et de juin 2026 partagent deux noms d'étape (``bright_plain`` et
+``bright_textured``), donc cumuler les deux corpus SANS ce préfixe écraserait
+silencieusement les photos d'avril. Le token est lu par
+``training.eval.real_photo_meta.parse_filename`` (axe ``protocol``), ce qui
+permet de noter chaque protocole séparément ou ensemble.
+
+⚠️ **``sync()`` est le SEUL chemin de traitement, et ``main()`` n'en est qu'une
+enveloppe.** Les deux ont divergé pendant des mois, chacun n'implémentant que la
+moitié du contrat : ``sync()`` — le chemin appelé par l'API — écrivait par
+``eurio_id`` en ignorant le manifeste (d'où 7 dossiers sur 19 mal nommés), et
+``main()`` résolvait bien la classe mais parsait ``--also-write-captures`` sans
+jamais l'honorer. Ne réintroduis pas de seconde boucle de traitement ici.
+
 Usage:
-    python -m vision.sync_eval_real <debug_pull_dir>
+    python -m vision.sync_eval_real <debug_pull_dir> --protocol proto-2026-06
     python -m vision.sync_eval_real <debug_pull_dir> --also-write-captures
 
 When ``--also-write-captures`` is set, every successfully normalized image is
@@ -66,6 +81,36 @@ def _load_eurio_to_class(manifest_path: Path) -> dict[str, str]:
     return mapping
 
 
+def _catalogue_eurio_to_class() -> dict[str, str]:
+    """eurio_id → ``COALESCE(design_group_id, eurio_id)``, depuis le CATALOGUE.
+
+    ⚠️ **C'est la source primaire, et le manifeste ne peut pas la remplacer.**
+    Mesuré le 2026-08-25 : ``ml/datasets/eurio-poc/class_manifest.json`` date du
+    5 mai, porte 414 mappings, et ne couvre que **5 des 17 classes** du pull de
+    juin — dont **aucun** des 5 membres qui ont justement besoin d'être traduits
+    (``ad-2014-2eur-standard-1st-type`` → ``ad-2euro-standard-t1``…). Le
+    catalogue, lui, les résout tous les 17.
+
+    La raison de fond : un ``class_manifest.json`` décrit le schéma de classes
+    d'UNE itération (qui peut être ``class_kind='eurio_id'``), alors que le
+    corpus d'évaluation survit aux itérations. Sa maille stable est celle du
+    catalogue.
+
+    Réutilise ``store.class_resolver`` (C3, stdlib-only, honore ``EURIO_DB_PATH``)
+    plutôt que de refaire un COALESCE à la main — c'est le piège n°1 de ce dépôt.
+    """
+    try:
+        from store.class_resolver import coin_refs_from_sqlite
+    except Exception:
+        return {}
+    try:
+        return {r.eurio_id: r.class_id for r in coin_refs_from_sqlite()}
+    except Exception:
+        # Base absente ou illisible : on retombe sur le manifeste seul, et le
+        # rapport le dira via ``unmapped_to_class``.
+        return {}
+
+
 def _resolve_eval_real(pull_dir: Path) -> Path:
     """Accept either a raw pull root, the eurio_debug subfolder, or eval_real itself."""
     for candidate in (
@@ -93,11 +138,22 @@ class SyncReport:
     captures_skipped_existing: int = 0
     captures_unmapped_eurio_ids: list[str] = field(default_factory=list)
     duration_s: float = 0.0
+    protocol: str | None = None
+    # eurio_id des dossiers source que le manifeste ne sait pas traduire. Ils
+    # retombent sur leur eurio_id brut — c'est le repli documenté, mais il est
+    # la cause des « classes fantômes » quand le manifeste est incomplet, donc
+    # il se COMPTE au lieu de passer inaperçu.
+    unmapped_to_class: list[str] = field(default_factory=list)
+    overwritten: list[str] = field(default_factory=list)
+    # Cas où le catalogue et le class_manifest.json ne donnent pas la même
+    # classe pour un eurio_id. Le catalogue gagne ; le désaccord se dit.
+    class_map_disagreements: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "pull_dir": self.pull_dir,
             "output_dir": self.output_dir,
+            "protocol": self.protocol,
             "total_files": self.total_files,
             "normalized": self.normalized,
             "failures": self.failures,
@@ -105,6 +161,9 @@ class SyncReport:
             "captures_copied": self.captures_copied,
             "captures_skipped_existing": self.captures_skipped_existing,
             "captures_unmapped_eurio_ids": self.captures_unmapped_eurio_ids,
+            "unmapped_to_class": self.unmapped_to_class,
+            "overwritten": self.overwritten,
+            "class_map_disagreements": self.class_map_disagreements,
             "duration_s": round(self.duration_s, 2),
         }
 
@@ -113,20 +172,47 @@ def sync(
     pull_dir: Path,
     *,
     output: Path = DEFAULT_OUTPUT,
+    manifest: Path = DEFAULT_MANIFEST,
+    protocol: str | None = None,
     clear: bool = False,
     also_write_captures: bool = False,
     overwrite: bool = False,
 ) -> SyncReport:
-    """Programmatic entry point. Mirrors the CLI flags."""
+    """Programmatic entry point — le SEUL chemin de traitement (cf. module docstring).
+
+    ``protocol`` devient le premier token du nom de fichier. Sans lui, deux pulls
+    qui partagent un nom d'étape s'écrasent l'un l'autre en silence ; les
+    écrasements effectifs sont donc comptés dans ``report.overwritten``.
+    """
     started = time.time()
     src_root = _resolve_eval_real(pull_dir)
     if clear and output.exists():
         shutil.rmtree(output)
     output.mkdir(parents=True, exist_ok=True)
 
+    # Résolution eurio_id → class_id. C'était la moitié du contrat que ce chemin
+    # n'honorait pas : sans elle, une pièce COURANTE atterrit dans un dossier
+    # nommé par son membre au lieu de son groupe de dessin, et toute lecture du
+    # corpus compte des classes qui n'existent pas.
+    #
+    # Le CATALOGUE est primaire (cf. _catalogue_eurio_to_class) ; le manifeste ne
+    # comble que ce qu'il ignore. Leurs désaccords sont comptés, jamais absorbés
+    # en silence — c'est précisément une divergence muette qui a produit le défaut.
+    eurio_to_class = _catalogue_eurio_to_class()
+    manifest_map = _load_eurio_to_class(manifest)
+    disagreements: list[str] = []
+    for eid, cls in manifest_map.items():
+        if eid not in eurio_to_class:
+            eurio_to_class[eid] = cls
+        elif eurio_to_class[eid] != cls:
+            disagreements.append(f"{eid}: catalogue={eurio_to_class[eid]} manifeste={cls}")
+
     raw_files = sorted(src_root.glob("*/*_raw.jpg"))
-    report = SyncReport(pull_dir=str(pull_dir), output_dir=str(output))
+    report = SyncReport(
+        pull_dir=str(pull_dir), output_dir=str(output), protocol=protocol
+    )
     report.total_files = len(raw_files)
+    report.class_map_disagreements = disagreements
 
     if also_write_captures:
         # Lazy import — keep the script usable without FastAPI deps.
@@ -137,17 +223,24 @@ def sync(
     by_class: dict[str, list[bool]] = {}
     for raw in raw_files:
         eurio_id = raw.parent.name
+        class_id = eurio_to_class.get(eurio_id, eurio_id)
+        if eurio_id not in eurio_to_class and eurio_id not in report.unmapped_to_class:
+            report.unmapped_to_class.append(eurio_id)
         step_id = raw.stem.removesuffix("_raw")
+        out_name = f"{protocol}_{step_id}.jpg" if protocol else f"{step_id}.jpg"
         result = normalize_device_path(raw)
         ok = result.image is not None
-        by_class.setdefault(eurio_id, []).append(ok)
+        by_class.setdefault(class_id, []).append(ok)
         if not ok:
             report.failures.append(str(raw))
             continue
-        out_dir = output / eurio_id
+        out_dir = output / class_id
         out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / out_name
+        if out_path.exists():
+            report.overwritten.append(str(out_path.relative_to(output)))
         cv2.imwrite(
-            str(out_dir / f"{step_id}.jpg"),
+            str(out_path),
             result.image,
             [cv2.IMWRITE_JPEG_QUALITY, 95],
         )
@@ -194,59 +287,62 @@ def main() -> int:
                     help="Also copy each normalized image to ml/datasets/<numista_id>/captures/")
     ap.add_argument("--overwrite", action="store_true",
                     help="With --also-write-captures, overwrite existing captures/<step>.jpg")
+    ap.add_argument("--protocol", default=None,
+                    help="Protocole de prise de vue, premier token du nom de fichier "
+                         "(ex. proto-2026-06). SANS lui, deux pulls qui partagent un nom "
+                         "d'étape s'écrasent en silence — cf. docstring du module.")
     args = ap.parse_args()
 
-    eurio_to_class = _load_eurio_to_class(args.manifest)
-    if eurio_to_class:
-        print(f"Manifest: {args.manifest} ({len(eurio_to_class)} eurio_id mappings)")
-    else:
-        print(f"Manifest: not found at {args.manifest} — output keyed by eurio_id")
-
-    src_root = _resolve_eval_real(args.pull_dir)
-    print(f"Source: {src_root}")
-    print(f"Output: {args.output}")
-
-    if args.clear and args.output.exists():
-        shutil.rmtree(args.output)
-    args.output.mkdir(parents=True, exist_ok=True)
-
-    raw_files = sorted(src_root.glob("*/*_raw.jpg"))
-    if not raw_files:
-        print(f"  no *_raw.jpg under {src_root}", file=sys.stderr)
+    # ⚠️ Une SEULE boucle de traitement existe, c'est sync(). main() ne fait que
+    # l'appeler et mettre en forme. Réintroduire une boucle ici recréerait la
+    # divergence qui a produit 7 dossiers mal nommés sur 19.
+    try:
+        report = sync(
+            args.pull_dir,
+            output=args.output,
+            manifest=args.manifest,
+            protocol=args.protocol,
+            clear=args.clear,
+            also_write_captures=args.also_write_captures,
+            overwrite=args.overwrite,
+        )
+    except FileNotFoundError as exc:
+        print(f"  {exc}", file=sys.stderr)
         return 1
 
-    by_class: dict[str, list[bool]] = {}
-    failures: list[Path] = []
+    if report.total_files == 0:
+        print(f"  no *_raw.jpg under {args.pull_dir}", file=sys.stderr)
+        return 1
 
-    for raw in raw_files:
-        eurio_id = raw.parent.name
-        class_id = eurio_to_class.get(eurio_id, eurio_id)
-        step_id = raw.stem.removesuffix("_raw")
-        result = normalize_device_path(raw)
-        ok = result.image is not None
-        by_class.setdefault(class_id, []).append(ok)
-        if not ok:
-            failures.append(raw)
-            continue
-        out_dir = args.output / class_id
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{step_id}.jpg"
-        cv2.imwrite(str(out_path), result.image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-
+    print(f"Source: {args.pull_dir}")
+    print(f"Output: {args.output}")
+    print(f"Protocole: {args.protocol or '(aucun — risque d écrasement en cumul)'}")
     print()
-    for class_id, results in sorted(by_class.items()):
-        ok = sum(results)
-        n = len(results)
-        print(f"  {class_id:55s}  {ok}/{n} normalized")
+    for class_id, stats in sorted(report.per_class.items()):
+        print(f"  {class_id:55s}  {stats['normalized']}/{stats['total']} normalized")
 
-    total_ok = sum(sum(v) for v in by_class.values())
-    total = sum(len(v) for v in by_class.values())
-    print(f"\nTotal: {total_ok}/{total} → {args.output}")
-    if failures:
-        print(f"Failures ({len(failures)}):")
-        for f in failures:
+    print(f"\nTotal: {report.normalized}/{report.total_files} → {args.output}")
+
+    # Les trois compteurs qui rendent visible ce qui était muet.
+    if report.unmapped_to_class:
+        print(f"\n⚠️  {len(report.unmapped_to_class)} eurio_id absents du manifeste "
+              f"(repli sur l'eurio_id brut — classes fantômes possibles) :")
+        for eid in report.unmapped_to_class:
+            print(f"  ~ {eid}")
+    if report.class_map_disagreements:
+        print(f"\n⚠️  {len(report.class_map_disagreements)} désaccord(s) "
+              f"catalogue ↔ manifeste (le catalogue gagne) :")
+        for d in report.class_map_disagreements:
+            print(f"  ≠ {d}")
+    if report.overwritten:
+        print(f"\n⚠️  {len(report.overwritten)} fichier(s) ÉCRASÉ(S) :")
+        for p in report.overwritten:
+            print(f"  ! {p}")
+    if report.failures:
+        print(f"\nFailures ({len(report.failures)}):")
+        for f in report.failures:
             print(f"  ✗ {f}")
-    return 0 if not failures else 2
+    return 0 if not report.failures else 2
 
 
 if __name__ == "__main__":
