@@ -194,7 +194,7 @@ Répartition des 68 classes riches : 8 à `10-14`, 9 à `15-19`, 23 à `20-29`,
 | **1** | Backfill `quality_score` + tilt sur le parc | Mac | ✅ **fait** 2026-08-26 — `{"updated": 17658, "skipped": 20, "missing": 0}`, couverture `quality` 5,6 % → **61,6 %**, `tilt` → **99,5 %**. Détail : [`ETAPE1-2.md`](./ETAPE1-2.md) |
 | **2** | Prélever 5 crops d'éval × 60 classes, les marquer, les exclure de l'entraînement, propager MinIO + API | Mac | ✅ **fait** 2026-08-26 — plan régénéré (**60 classes / 300 crops**), `select_eval_holdout --apply` → `{"updated": 300, "skipped": 0, "conflict": 0, "missing": 0}`. Préflight recalculé : `n_ebay` **2296 → 1996** (−300 exactement), `ready=true`, 0 block, 0 warn. Rangement MinIO (D9) propagé. Plan appliqué : [`eval-holdout-plan.json`](./eval-holdout-plan.json) |
 | **2bis** | Composer la cohorte des 60 (bloqueur `REVUE-ETAPE3` §B4) | Mac | ✅ **fait** 2026-08-26 — `matrice-60c` = **`2e51f2b3d633`**, clonée de `rich10-68c` moins les 8 classes sans hold-out. Préflight : **60 classes, `ready=true`, 0 block, 0 warn, `n_ebay = 1908`**. Classe la plus pauvre : 12 crops. **Encore `draft`** — créer l'itération la gèlera irréversiblement |
-| **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — **tout est prêt côté Mac/VPS**. Itération de CALIBRATION créée : **`b55b61b59632`** (`matrice-arcface-60c-calib`, 3 epochs). La cohorte est **gelée** (`2026-08-26T01:36:48Z`). Séquence PC : [`REVUE-ETAPE3.md`](./REVUE-ETAPE3.md) §4 étape 3 |
+| **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | ✅ **calibration jouée et rapatriée** 2026-08-26 — `b55b61b59632`, `status=completed`, 3 epochs en **9 min 28 s**, 13 988 samples bakés. Artefacts sur le Mac. Reste : le run complet à 40 epochs (≈ 2 h 06, **mesuré** et non plus extrapolé) |
 | **4** | Sous-banque DINO restreinte aux 60 classes | Mac | 🔜 |
 | **5** | La matrice — les bras sur les mêmes 260 frames | Mac | 🟡 **3 bras DINO mesurés** sur le corpus v2, cf. §Les chiffres. Le bras **ArcFace manque** : sans lui, aucun McNemar contre le modèle qui shippe |
 
@@ -298,6 +298,44 @@ v1 mettait `vitl14` SOUS `vitb14`. Ce qui ressemblait à un fait dans la v1
 l'int8 (tous les bras en fp32), aucun seuil (run `provisional=1`). Non poussé
 au canonique — `MATRICE.md §4` prévient qu'une page affichant cette table
 fonderait un choix d'encodeur sur `provisional`, dette encore ouverte.
+
+## Le run ArcFace de calibration — joué, rapatrié, 2026-08-26
+
+`b55b61b59632` sur la cohorte gelée `matrice-60c`. `status=completed`,
+`error` vide, **15:29:11Z → 15:38:39Z = 9 min 28 s** pour 3 epochs.
+
+| | |
+|---|---|
+| samples bakés | **13 988** (l'extrapolation disait ≈ 16 000, soit −13 %) |
+| coût réel des 40 epochs | **≈ 2 h 06**, mesuré par règle de trois sur ce run (l'estimation de `REVUE-ETAPE3 §P9` disait 2 h 21) |
+| backbone | `mobilenet_v3_small`, mode `arcface`, `embedding_dim = 256` |
+| centroïdes | **60 classes** |
+| perte | 9,93 → 6,22 → **5,42** — elle descend, elle n'a pas convergé (3 epochs) |
+| `recall@1` du log | **0,0 à chaque epoch** — attendu : `val_source=none`, il n'y a pas de jeu de validation à mesurer. Ce n'est pas un échec |
+
+**Rapatriement — par MinIO, jamais par git.** Les artefacts sont archivés à
+`model-artifacts/lab/iterations/b55b61b59632/a167e6a42bdf/artifacts.tar.gz`
+(8 228 384 octets). `sha256` identique des deux côtés :
+`a167e6a42bdf5fc9b2efe1cc33caca36a5e33df5be3911434d591e10541bdabe`. Extraits
+dans `ml/lab/iterations/b55b61b59632/` (9,3 Mo, gitignoré) : `best_model.pth`,
+`embeddings_v1.json`, `coin_embeddings.json`, `eurio_embedder_v1.tflite`,
+`model_meta.json`, `per_class_metrics.json`, `training_log.json`,
+`class_manifest.json`.
+
+### 🔴 L'obstacle suivant, et il est immédiat : 60 contre 52
+
+Le modèle porte **60 centroïdes** — la cohorte gelée. Le corpus d'éval v2 n'a
+plus que **52 classes** (le garde vendeur en a coûté 8). Noter ArcFace tel quel
+lui donnerait **8 distracteurs de plus** que DINO, dont la banque est à 52 :
+on mesurerait la taille des espaces de recherche, pas les encodeurs.
+
+Il faut restreindre les centroïdes aux 52 classes du manifeste avant de noter.
+Précédent dans le dépôt : `_filter_embeddings`
+(`ml/scripts/build_cohort_bundle.py:163-176`). C'est la même opération que la
+sous-banque DINO, de l'autre côté.
+
+⚠️ Et il restera à **charger ArcFace dans le banc** : `_load_model` de
+`bench_encoder_dino` ne connaît que `timm:` et les noms `torch.hub` DINOv2.
 
 ## Le corpus d'évaluation lui-même — chantier ouvert le 2026-08-26
 
