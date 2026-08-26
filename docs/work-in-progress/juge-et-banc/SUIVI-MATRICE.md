@@ -121,11 +121,25 @@ change → le cache d'entraînement ne peut plus le trouver.
    de suite. Rien n'avait été écrit ni supprimé — l'ordre copier → vérifier →
    écrire → supprimer a tenu.
 
-❓ **Une question que ce lot ouvre et ne tranche pas** : le recadrage à distance
-écrase les pixels sous la même clé. Sur un crop d'éval, cela invalide la mesure
-déjà prise, exactement comme un changement de corpus — que `store/eval_corpus.py`
-refuse, lui. Faut-il refuser le recadrage d'un crop d'éval ? C'est un choix
-produit, pas technique : laissé au PO.
+### Le recadrage d'un crop d'éval — tranché le 2026-08-26 : **on ne bloque rien**
+
+Le constat technique est exact : `apply_manual_crop` réécrit les pixels **sous
+la même clé** (`serving/crop_edit.py:357-367`) — même `asset_id`, même clé, seuls
+les octets changent. Recadrer un des 300 crops d'éval modifie donc le jeu noté
+sans que rien ne le dise.
+
+**Le PO a refusé le blocage, et son argument porte** : ce qu'on construit est une
+banque qui GROSSIT — plus de crops, plus de classes enrichies, c'est
+l'objectif même du projet. Deux modèles entraînés à deux mois d'écart ne sont
+donc **pas** comparables, par construction, et vouloir le rendre possible
+reviendrait à figer l'enrichissement. Trois crops recadrés sur des milliers ne
+changent pas un verdict ; si c'était le cas, le problème serait ailleurs.
+
+**Ce qui reste vrai, et qui est plus étroit** : la matrice n'est pas une
+comparaison longitudinale, c'est un A/B **simultané** — ArcFace et DINO notés à
+quelques jours d'écart sur les mêmes 300 frames. C'est le seul endroit où
+l'identité des images compte, et ça dure le temps de la matrice. On le sait, on
+n'en fait pas une règle, et aucun code ne l'impose.
 
 ### Sur D5 — pourquoi pas « les plus éloignées de la canonique selon DINO »
 
@@ -179,7 +193,8 @@ Répartition des 68 classes riches : 8 à `10-14`, 9 à `15-19`, 23 à `20-29`,
 |---|---|---|---|
 | **1** | Backfill `quality_score` + tilt sur le parc | Mac | ✅ **fait** 2026-08-26 — `{"updated": 17658, "skipped": 20, "missing": 0}`, couverture `quality` 5,6 % → **61,6 %**, `tilt` → **99,5 %**. Détail : [`ETAPE1-2.md`](./ETAPE1-2.md) |
 | **2** | Prélever 5 crops d'éval × 60 classes, les marquer, les exclure de l'entraînement, propager MinIO + API | Mac | ✅ **fait** 2026-08-26 — plan régénéré (**60 classes / 300 crops**), `select_eval_holdout --apply` → `{"updated": 300, "skipped": 0, "conflict": 0, "missing": 0}`. Préflight recalculé : `n_ebay` **2296 → 1996** (−300 exactement), `ready=true`, 0 block, 0 warn. Rangement MinIO (D9) propagé. Plan appliqué : [`eval-holdout-plan.json`](./eval-holdout-plan.json) |
-| **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — **débloqué** (l'étape 2 est appliquée). Lire d'abord [`REVUE-ETAPE3.md`](./REVUE-ETAPE3.md) |
+| **2bis** | Composer la cohorte des 60 (bloqueur `REVUE-ETAPE3` §B4) | Mac | ✅ **fait** 2026-08-26 — `matrice-60c` = **`2e51f2b3d633`**, clonée de `rich10-68c` moins les 8 classes sans hold-out. Préflight : **60 classes, `ready=true`, 0 block, 0 warn, `n_ebay = 1908`**. Classe la plus pauvre : 12 crops. **Encore `draft`** — créer l'itération la gèlera irréversiblement |
+| **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — **débloqué**. Prochain geste : un run de CALIBRATION court (2-4 epochs) pour valider la plomberie avant les 40. Lire d'abord [`REVUE-ETAPE3.md`](./REVUE-ETAPE3.md) §4 |
 | **4** | Sous-banque DINO restreinte aux 60 classes | Mac | 🔜 |
 | **5** | La matrice — ~8 bras sur les mêmes 300 frames | Mac | 🔜 |
 
@@ -364,4 +379,8 @@ Verrouillé par 7 tests dans `tests/test_replay_corpus_iteration.py`.
 | 2026-08-26 | **D9 tranchée et appliquée** : bucket `eval-corpus` + préfixe de clé `eval/<corpus>/`, `assert_role_matches_bucket` en garde, affichage dérivé / entraînement volontairement aveugle. Suite : 2392 passed. |
 | 2026-08-26 | **Faille du garde d'espace de labels fermée** : empreinte `mesh_digest` dans chaque scorecard + `--compare A B` qui passe par le garde. |
 | 2026-08-26 | ⚠️ **Panne muette trouvée en vérifiant l'étape 2** : l'API `:8042` déjà lancée répondait encore `n_ebay=2296` sur `training-readiness` alors que le fichier réplique qu'elle lit disait 1996. Sa connexion read-only thread-local ne voit pas les pages neuves écrites par `sqlite3_rsync`. **Un `training-readiness` lu sur un serveur lancé avant une écriture ment.** Cf. §Reste-à-faire. |
+| 2026-08-26 | **Cohorte `matrice-60c` (`2e51f2b3d633`) composée** : 60 classes, `ready=true`, 0 block, 0 warn, `n_ebay=1908`. Encore `draft`. |
+| 2026-08-26 | **Les 300 crops d'éval tirés de MinIO et décodés : 300/300, tous 224×224** (62-104 Ko). Le chemin de lecture d'évaluation fonctionne. ⏱️ 374 s, soit ~1,25 s/fichier — la taxe `_evict_if_needed` du reste-à-faire, mesurée une fois de plus. |
+| 2026-08-26 | **Recadrage d'un crop d'éval : on ne bloque pas** (décision PO). La banque grossit par construction ; figer pour comparer serait contraire au projet. |
+| 2026-08-26 | ⚠️ **`:8042` tournait encore l'ANCIEN code** après le déplacement des octets → `500` sur `training-readiness`, car l'ancien `_ebay_training_sources` cherchait `enrichment-crops/eval/…` sans le garde. **Aucun dégât** : la cascade `mark_missing_in_storage` n'a pas pu écrire (base du Mac en lecture seule sous le flip), 300 assets toujours `present`. Après redémarrage : `n_ebay=1996`. |
 | 2026-08-26 | ⚠️ **Deux pièges rencontrés, à ne pas re-payer.** (a) `_ensure_column` posé **après** `executescript` est trop tard : `schema.sql` crée l'index PARTIEL sur la colonne et échoue en `no such column` avant le rattrapage — il va en **pre-bootstrap**. (b) **`:8042` ré-écrase la réplique toutes les 120 s** (`client/replica.py::start_autopull`) : un `ALTER` posé à la main dessus disparaît en moins de deux minutes, **sans un mot**. |
