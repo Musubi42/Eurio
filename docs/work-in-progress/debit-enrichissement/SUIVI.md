@@ -393,6 +393,7 @@ exemplaire fps** (9 986 annonces / 1 391 exemplaires), contre 6,6 au 2026-08-22
 | **D5** | **`top1_eurio_id` n'est jamais réécrit par une règle de routage.** Il alimente l'auto-validation (barre 99,5 %) ; le routage pays vaut 91,7 %. Le routage est une **suggestion** (périmètre + candidat affiché), jamais une écriture | 2026-08-26 |
 | **D6** | **Les courantes du mauvais pays ne sont pas routées** — mesuré juste **12 fois sur 71 (17 %)**, et quand le modèle et l'annonce se contredisent sur une courante c'est le **modèle** qui a plus souvent raison (40 contre 30). Elles restent masquées, comptées, ramenables d'un clic | 2026-08-26 |
 | **D7** | **Le palier texte (`top-5 ∩ pays+année`) est réservé aux commémoratives.** Sur les courantes il s'effondre : top-3 ∩ pays 67,7 %, top-5 ∩ pays 59,1 % — le pays ne distingue pas les ères d'un même pays | 2026-08-26 |
+| **D12** | **Les helpers de rejet vivent dans `store/`, pas dans `steps/enqueue`.** Ils sont du SQL pur, mais `enqueue` tire `training` : le canonique — seul writer — ne pouvait pas les atteindre, donc toute passe corrective devait réécrire le rejet | 2026-08-27 |
 | **D11** | **Le seuil de face passe de 0,065 à 0,000**, et la provenance de `face` entre en base (migration 0017). Le seuil ne rachetait aucun faux positif : la marge max des 514 avers du gold est −0,0507 | 2026-08-27 |
 | **D10** | **La bande pays reste préférée au top-1 global, et on ne rouvre pas.** Banc à l'aveugle sur la population divergente de la file ouverte : **19 contre 3**, `p = 0,00086`. L'hypothèse inverse était de l'assistant, la mesure l'a démentie | 2026-08-27 |
 | **D9bis** | **La divergence `top1_country ≠ top1_global` est un signal d'ABSTENTION, pas d'arbitrage.** Les deux voies se trompent ensemble dans **63 %** des cas | 2026-08-27 |
@@ -996,6 +997,70 @@ comme skip attendu. Mesuré aujourd'hui : c'est `review_queue
 skippé du tout. Pré-existant, vérifié identique avant/après ce commit — la skill
 est périmée sur la raison, pas sur le nombre.
 
+---
+
+## ✅ Les 1 044 sont encaissés — 2026-08-27
+
+Le geste que la section précédente laissait ouvert est fait. Commit `60dbe004`,
+`eurio-api` redéployé, passe appliquée au canonique.
+
+### Le refactor qui l'a rendu possible
+
+Les trois helpers de rejet (`_reject_crop_terminal`,
+`_route_decision_for_source_image`, `_kind_for_source_image`) sont du **SQL
+pur** — mais ils habitaient `sources/_base/steps/enqueue`, qui importe
+`review_lanes` et `review.validation.*`, lesquels tirent `training.foundation`.
+Dans l'image lean, `import enqueue` lève `No module named 'training'`.
+
+⚠️ **Découper `review_lanes` n'aurait pas suffi** : mesuré, les trois modules
+`review.validation.{consensus,experts,persist}` tirent `training` eux aussi. La
+bonne cible n'était pas le module intermédiaire, c'étaient **les helpers
+eux-mêmes**.
+
+Ils descendent donc dans **`store/review_routing.py`** — même famille que
+`store/faces.py`, « write-half SQL-pure ». `enqueue` les ré-importe sous ses
+anciens noms privés : **une seule définition**, tous les appelants historiques
+tiennent (`backfill_face`, `backfill_denom`, `crop_edit`, `auto_validate`). Deux
+tests verrouillent la propriété : le module ne doit rien importer d'indisponible
+dans le lean, et le corps ne doit pas revenir dans `enqueue`.
+
+`serving/crop_edit.py` gagne au passage un import local lean-safe.
+
+### La passe de rejet
+
+`scripts/reject_reverse_backlog.py`, dry-run par défaut. Elle **épargne les deux
+sticky**, et c'est le cœur de sa prudence :
+
+| épargné | pourquoi |
+|---|---|
+| `resolution_status != 'needs_review'` | déjà tranché par un humain ou le consensus |
+| `decision_notes = 'restored'` | **ré-ouvert à la main** — un geste humain délibéré |
+
+Le rejet reste **ré-ouvrable** par `/restore`, comme celui de l'enqueue.
+
+### Le résultat, relu dans un process neuf
+
+| | avant | **après** |
+|---|---:|---:|
+| **file ouverte** | 11 377 | **10 333** |
+| ouverts étiquetés `reverse` | 1 052 | **8** — exactement les sticky |
+| rejets estampillés `face_backlog@tau0.0-2026-08-27` | 0 | **1 044** |
+| listings `route_reason='face_reverse'` | 985 | **1 838** |
+| assets `face_reverse` avec `training_eligible=1` | — | **0** |
+| événements `face_reverse` tracés | — | 2 636 |
+
+> ### 🎯 **−1 044 crops dans la file, soit −9,2 %.**
+> Des revers communs qu'aucune canonique nationale ne peut matcher. Le temps
+> humain annoncé est cette fois **réellement** encaissé — et le chiffre est
+> mesuré sur la file, pas déduit d'une étiquette.
+
+**Réversible** : photo des 1 044 lignes AVANT rejet dans
+`/var/lib/eurio/rejet_revers_avant_2026-08-27.csv`, à côté de
+`face_avant_2026-08-27.csv`.
+
+**État : 7 tests neufs, 7 mutations jouées et rouges chacune sur son test, suite
+`2491 passed`.**
+
 ## Les pièges de ce chantier — à ne pas re-payer
 
 | Piège | Ce qu'il fait |
@@ -1064,3 +1129,5 @@ est périmée sur la raison, pas sur le nombre.
 | 2026-08-27 | **Passe corrective appliquée au canonique** : **4 298 faces réécrites**, identique au dry-run. Photo de l'état AVANT dans `/var/lib/eurio/face_avant_2026-08-27.csv` — la passe est réversible. Trois invariants relus dans un process neuf, tous à 0. |
 | 2026-08-27 | ⚠️ **Ma phrase « 1 051 crops sortent de la file » était prématurée.** La passe corrige l'étiquette, pas le routage : `list_queue` n'a aucun prédicat sur `face`, et le rejet `face_reverse` se fait à l'enqueue, jamais rétroactivement. Mesuré après : ouverts `reverse` 1 → **1 052**, file totale **11 377 inchangée**. **1 044 sont rejetables** (8 restaurés à la main à épargner). |
 | 2026-08-27 | **Le geste de rejet reste à faire, et il est bloqué proprement** : les helpers (`_reject_crop_terminal`) vivent dans `enqueue`, qui importe `review_lanes`, qui importe `training` — inimportable dans l'image lean. Réécrire le rejet en SQL créerait une seconde copie de la règle. Correctif propre : sortir la moitié stdlib de `review_lanes`, comme on vient de le faire pour `face_rule`. **Attend le PO** (refactor + second déploiement). |
+| 2026-08-27 | **Refactor `store/review_routing.py`.** ⚠️ Découper `review_lanes` seul n'aurait PAS suffi : `review.validation.{consensus,experts,persist}` tirent `training` eux aussi. La bonne cible était les helpers, pas le module intermédiaire. Une seule définition, deux tests la verrouillent. Commit `60dbe004`, redéployé. |
+| 2026-08-27 | ✅ **Les 1 044 encaissés.** File ouverte **11 377 → 10 333 (−9,2 %)**, ouverts `reverse` **1 052 → 8** (exactement les sticky restaurés à la main), 853 listings re-routés, 0 asset `face_reverse` resté `training_eligible=1`. Photo avant rejet dans `/var/lib/eurio/rejet_revers_avant_2026-08-27.csv`. Suite `2491 passed`, 7 mutations rouges. |
