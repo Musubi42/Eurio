@@ -4,9 +4,9 @@
 ==============================================================================
 ⚠ CALIBRATION PROVISOIRE — NE PAS RECOPIER CES SEUILS DANS dino_thresholds
 
-  arcface:lab/iterations/b55b61b59632/checkpoints/best_model.pth :
-    - P3: aucun build trace dans dino_anchor_builds pour matrice60/arcface-b55b61b59632 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force
-    - P1: couverture utile insuffisante pour matrice60/arcface-b55b61b59632 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]
+  arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth :
+    - P3: aucun build trace dans dino_anchor_builds pour matrice60/arcface-392205b7f725 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force
+    - P1: couverture utile insuffisante pour matrice60/arcface-392205b7f725 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]
   dinov2_vits14 :
     - P3: aucun build trace dans dino_anchor_builds pour matrice60/dinov2-vits14 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force
     - P1: couverture utile insuffisante pour matrice60/dinov2-vits14 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]
@@ -34,38 +34,38 @@
 
 | Modèle | M params | px | dim | in-scope | non encodés | global@1 | global@5 | pays@1 | pays@5 | ms/img | provisoire |
 |---|---|---|---|---|---|---|---|---|---|---|---|
+| arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth | 1.1 | 224 | 256 | 260 | 0 | 99.2% | 99.6% | 90.0% | 90.4% | 4 | oui |
 | dinov2_vitb14 | 86.6 | 224 | 768 | 260 | 0 | 96.9% | 99.6% | 89.2% | 90.4% | 31 | oui |
-| dinov2_vitl14 | 304.4 | 224 | 1024 | 260 | 0 | 98.1% | 99.6% | 88.5% | 90.4% | 101 | oui |
-| dinov2_vits14 | 22.1 | 224 | 384 | 260 | 0 | 94.2% | 99.2% | 88.1% | 90.4% | 13 | oui |
-| arcface:lab/iterations/b55b61b59632/checkpoints/best_model.pth | 1.1 | 224 | 256 | 260 | 0 | 76.5% | 93.8% | 83.8% | 90.4% | 4 | oui |
+| dinov2_vitl14 | 304.4 | 224 | 1024 | 260 | 0 | 98.1% | 99.6% | 88.5% | 90.4% | 113 | oui |
+| dinov2_vits14 | 22.1 | 224 | 384 | 260 | 0 | 94.2% | 99.2% | 88.1% | 90.4% | 12 | oui |
 
 ## Seuil d'auto-acceptation (spread)
 
-- `arcface:lab/iterations/b55b61b59632/checkpoints/best_model.pth` : **aucun seuil rendu** — Seuil non promouvable : P3: aucun build trace dans dino_anchor_builds pour matrice60/arcface-b55b61b59632 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force | P1: couverture utile insuffisante pour matrice60/arcface-b55b61b59632 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]. Relancer avec allow_provisional=True (CLI : --allow-provisional) pour obtenir un chiffre explicitement marque provisoire.
+- `arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth` : **aucun seuil rendu** — Seuil non promouvable : P3: aucun build trace dans dino_anchor_builds pour matrice60/arcface-392205b7f725 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force | P1: couverture utile insuffisante pour matrice60/arcface-392205b7f725 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]. Relancer avec allow_provisional=True (CLI : --allow-provisional) pour obtenir un chiffre explicitement marque provisoire.
 - `dinov2_vits14` : **aucun seuil rendu** — Seuil non promouvable : P3: aucun build trace dans dino_anchor_builds pour matrice60/dinov2-vits14 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force | P1: couverture utile insuffisante pour matrice60/dinov2-vits14 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]. Relancer avec allow_provisional=True (CLI : --allow-provisional) pour obtenir un chiffre explicitement marque provisoire.
 - `dinov2_vitb14` : **aucun seuil rendu** — Seuil non promouvable : P3: aucun build trace dans dino_anchor_builds pour matrice60/dinov2-vitb14 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force | P1: couverture utile insuffisante pour matrice60/dinov2-vitb14 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]. Relancer avec allow_provisional=True (CLI : --allow-provisional) pour obtenir un chiffre explicitement marque provisoire.
 - `dinov2_vitl14` : **aucun seuil rendu** — Seuil non promouvable : P3: aucun build trace dans dino_anchor_builds pour matrice60/dinov2-vitl14 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force | P1: couverture utile insuffisante pour matrice60/dinov2-vitl14 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]. Relancer avec allow_provisional=True (CLI : --allow-provisional) pour obtenir un chiffre explicitement marque provisoire.
 
-## Apparié McNemar (référence : `arcface:lab/iterations/b55b61b59632/checkpoints/best_model.pth`)
+## Apparié McNemar (référence : `arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth`)
 
-- `dinov2_vits14` : b=4 c=50 · p = 3.803e-11
-- `dinov2_vitb14` : b=4 c=57 · p = 4.855e-13
-- `dinov2_vitl14` : b=3 c=59 · p = 1.725e-14
+- `dinov2_vits14` : b=14 c=1 · p = 0.0009766
+- `dinov2_vitb14` : b=7 c=1 · p = 0.07031
+- `dinov2_vitl14` : b=4 c=1 · p = 0.375
 
 ## Traçabilité
 
-- `20260826T201109Z-9bc08e19b83c-arcface-b55b61b59632` — provisional=1
-- `20260826T201109Z-9bc08e19b83c-dinov2-vits14` — provisional=1
-- `20260826T201109Z-9bc08e19b83c-dinov2-vitb14` — provisional=1
-- `20260826T201109Z-9bc08e19b83c-dinov2-vitl14` — provisional=1
+- `20260826T202307Z-9bc08e19b83c-arcface-392205b7f725` — provisional=1
+- `20260826T202307Z-9bc08e19b83c-dinov2-vits14` — provisional=1
+- `20260826T202307Z-9bc08e19b83c-dinov2-vitb14` — provisional=1
+- `20260826T202307Z-9bc08e19b83c-dinov2-vitl14` — provisional=1
 
 ```
 ==============================================================================
 ⚠ CALIBRATION PROVISOIRE — NE PAS RECOPIER CES SEUILS DANS dino_thresholds
 
-  arcface:lab/iterations/b55b61b59632/checkpoints/best_model.pth :
-    - P3: aucun build trace dans dino_anchor_builds pour matrice60/arcface-b55b61b59632 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force
-    - P1: couverture utile insuffisante pour matrice60/arcface-b55b61b59632 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]
+  arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth :
+    - P3: aucun build trace dans dino_anchor_builds pour matrice60/arcface-392205b7f725 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force
+    - P1: couverture utile insuffisante pour matrice60/arcface-392205b7f725 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]
   dinov2_vits14 :
     - P3: aucun build trace dans dino_anchor_builds pour matrice60/dinov2-vits14 — la fraicheur des predictions ne peut pas etre prouvee — batir la banque : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage] ; puis relancer scripts.backfill_dino_predictions --force
     - P1: couverture utile insuffisante pour matrice60/dinov2-vits14 — 0 classes a 2 exemplaires ou plus (attendu >= 118) — enrichir (eurio-enrichment, eurio-review) puis rebatir : go-task ml:dino-anchors:build -- --kind matrice60 --force --push [le --push est ce qui la fait passer sous le devShell : la trace part au canonique par HTTP ; sans lui, EURIO_DB_READONLY=1 fait refuser la commande AVANT l'encodage]
