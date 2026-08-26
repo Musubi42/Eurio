@@ -939,7 +939,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── Rapport ──
     lines = [
-        "# Bench encodeurs zero-shot (banque 2eur_all, GOLD FIGÉ de review)",
+        # Le titre nomme le COUPLE mesuré. Le codait en dur (« banque 2eur_all,
+        # gold de review ») rendait un rapport qui ment dès qu'on note autre
+        # chose — et c'est le fichier qu'on relit dans six mois.
+        f"# Bench encodeurs zero-shot — banque `{args.anchors_kind}` · "
+        f"gold `{args.gold.name}`",
         "",
         "```",
         *banner,

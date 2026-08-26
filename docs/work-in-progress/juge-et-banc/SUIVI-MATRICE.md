@@ -196,7 +196,7 @@ Répartition des 68 classes riches : 8 à `10-14`, 9 à `15-19`, 23 à `20-29`,
 | **2bis** | Composer la cohorte des 60 (bloqueur `REVUE-ETAPE3` §B4) | Mac | ✅ **fait** 2026-08-26 — `matrice-60c` = **`2e51f2b3d633`**, clonée de `rich10-68c` moins les 8 classes sans hold-out. Préflight : **60 classes, `ready=true`, 0 block, 0 warn, `n_ebay = 1908`**. Classe la plus pauvre : 12 crops. **Encore `draft`** — créer l'itération la gèlera irréversiblement |
 | **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — **tout est prêt côté Mac/VPS**. Itération de CALIBRATION créée : **`b55b61b59632`** (`matrice-arcface-60c-calib`, 3 epochs). La cohorte est **gelée** (`2026-08-26T01:36:48Z`). Séquence PC : [`REVUE-ETAPE3.md`](./REVUE-ETAPE3.md) §4 étape 3 |
 | **4** | Sous-banque DINO restreinte aux 60 classes | Mac | 🔜 |
-| **5** | La matrice — ~8 bras sur les mêmes 300 frames | Mac | 🔜 |
+| **5** | La matrice — ~8 bras sur les mêmes 300 frames | Mac | 🟡 **3 bras DINO mesurés** 2026-08-26, cf. §Premiers chiffres. Le bras **ArcFace manque** : sans lui, aucun McNemar contre le modèle qui shippe |
 
 ✅ **`0014` est au canonique depuis le 2026-08-26.** Ce qui suit reste vrai comme RÈGLE : Le
 prédicat `eval_corpus IS NULL` est en place dans les deux collectes ; sur une base
@@ -255,6 +255,86 @@ préflight contrôle — c'est voulu, et c'est pourquoi le quota se raisonne sur
 
 Préparée ici, jouée là-bas. La revue de préparation dira si elle est prête.
 
+## Premiers chiffres — 3 bras DINO, 2026-08-26
+
+Rapport brut : [`matrice-dino.md`](./matrice-dino.md). Banque `matrice60`
+(893 ancres, 60 classes), gold `5b161e789f0d` (300 frames, maille
+`design_group`), appariement vérifié : 60 classes du gold toutes présentes,
+**0 distracteur**, 0 crop non encodé.
+
+| Modèle | M params | dim | **r@1** | r@5 | pays@1 | ms/img |
+|---|---:|---:|---:|---:|---:|---:|
+| `dinov2_vits14` | 22,1 | 384 | 94,0 % | 99,3 % | 89,7 % | **14** |
+| `dinov2_vitb14` | 86,6 | 768 | **96,3 %** | 99,7 % | 89,0 % | 34 |
+| `dinov2_vitl14` | 304,4 | 1024 | 95,3 % | **100 %** | 89,3 % | 139 |
+
+### 🔴 Aucun de ces écarts n'est significatif — et c'est le résultat
+
+McNemar apparié, référence `vits14` :
+
+| bras | gagne | perd | discordants | p |
+|---|---:|---:|---:|---:|
+| `vitb14` | 13 | 6 | **19** | 0,167 |
+| `vitl14` | 11 | 7 | **18** | 0,481 |
+
+**Le nombre de frames n'était pas la bonne cible.** `exp-01 §9` réclamait
+150-300 frames « pour que le McNemar ait de la puissance » ; on en a 300, et la
+puissance reste nulle — parce qu'elle vient des paires **discordantes**, pas
+des frames. À 94-96 % partout, les trois modèles sont d'accord sur 281 frames
+sur 300 : il ne reste presque rien à mesurer. Pour séparer ces trois-là il
+faudrait soit **beaucoup plus de frames**, soit un **jeu plus difficile**.
+
+Corollaire à ne pas oublier en lisant le tableau : `vitl14` sous `vitb14` en
+r@1 est une **inversion dans le bruit**, pas un fait. Toute explication qu'on
+lui trouverait serait une histoire.
+
+### Ce que les chiffres disent quand même
+
+- **`vitb14` est le candidat à retenir pour la suite.** `MATRICE.md §2` l'avait
+  désigné sans l'avoir mesuré (« 82,6 Mo en int8 — il tient dans un APK, et il
+  n'a jamais été mesuré »). Il est maintenant mesuré, il est en tête, et il est
+  **4× plus rapide que `vitl14`** (34 vs 139 ms/img) pour 3,5× moins de
+  paramètres. Que sa tête soit dans le bruit ne change pas ce raisonnement :
+  à égalité statistique, le moins cher gagne ;
+- **la bande pays plafonne à ~89 %** pour les trois, en dessous du global. Elle
+  ne discrimine pas non plus.
+
+### ⚠️ Le jeu est contaminé à 12 %, et l'effet est mesuré
+
+**36 des 300 crops d'éval viennent de la MÊME photo brute qu'une ancre**
+(`image_assets.source_image_id` partagé) — même listing, même éclairage, même
+session. Ce n'est pas la fuite que D5 avait fermée (aucun crop d'éval n'EST une
+ancre : vérifié, 0), c'en est une plus fine : le quasi-doublon.
+
+Mesuré sur `vitb14`, en scindant le jeu :
+
+| sous-ensemble | n | r@1 |
+|---|---:|---:|
+| contaminés (raw d'une ancre) | 36 | **100,0 %** |
+| propres (raw jamais vu) | 264 | **95,8 %** |
+| tous | 300 | 96,3 % |
+
+Les contaminés sont **tous** justes — le quasi-doublon fait bien ce qu'on
+craint. Mais ils ne pèsent que 12 % : l'inflation totale est de **+0,5 point**.
+À retenir : le chiffre honnête est **95,8 %**, et le prochain prélèvement
+gagnerait un prédicat (`source_image_id` jamais vu d'une ancre de la classe).
+Ce n'est pas ce qui explique l'absence d'écart entre les trois modèles.
+
+### Ce que ce run ne dit PAS
+
+- **rien sur ArcFace.** Trois chiffres DINO sans point de comparaison ne
+  répondent pas à « lequel part dans l'APK ». C'est le bras manquant ;
+- **rien sur la quantisation.** Tous les bras sont en fp32 ; l'axe int8 —
+  celui qui décide si `vitb14` tient dans l'APK — n'a pas été touché ;
+- **aucun seuil.** Le run est `provisional=1` (aucun `dino_anchor_builds` pour
+  `matrice60`, et 0 classe à ≥2 exemplaires selon `calibration_blockers`). Le
+  banc le dit lui-même : ce qui reste valide est **le classement**, parce qu'il
+  ré-encode tout à chaque run et ne lit aucune prédiction stockée.
+
+**Non poussé au canonique** (`--no-push`) : `MATRICE.md §4` prévient qu'une page
+affichant cette table fonderait un choix d'encodeur sur `provisional`, dont le
+prédicat est encore la dette Q1..Q4. Le rapport markdown est la trace.
+
 ## Reste-à-faire hors étapes
 
 - **Persister `inputs_digest` sur l'itération** (~3 lignes). Il existe déjà
@@ -284,6 +364,10 @@ Préparée ici, jouée là-bas. La revue de préparation dira si elle est prête
   `training-readiness` lu sur un serveur plus vieux que la dernière écriture.
 - **`encoder_bench_runs`** manque deux colonnes pour porter la matrice :
   `quantization` et `eval_corpus` (cf. [`MATRICE.md`](./MATRICE.md) §4).
+- **Le prélèvement d'éval devrait exclure les quasi-doublons** : un crop dont
+  le `source_image_id` porte aussi une ancre de sa classe est presque la même
+  image. Mesuré le 2026-08-26 : 36/300 (12 %), tous justes sous `vitb14`,
+  +0,5 pt d'inflation. Un prédicat de plus dans `select_eval_holdout`.
 - **`provisional`** est gardé à l'écriture mais son prédicat croit quatre champs
   déclarés par l'appelant — à fermer avant qu'une page ne fonde un choix
   d'encodeur dessus.
@@ -379,6 +463,7 @@ Verrouillé par 7 tests dans `tests/test_replay_corpus_iteration.py`.
 | 2026-08-26 | **D9 tranchée et appliquée** : bucket `eval-corpus` + préfixe de clé `eval/<corpus>/`, `assert_role_matches_bucket` en garde, affichage dérivé / entraînement volontairement aveugle. Suite : 2392 passed. |
 | 2026-08-26 | **Faille du garde d'espace de labels fermée** : empreinte `mesh_digest` dans chaque scorecard + `--compare A B` qui passe par le garde. |
 | 2026-08-26 | ⚠️ **Panne muette trouvée en vérifiant l'étape 2** : l'API `:8042` déjà lancée répondait encore `n_ebay=2296` sur `training-readiness` alors que le fichier réplique qu'elle lit disait 1996. Sa connexion read-only thread-local ne voit pas les pages neuves écrites par `sqlite3_rsync`. **Un `training-readiness` lu sur un serveur lancé avant une écriture ment.** Cf. §Reste-à-faire. |
+| 2026-08-26 | **3 bras DINO mesurés** sur les 300 frames (banque `matrice60`) : vits14 94,0 %, vitb14 96,3 %, vitl14 95,3 % en r@1. **Aucun écart significatif** (p=0,167 et p=0,481) — 19 et 18 paires discordantes seulement. Et le jeu est contaminé à 12 % par des quasi-doublons (36 crops issus du raw d'une ancre, 100 % justes contre 95,8 % sur les propres) : +0,5 pt d'inflation. |
 | 2026-08-26 | **Itération de calibration `b55b61b59632` créée** — 3 epochs, `val_source=none`, `centroid_source=train_mean`, graine `20260826`, recette `test-3`, `variant_count=100`. Les cinq clés **relues sur la ligne**. La cohorte `matrice-60c` est **gelée** (`2026-08-26T01:36:48Z`). Le run court valide la plomberie (bake, MinIO, boucle, embeddings, TFLite) — **pas** la notation sur les 300 frames, qui attend le **lot A**. |
 | 2026-08-26 | **Cohorte `matrice-60c` (`2e51f2b3d633`) composée** : 60 classes, `ready=true`, 0 block, 0 warn, `n_ebay=1908`. Encore `draft`. |
 | 2026-08-26 | **Les 300 crops d'éval tirés de MinIO et décodés : 300/300, tous 224×224** (62-104 Ko). Le chemin de lecture d'évaluation fonctionne. ⏱️ 374 s, soit ~1,25 s/fichier — la taxe `_evict_if_needed` du reste-à-faire, mesurée une fois de plus. |
