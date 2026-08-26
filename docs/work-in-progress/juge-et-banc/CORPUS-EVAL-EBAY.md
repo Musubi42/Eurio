@@ -9,6 +9,74 @@
 > manque. Ce qui manque, lui, est réel — et plus grave que ce que la demande
 > décrivait.
 
+## 0. L'inventaire — où sont TOUTES les photos d'évaluation
+
+Question du PO le 2026-08-26 : *« il y a deux sets de données… où sont ces
+photos ? »*. Mesuré, pas de mémoire. **Il y a bien deux sets, ils sont tous les
+deux réels, et ils ne se recouvrent en rien.**
+
+### Set 1 — le corpus DEVICE, 451 captures
+
+```sql
+-- ml/state/scan_corpus.db
+select bundle_source, count(*) from scan_corpus group by 1;
+-- device_pull_20260601|337
+-- device_pull_20260429|114
+```
+
+| | |
+|---|---|
+| volume | **451 captures**, **20 classes** seulement |
+| les deux pulls | avril (`device_pull_20260429`, 114) et juin (`device_pull_20260601`, 337) — exactement les deux sets dont le PO se souvient |
+| conditions | 8 : `bright_plain` 87, `bright_textured` 84, `oblique` 68, `glare_specular` 68, `dim` 68, `tilt_plain`/`dim_plain`/`daylight_plain` 19 chacune |
+| base | `ml/state/scan_corpus.db` (463 ko) |
+| octets | `ml/state/scan_corpus/frames/` — **53 Mo, 903 fichiers**, en local |
+| qui le lit | `scripts/replay_corpus.py`, et lui seul |
+
+**Sur MinIO : oui, mais PAS dans un bucket d'évaluation.** Il y est sous forme
+de **3 archives** dans `model-artifacts/training/` :
+
+| clé | taille |
+|---|---:|
+| `training/scan_corpus_frames/287fc454e403/scan_corpus_frames.tar.gz` | 53,3 Mo |
+| `training/device_debug_pull/83f103e0074a/device_debug_pull.tar.gz` | 74,7 Mo |
+| `training/eval_real_norm/697e80ca36c0/eval_real_norm.tar.gz` | 2,3 Mo |
+| **total** | **130,3 Mo** |
+
+C'est la réplication du lot 0. Le souvenir du PO (« on les a mis dans MinIO »)
+est juste ; la précision « dans un bucket d'évaluation » ne l'est pas — le
+bucket `eval-corpus` a été créé **le 2026-08-26** et ne contient que les
+300 crops eBay.
+
+### Set 2 — les 300 crops eBay, créés le 2026-08-26
+
+| | |
+|---|---|
+| volume | **300 crops**, **60 classes**, 5 par classe |
+| origine | prélevés du pool d'enrichissement par `scripts/select_eval_holdout.py` (règle D5/D7) |
+| marquage | `image_assets.eval_corpus = 'matrice-encodeurs-2026-08'` |
+| octets | bucket **`eval-corpus`**, 300 objets, préfixe `eval/matrice-encodeurs-2026-08/` |
+| manifeste | `state/validation_gold/matrice_eval_gold.jsonl`, `gold_version=5b161e789f0d` |
+
+### Ce que l'inventaire dit
+
+**751 images d'évaluation au total**, mais elles ne sont pas
+interchangeables — et surtout, **elles ne notent pas la même tâche** :
+
+| | device | eBay |
+|---|---:|---:|
+| images | 451 | 300 |
+| classes | **20** | **60** |
+| conditions de prise de vue étiquetées | 8 | aucune |
+| exclues de l'entraînement | oui (bench-only) | oui (`eval_corpus`) |
+| outil qui sait les noter | `replay_corpus` | `bench_encoder_dino` |
+
+⚠️ **Aucun outil ne sait noter les deux.** C'est le lot A que le PC est en
+train d'écrire (faire lire des crops eBay à `replay_corpus`). Tant qu'il n'est
+pas là, les deux corpus vivent dans deux mondes.
+
+---
+
 ## 1. Les prémisses, une par une
 
 ### ❌ « Les 300 images d'éval sont des images récupérées on-device »
@@ -167,6 +235,45 @@ reconnaître une « photo d'utilisateur » dans le pool eBay.
 
 ## 4. Les questions ouvertes, par ordre de ce qu'elles débloquent
 
+### Q0 — Enrichissement et ancres : ce sont DÉJÀ le même set
+
+Le PO : *« si enrichissement et ancres DINO sont deux sets d'images différents,
+c'est nul à chier »*. **Ils n'en sont pas.** Mesuré sur la banque servie :
+
+| ligne de la banque `2eur_all` | n |
+|---|---:|
+| avers canoniques Numista (aucun crop) | 671 |
+| **crops eBay** | **1 391** |
+| … dont `source = 'ebay'` | 1 391 / 1 391 |
+| … dont `training_eligible = 1` | **1 391 / 1 391** |
+| … dont marqués `eval_corpus` | **0** / 1 391 |
+
+Une ancre est un crop d'enrichissement **désigné en plus** comme ancre. Elle
+reste dans le pool d'entraînement. Il n'y a pas deux sets à entretenir — il y
+en a un, plus un marquage.
+
+Le seul « autre » set dans la banque, ce sont les **671 avers canoniques
+Numista**, et ceux-là ne viennent pas d'eBay par construction.
+
+### Q0bis — « Pourquoi une partie et pas tout ? » — mesuré
+
+Le PO a raison, et voici de combien. Même jeu (300 frames), même encodeur
+(`vitb14`), deux banques :
+
+| banque | ancres | r@1 | r@5 |
+|---|---:|---:|---:|
+| sous-ensemble FPS (actuel) | 893 | 96,3 % | 99,7 % |
+| **tout le pool éligible** | **2 050** | **97,3 %** | 99,3 % |
+
+**+1,0 point pour 2,3× les ancres.** Le sous-ensemble n'existe donc PAS pour
+la qualité — il existe pour la **taille embarquée et la latence** : chaque scan
+compare la requête à **toutes** les ancres, et la banque part dans l'APK.
+2,3× d'ancres, c'est 2,3× de comparaisons sur le téléphone.
+
+👉 **Conséquence directe : pour le BANC, il n'y a aucune raison de se
+restreindre.** Le FPS est un arbitrage de production, pas de mesure. La
+sous-banque de la matrice devrait prendre **tout** le pool des 60 classes.
+
 ### Q1 — Comment reconnaître une photo « à l'arrache » dans le pool ?
 
 C'est LA question. Aujourd'hui on a trois signaux (`tilt_deg`, `axis_ratio`,
@@ -199,12 +306,24 @@ niveaux possibles, du plus faible au plus fort :
 mord : il faudrait écarter 40 % du jeu actuel, ou re-tirer en excluant les
 vendeurs des ancres — ce qui **réduit le pool éligible par classe**.
 
-### Q3 — Combien reste-t-il vraiment, une fois les vendeurs des ancres exclus ?
+### ✅ Q3 — RÉPONDUE le 2026-08-26
 
-Non mesuré. C'est le préalable chiffré à toute décision sur Q2 :
-pour chacune des 60 classes, combien de crops restent quand on retire ceux
-dont le vendeur porte déjà une ancre ? Si une classe tombe à 2, le split par
-vendeur est impossible **sans rebâtir la banque d'ancres en même temps**.
+Par classe, hors ancres :
+
+| | min | p25 | médiane | max |
+|---|---:|---:|---:|---:|
+| crops disponibles | 7 | 12 | 19 | 149 |
+| **dont vendeur jamais vu d'une ancre** | **0** | 6 | 11 | 142 |
+
+| quota d'éval sans contamination vendeur | classes qui tiennent |
+|---:|---:|
+| 5 | **52 / 60** |
+| 10 | 36 / 60 |
+| 15 | 19 / 60 |
+
+**3 classes n'ont AUCUN crop non contaminé.** Un split strict par vendeur à
+5/classe coûte donc **8 classes** (60 → 52). C'est le prix exact de la
+propreté, et il est payable.
 
 ### Q4 — À quelle échelle de classes évaluer ?
 
