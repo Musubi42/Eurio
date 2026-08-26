@@ -32,8 +32,8 @@ if str(ML_DIR) not in sys.path:
 import pytest  # noqa: E402
 
 from scripts.select_eval_holdout import (  # noqa: E402
-    quantiles_moitie_haute,
     selectionner,
+    tirage,
 )
 from store import Store  # noqa: E402
 from store.eval_corpus import apply_ingest_eval_corpus  # noqa: E402
@@ -203,18 +203,32 @@ def test_le_marquage_ne_touche_pas_training_eligible(tmp_path):
 # ─── 4. La sélection est déterministe, et elle respecte le plancher ──────────
 
 
-def test_les_rangs_quantiles_sont_dans_la_moitie_haute_et_distincts():
-    for n in range(10, 60):
-        rangs = quantiles_moitie_haute(n, 5)
-        assert len(rangs) == 5
-        assert len(set(rangs)) == 5, f"doublon de rang pour n={n}"
-        assert rangs == sorted(rangs)
-        # Tous dans la moitié la plus dégradée (ou juste à sa frontière quand
-        # le débordement anti-doublon s'est déclenché).
-        assert max(rangs) < n
-    # Pool trop court : on rend ce qu'on peut, jamais un doublon.
-    assert quantiles_moitie_haute(3, 5) == [0, 1, 2]
-    assert quantiles_moitie_haute(0, 5) == []
+def test_le_tirage_est_rejouable_et_ne_rend_jamais_de_doublon():
+    """Un doublon serait une image comptée deux fois dans le dénominateur."""
+    cands = [{"asset_id": f"a{i:02d}"} for i in range(20)]
+    une = tirage(cands, 5, seed=42, class_id="c0")
+    deux = tirage(cands, 5, seed=42, class_id="c0")
+    assert [c["asset_id"] for c in une] == [c["asset_id"] for c in deux]
+    assert len({c["asset_id"] for c in une}) == 5
+    # Pool plus court que le quota : on rend ce qu'on a, jamais un doublon.
+    assert len(tirage(cands[:3], 5, seed=42, class_id="c0")) == 3
+
+
+def test_la_graine_est_par_CLASSE_pour_quune_classe_ne_bouge_pas_les_autres():
+    """LE point de la graine composée.
+
+    Avec une graine globale, un seul crop scrapé en plus ferait re-tirer les 60
+    classes, et deux prélèvements à deux semaines d'écart n'auraient plus rien
+    en commun sans que personne ne l'ait décidé.
+    """
+    cands = [{"asset_id": f"a{i:02d}"} for i in range(20)]
+    c0 = [c["asset_id"] for c in tirage(cands, 5, seed=42, class_id="c0")]
+    c1 = [c["asset_id"] for c in tirage(cands, 5, seed=42, class_id="c1")]
+    assert c0 != c1, "deux classes ne doivent pas tirer la même chose"
+    # Et le pool de c1 peut grossir sans toucher c0.
+    gros = cands + [{"asset_id": f"a{i:02d}"} for i in range(20, 40)]
+    assert [c["asset_id"] for c in tirage(cands, 5, seed=42, class_id="c0")] == c0
+    assert [c["asset_id"] for c in tirage(gros, 5, seed=42, class_id="c1")] != c1
 
 
 def _base_de_selection(tmp_path, *, n_par_classe=20, n_classes=3):
@@ -250,15 +264,19 @@ def test_la_selection_est_rejouable_a_lidentique(tmp_path):
     assert len(p1["picks"]) == 15  # 3 classes × 5
 
 
-def test_la_selection_prend_les_plus_inclines(tmp_path):
-    """Le critère est géométrique — `tilt_deg` — jamais un embedding appris."""
+def test_le_tirage_ne_trie_plus_sur_le_tilt(tmp_path):
+    """La v1 prenait la moitié la plus inclinée. Mesuré le 2026-08-26, ce jeu
+    était 3,7 points plus FACILE que ce qu'il écartait, et le quartile le plus
+    incliné était le meilleur. Une règle qui trie sur un signal qui ne trie
+    rien n'est pas neutre : elle introduit un biais qu'on ne sait pas nommer.
+
+    Ce test échoue si quelqu'un remet un tri par tilt : sur un pool 0..19, les
+    5 tirés ne doivent PAS être les 5 plus inclinés.
+    """
     conn = _base_de_selection(tmp_path, n_par_classe=20, n_classes=1)
-    plan = selectionner(conn, quota=5, min_real=10)
-    tilts = [p["tilt_deg"] for p in plan["picks"]]
-    # Pool 0..19 ; moitié haute = les 10 plus inclinés (19..10).
-    assert min(tilts) >= 10.0, tilts
-    # Rangs quantiles = 1,3,5,7,9 de l'ordre décroissant (0..19) → 18,16,14,12,10.
-    assert max(tilts) == 18.0
+    ids = {p["asset_id"] for p in selectionner(conn, quota=5, min_real=10)["picks"]}
+    plus_inclines = {f"c0-a{i:02d}" for i in range(15, 20)}
+    assert ids != plus_inclines
 
 
 def test_une_ancre_de_la_banque_servie_nest_jamais_prelevee(tmp_path):
@@ -446,6 +464,30 @@ def test_un_deplacement_apres_marquage_nest_pas_compte_skipped(tmp_path):
         "storage_path": "eval/X/ebay/si1/a0.png",
     }])
     assert (r2["updated"], r2["skipped"]) == (0, 1)
+
+
+def test_la_liberation_ramene_le_role_ET_la_cle_ensemble(tmp_path):
+    """L'opération SYMÉTRIQUE du prélèvement, et sans elle le corpus d'éval est
+    une porte à sens unique : un crop qui y entre ne revient jamais au train.
+
+    Retirer le rôle en ramenant une clé NORMALE est donc autorisé — c'est la
+    libération. Ce qui reste refusé, c'est retirer le rôle en POSANT une clé
+    d'éval (test suivant)."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()  # noqa: SLF001
+    _monte_crops(conn, n=1)
+    apply_ingest_eval_corpus(conn, [{
+        "asset_id": "a0", "eval_corpus": "X",
+        "storage_path": "eval/X/ebay/si1/a0.png"}])
+
+    r = apply_ingest_eval_corpus(conn, [{
+        "asset_id": "a0", "eval_corpus": None, "expect": "X",
+        "storage_path": "ebay/si1/a0.png"}])
+    assert r["updated"] == 1 and r["conflict"] == []
+    ligne = conn.execute(
+        "SELECT eval_corpus, storage_path FROM image_assets WHERE id='a0'"
+    ).fetchone()
+    assert tuple(ligne) == (None, "ebay/si1/a0.png")
 
 
 def test_une_cle_deval_sur_une_ligne_quon_retire_est_refusee(tmp_path):

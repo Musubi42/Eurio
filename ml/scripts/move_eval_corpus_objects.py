@@ -69,6 +69,7 @@ if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
 from shared.storage import (  # noqa: E402
+    EVAL_KEY_PREFIX,
     eval_storage_key,
     is_eval_key,
 )
@@ -113,6 +114,36 @@ def plan_deplacement(conn: sqlite3.Connection) -> dict:
             "dst_key": eval_storage_key(r["storage_path"], r["corpus"]),
         })
     return {"a_deplacer": a_deplacer, "deja_range": deja}
+
+
+def plan_liberation(conn: sqlite3.Connection, corpus: str) -> list[dict]:
+    """Le plan de LIBÉRATION : ramener un corpus dans ``enrichment-crops``.
+
+    L'opération symétrique du prélèvement. Sans elle, le corpus d'éval est une
+    porte à sens unique — un crop qui y entre ne peut plus jamais revenir au
+    train — et changer de règle de sélection devient impossible sans perdre
+    définitivement les crops de l'ancienne.
+
+    La clé d'origine se reconstitue par retrait du préfixe : ``eval_storage_key``
+    ne fait qu'ajouter ``eval/<corpus>/``, l'inverse est exact.
+    """
+    prefixe = f"{EVAL_KEY_PREFIX}{corpus}/"
+    out: list[dict] = []
+    for r in conn.execute(
+        "SELECT id, eval_corpus, storage_path FROM image_assets "
+        " WHERE eval_corpus = :corpus AND storage_path IS NOT NULL "
+        " ORDER BY id", {"corpus": corpus},
+    ):
+        sp = r["storage_path"]
+        if not sp.startswith(prefixe):
+            # Marqué mais jamais déplacé : rien à ramener côté octets, seul le
+            # rôle est à retirer. On le porte quand même, avec src == dst.
+            out.append({"asset_id": r["id"], "corpus": corpus,
+                        "src_key": None, "dst_key": sp})
+            continue
+        out.append({"asset_id": r["id"], "corpus": corpus,
+                    "src_key": sp, "dst_key": sp[len(prefixe):]})
+    return out
 
 
 def assurer_bucket(client, bucket: str) -> bool:
@@ -160,6 +191,140 @@ def _tete(client, bucket: str, key: str) -> dict | None:
     return {"size": h.get("ContentLength"), "etag": (h.get("ETag") or "").strip('"')}
 
 
+def _liberer(args) -> int:
+    """Ramène un corpus d'éval dans ``enrichment-crops``.
+
+    Même ordre que le prélèvement, dans l'autre sens : **copier → vérifier →
+    écrire la base → supprimer la source**. Une interruption entre l'écriture
+    et la suppression laisse un orphelin dans ``eval-corpus``, sans référence,
+    détectable et rattrapable par une relance. C'est le seul état intermédiaire
+    acceptable.
+    """
+    conn = _open_ro(args.db)
+    items = plan_liberation(conn, args.release)
+    conn.close()
+
+    a_bouger = [i for i in items if i["src_key"]]
+    print(f"DB (lecture seule) : {args.db}")
+    print(f"corpus à libérer   : {args.release}")
+    print(f"lignes marquées    : {len(items)}")
+    print(f"dont octets à ramener dans {SOURCE_BUCKET} : {len(a_bouger)}")
+    if a_bouger:
+        ex = a_bouger[0]
+        print(f"exemple            : {EVAL_BUCKET}/{ex['src_key']}")
+        print(f"                  → {SOURCE_BUCKET}/{ex['dst_key']}")
+
+    if not args.apply:
+        print("\nDRY-RUN — rien copié, rien écrit, rien supprimé. "
+              "Relancer avec --apply.")
+        print(json.dumps({"a_liberer": len(items), "dry_run": True}))
+        return 0
+    if not items:
+        print("\nRien à faire.")
+        return 0
+
+    from client.http import sync_enabled
+
+    if not sync_enabled():
+        print("EURIO_API_URL absent : impossible d'écrire au canonique.",
+              file=sys.stderr)
+        return 2
+
+    from client.ingest import push_eval_corpus
+    from shared.storage import _client
+    from shared.storage.local_cache import cache_path_for
+
+    client = _client()
+    copies = 0
+    echecs: list[dict] = []
+    prets: list[dict] = []
+    for it in items:
+        if not it["src_key"]:          # marqué sans déplacement : rien à copier
+            prets.append(it)
+            continue
+        try:
+            src_t = _tete(client, EVAL_BUCKET, it["src_key"])
+        except TeteRefusee as exc:
+            print(f"\n⛔ MinIO refuse de répondre — passe ARRÊTÉE après "
+                  f"{copies} copie(s).\n   {exc}\n   Rien n'a été supprimé.",
+                  file=sys.stderr)
+            return 2
+        if src_t is None:
+            try:
+                deja = _tete(client, SOURCE_BUCKET, it["dst_key"]) is not None
+            except TeteRefusee as exc:
+                print(f"\n⛔ vérification impossible.\n   {exc}", file=sys.stderr)
+                return 2
+            if deja:
+                prets.append(it)
+                continue
+            echecs.append({**it, "motif": "objet absent des DEUX buckets (404)"})
+            continue
+        try:
+            client.copy_object(
+                Bucket=SOURCE_BUCKET, Key=it["dst_key"],
+                CopySource={"Bucket": EVAL_BUCKET, "Key": it["src_key"]},
+            )
+        except Exception as exc:  # noqa: BLE001
+            echecs.append({**it, "motif": f"copie refusée : {exc}"})
+            continue
+        try:
+            dst_t = _tete(client, SOURCE_BUCKET, it["dst_key"])
+        except TeteRefusee as exc:
+            print(f"\n⛔ vérification impossible.\n   {exc}", file=sys.stderr)
+            return 2
+        if dst_t is None or dst_t["size"] != src_t["size"]:
+            echecs.append({**it, "motif": f"copie non vérifiée "
+                                          f"(src={src_t}, dst={dst_t})"})
+            continue
+        copies += 1
+        prets.append(it)
+        if copies % 50 == 0:
+            print(f"  … ramenés {copies}/{len(a_bouger)}", flush=True)
+    print(f"ramenés + vérifiés : {copies}")
+
+    # Le rôle ET la clé repartent ensemble : `expect` nomme le corpus qu'on
+    # croit retirer, sinon la ligne est refusée (rien ne s'efface par omission).
+    totaux = {"updated": 0, "skipped": 0}
+    conflits: list[str] = []
+    manquants: list[str] = []
+    rows = [{"asset_id": it["asset_id"], "eval_corpus": None,
+             "expect": it["corpus"], "storage_path": it["dst_key"]}
+            for it in prets]
+    for i in range(0, len(rows), args.batch):
+        lot = rows[i:i + args.batch]
+        res = push_eval_corpus(lot) or {}
+        totaux["updated"] += int(res.get("updated") or 0)
+        totaux["skipped"] += int(res.get("skipped") or 0)
+        conflits.extend(res.get("conflict") or [])
+        manquants.extend(res.get("missing") or [])
+        print(f"  … libéré {res.get('updated')}/{len(lot)}", flush=True)
+
+    refuses = set(conflits) | set(manquants)
+    supprimes = 0
+    for it in prets:
+        if not it["src_key"] or it["asset_id"] in refuses:
+            continue
+        try:
+            client.delete_object(Bucket=EVAL_BUCKET, Key=it["src_key"])
+            supprimes += 1
+        except Exception as exc:  # noqa: BLE001
+            echecs.append({**it, "motif": f"suppression source : {exc}"})
+        try:
+            cache_path_for(EVAL_BUCKET, it["src_key"]).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if echecs:
+        print(f"⚠️  ÉCHECS : {len(echecs)}")
+        for e in echecs[:5]:
+            print(f"    {e['asset_id']} — {e['motif']}")
+    print(json.dumps({"ramenes": copies, "liberes": totaux["updated"],
+                      "supprimes": supprimes, "conflict": len(conflits),
+                      "missing": len(manquants), "echecs": len(echecs)}))
+    return 1 if echecs else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", type=Path,
@@ -173,7 +338,16 @@ def main(argv: list[str] | None = None) -> int:
                          "restent lisibles depuis `enrichment-crops`. À "
                          "n'utiliser que pour une répétition.")
     ap.add_argument("--batch", type=int, default=100)
+    ap.add_argument("--release", metavar="CORPUS", default=None,
+                    help="LIBÈRE un corpus : ramène ses octets dans "
+                         "`enrichment-crops`, remet `storage_path` et retire "
+                         "`eval_corpus`. L'opération symétrique du prélèvement "
+                         "— sans elle le corpus d'éval est une porte à sens "
+                         "unique. Refuse d'agir sans --apply.")
     args = ap.parse_args(argv)
+
+    if args.release:
+        return _liberer(args)
 
     conn = _open_ro(args.db)
     plan = plan_deplacement(conn)

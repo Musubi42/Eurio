@@ -81,11 +81,18 @@ def apply_ingest_eval_corpus(conn, rows) -> dict:
         else:
             actuel, actuel_sp = row[0], row[1]
 
-        # Le rangement n'a de sens qu'avec un rôle. Réécrire une clé en
-        # `eval/…` sur une ligne qu'on retire du corpus laisserait un crop
-        # d'entraînement pointant un bucket qu'aucune collecte de train ne
-        # regarde — invisible, et impossible à distinguer d'une perte.
-        if cible_sp is not None and cible is None:
+        # Le rangement n'a de sens qu'avec son rôle, et le garde porte sur la
+        # COHÉRENCE des deux, pas sur leur présence simultanée :
+        #
+        # * retirer le rôle EN posant une clé `eval/…` laisserait un crop
+        #   d'entraînement pointant un bucket qu'aucune collecte de train ne
+        #   regarde — invisible, indistinguable d'une perte. REFUSÉ ;
+        # * retirer le rôle EN ramenant une clé normale, c'est exactement la
+        #   LIBÉRATION (les octets reviennent dans `enrichment-crops`). C'est
+        #   l'opération symétrique du prélèvement, et sans elle le corpus
+        #   d'éval est une porte à sens unique : un crop qui y entre ne peut
+        #   plus jamais revenir au train. AUTORISÉ.
+        if cible_sp is not None and cible is None and cible_sp.startswith("eval/"):
             conflict.append(asset_id)
             continue
 

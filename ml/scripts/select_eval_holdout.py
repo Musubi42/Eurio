@@ -6,73 +6,82 @@ marquage ``image_assets.eval_corpus`` au canonique (``POST
 /ingest/eval-corpus``) — le calcul reste où sont les mesures, seules les lignes
 voyagent (même doctrine que ``backfill_quality_score``).
 
-Le critère — décision **D5** du suivi, et le point le plus important du fichier
-==============================================================================
+La règle, en une phrase — version 2, 2026-08-26
+================================================
 
-🔴 **Le critère est INDÉPENDANT des deux modèles jugés.** Il n'utilise ni
-distance DINO à la canonique, ni score ArcFace, ni aucun embedding appris. La
-raison est que « le plus loin de la canonique selon DINO » **est le critère du
-farthest-point sampling** qui a bâti la banque d'ancres : le prendre pour
-critère d'éval sélectionnerait préférentiellement des crops qui **sont déjà des
-ancres** (46,8 % du pool éligible en est une — 1391/2969), que DINO
-reconnaîtrait à similarité 1,0 ; et exclure les ancres pour l'éviter ne fait que
-retourner le biais — on obtiendrait *les cas durs de DINO choisis par DINO*,
-imposés à ArcFace qui n'a pas voix au chapitre.
+**5 crops au hasard par classe, graine fixe, parmi ceux dont le vendeur ne
+porte aucune ancre de cette classe.** C'est tout.
 
-L'intention du PO, elle, est gardée : il veut des images qui **ressemblent à ce
-qu'un utilisateur photographierait**, donc dégradées. La dégradation visée est
-**géométrique**, et elle se mesure **sans aucun modèle appris** — ``tilt_deg``,
-l'angle d'inclinaison de la pièce déduit de l'ellipse ajustée sur ses bords
-(``acos(axis_ratio)``). C'est ce que l'étape 1 vient de rendre disponible sur
-tout le parc.
+Pourquoi la v1 (quantiles de tilt) a été jetée
+-----------------------------------------------
 
-La règle, en toutes lettres
----------------------------
+Elle prétendait sélectionner des images **plus dures** — « la dégradation
+visée est géométrique, et elle se mesure sans aucun modèle appris,
+``tilt_deg`` ». Mesuré le 2026-08-26 sur ``dinov2_vitb14``, à contamination
+vendeur contrôlée :
 
-Pour chaque classe (maille ``COALESCE(design_group_id, eurio_id)``) :
+====================================================== ===== =======
+population                                                 n     r@1
+====================================================== ===== =======
+jeu d'éval — la moitié la plus inclinée, choisie par v1   178   94,9 %
+reste du pool — ce que la v1 n'a PAS pris                 792   91,2 %
+====================================================== ===== =======
 
-1. **pool candidat** = crops eBay, ``training_eligible = 1``, présents en
-   stockage, non-revers, ``eval_corpus IS NULL``, ``tilt_deg`` **mesuré**, et
-   **qui ne sont pas des ancres de la banque servie** ``2eur_all`` (les noter
-   contre elle mesurerait une similarité de 1,0 avec eux-mêmes) ;
-2. on ordonne par ``(tilt_deg DÉCROISSANT, id CROISSANT)`` — l'``id`` est le
-   bris d'égalité, il rend l'ordre total et donc rejouable ;
-3. on retient la **moitié la plus inclinée** (``m = ceil(n/2)`` premiers) ;
-4. on y prend **5 positions régulièrement espacées** :
-   ``idx_k = floor((2k+1) × m / 10)`` pour ``k = 0…4``.
+Le jeu « dur » était **3,7 points plus FACILE** que ce qu'il écartait. Et à
+l'intérieur du jeu, le quartile le plus incliné était le MEILLEUR (98,7 %
+contre 94,7 %). Aucun des trois signaux disponibles (``tilt_deg``,
+``tilt_trustworthy``, ``quality_score``) ne prédit la difficulté ; le seul qui
+s'en approche est **inversé** (``quality_score`` haut = 87,8 %, bas = 93,1 %).
 
-**Aucun aléatoire n'intervient — il n'y a donc pas de graine à fixer.** Deux
-exécutions sur la même base rendent exactement la même liste ; c'est vérifié par
-``tests/test_eval_holdout.py``.
+Une règle qui trie sur un signal qui ne trie rien n'est pas neutre : elle
+introduit un biais qu'on ne sait pas nommer, tout en donnant l'impression du
+contrôle. **Le tirage au hasard, lui, ne ment pas** — il est le seul estimateur
+non biaisé de la population dont il sort. On y revient tant qu'aucun signal de
+difficulté n'est démontré.
 
-Pourquoi la moitié la plus inclinée et pas simplement les 5 pires : un jeu fait
-des 5 crops les plus tiltés de chaque classe serait un jeu d'extrêmes, où la
-moindre valeur aberrante de l'ellipse (arc partiel, reflet) pèserait autant
-qu'une vraie photo de biais. Les quantiles gardent le biais « dégradé » **et**
-balaient toute l'étendue de la moitié visée.
+Le seul garde conservé, et il est mesuré
+-----------------------------------------
 
-Les biais que cette règle introduit — il y en a toujours
---------------------------------------------------------
+**Le vendeur.** Un crop dont le ``seller_id`` porte aussi une ancre de sa
+classe partage le fond, la lumière et la session avec la référence contre
+laquelle il est noté :
 
-À dire avec le résultat, jamais après :
+====================================================== ===== =======
+population (60 classes, hors ancres)                       n     r@1
+====================================================== ===== =======
+vendeur portant aussi une ancre de la classe              364   96,2 %
+vendeur n'apparaissant nulle part                         791   91,2 %
+====================================================== ===== =======
 
-* **le jeu est plus dur que la population.** Par construction. Les taux absolus
-  des deux modèles seront pessimistes ; seule leur COMPARAISON est lisible ;
-* ``tilt_deg`` **ne mesure pas que l'inclinaison.** Un fort tilt apparent peut
-  venir d'une pièce partiellement occultée, d'un arc incomplet ou d'un reflet
-  qui déforme l'ellipse. Le jeu contient donc aussi des crops *mal détourés*,
-  pas seulement des prises de vue obliques ;
-* ``tilt_trustworthy`` **n'est pas exigé** (cf. ``--require-trustworthy``) : le
-  restreindre couperait le pool et, surtout, les mesures « non fiables » sont
-  précisément celles des crops difficiles — les écarter ramènerait le jeu vers
-  le facile, à rebours de l'intention ;
-* **exclure les ancres appauvrit le pool de sa diversité d'apparence** (le FPS
-  les a choisies pour ça). Le jeu est donc un peu plus « typique » en apparence
-  que le pool complet. C'est le prix, assumé, de ne pas mesurer DINO contre
-  lui-même ;
-* ``quality_score`` **n'entre pas dans le classement** : l'oracle Otsu est muet
-  sur ~1/3 du parc, et une règle qui imputerait une valeur aux muets choisirait
-  en fait *l'imputation*. Il est reporté à titre descriptif.
+**+5,0 points, z ≈ 3,05, p ≈ 0,002** — le seul effet franchement significatif
+mesuré ce jour-là. Et il était exigé depuis des mois :
+``docs/research/ml-scalability-phases/phase-4-subcenter-evalbench.md:40`` —
+*« des photos du même vendeur/lot eBay partagent du contexte… split par
+lot/seller, pas par photo individuelle. »*
+
+Ce que ce garde coûte, mesuré : à 5/classe, **52 des 60 classes** tiennent
+(3 classes n'ont AUCUN crop non contaminé). ``--no-seller-guard`` le retire et
+rend les 60 classes, au prix d'un chiffre gonflé d'environ 5 points.
+
+Le hasard est REJOUABLE, et par classe
+---------------------------------------
+
+La graine est ``f"{seed}:{class_id}"``, pas ``seed`` seul. Conséquence voulue :
+quand le pool d'une classe grossit, **seule cette classe re-tire**. Une graine
+globale ferait bouger les 60 tirages à chaque nouveau crop scrapé, et deux
+prélèvements à deux semaines d'écart n'auraient plus rien en commun sans que
+personne ne l'ait décidé.
+
+Les biais qui restent — il y en a toujours
+-------------------------------------------
+
+* le jeu est **représentatif du pool eBay éligible**, pas de ce que
+  photographie un utilisateur. Personne n'a démontré que les deux coïncident ;
+* les ancres de la banque servie sont exclues (les noter contre elles-mêmes
+  donnerait 1,0), ce qui retire au pool une partie de sa diversité d'apparence
+  — le FPS les avait choisies pour ça ;
+* le garde vendeur ne couvre pas le cas « deux vendeurs, une même photo
+  volée », qui existe sur eBay et que rien ici ne détecte.
 
 Usage ::
 
@@ -85,7 +94,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
+import random
 import sqlite3
 import sys
 from pathlib import Path
@@ -104,7 +113,11 @@ DEFAULT_CORPUS = "matrice-encodeurs-2026-08"
 
 #: Version de la RÈGLE de sélection. La bumper signifie « le jeu n'est plus le
 #: même » — donc les mesures d'avant ne se comparent plus à celles d'après.
-SELECTION_RULE_VERSION = 1
+#: v1 = quantiles de tilt (jetée, cf. en-tête). v2 = 5 au hasard + garde vendeur.
+SELECTION_RULE_VERSION = 2
+
+#: La graine du tirage. Elle est COMBINÉE au class_id, jamais utilisée seule.
+DEFAULT_SEED = 20260826
 
 DEFAULT_QUOTA = 5
 
@@ -116,14 +129,11 @@ _POOL_SQL = """
     SELECT COALESCE(co.design_group_id, co.eurio_id) AS class_id,
            a.id                                      AS asset_id,
            a.eurio_id                                AS eurio_id,
-           a.tilt_deg                                AS tilt_deg,
-           a.tilt_trustworthy                        AS tilt_trustworthy,
-           a.quality_score                           AS quality_score,
            a.storage_path                            AS storage_path,
+           si.seller_id                              AS seller_id,
            (a.id IN (SELECT asset_id FROM dino_class_references
                       WHERE anchors_kind = :kind AND asset_id IS NOT NULL))
-                                                     AS est_ancre,
-           (a.tilt_deg IS NOT NULL)                  AS tilt_mesure
+                                                     AS est_ancre
       FROM image_assets a
       JOIN source_images si ON si.id = a.source_image_id
       JOIN coins co         ON co.eurio_id = a.eurio_id
@@ -135,30 +145,34 @@ _POOL_SQL = """
      ORDER BY class_id, a.id
 """
 
+#: Les vendeurs qui portent une ancre, PAR CLASSE. C'est le garde de D5 v2.
+_ANCHOR_SELLERS_SQL = """
+    SELECT COALESCE(co.design_group_id, co.eurio_id) AS class_id,
+           si.seller_id                              AS seller_id
+      FROM dino_class_references r
+      JOIN image_assets a   ON a.id = r.asset_id
+      JOIN source_images si ON si.id = a.source_image_id
+      JOIN coins co         ON co.eurio_id = a.eurio_id
+     WHERE r.anchors_kind = :kind
+       AND r.asset_id IS NOT NULL
+       AND si.seller_id IS NOT NULL
+"""
 
-def quantiles_moitie_haute(n: int, quota: int) -> list[int]:
-    """Les ``quota`` rangs prélevés dans la moitié haute d'un pool de ``n``.
 
-    Rangs 0-indexés sur l'ordre « le plus dégradé d'abord ». Déterministe,
-    sans aléatoire. Si la moitié haute est trop courte pour donner ``quota``
-    rangs distincts, on déborde sur la suite du classement plutôt que de rendre
-    des doublons — un doublon serait une image comptée deux fois.
+def tirage(candidats: list, quota: int, *, seed: int, class_id: str) -> list:
+    """``quota`` candidats tirés au hasard, de façon REJOUABLE.
+
+    La graine est ``f"{seed}:{class_id}"`` et non ``seed`` seul : quand le pool
+    d'une classe grossit, seule cette classe re-tire. Une graine globale ferait
+    bouger les 60 tirages à chaque crop scrapé.
+
+    ``candidats`` doit être trié (ordre total) avant l'appel — sinon l'ordre de
+    la liste dépend de celui du curseur SQL et le « rejouable » est un mot.
     """
-    if n <= 0 or quota <= 0:
-        return []
-    m = math.ceil(n / 2)
-    rangs: list[int] = []
-    for k in range(quota):
-        idx = (2 * k + 1) * m // (2 * quota)
-        # Débordement anti-doublon : borné par `n`. Sans la borne, un pool trop
-        # court ferait tourner cette boucle indéfiniment — et un script qui ne
-        # rend jamais la main ressemble à un calcul long, pas à une panne.
-        while idx < n and idx in rangs:
-            idx += 1
-        if idx >= n:  # pool épuisé — on rend moins que le quota, jamais un doublon
-            continue
-        rangs.append(idx)
-    return sorted(rangs)
+    if len(candidats) <= quota:
+        return list(candidats)
+    rng = random.Random(f"{seed}:{class_id}")
+    return rng.sample(candidats, quota)
 
 
 def _open_ro(db: Path) -> sqlite3.Connection:
@@ -175,17 +189,29 @@ def selectionner(
     *,
     quota: int = DEFAULT_QUOTA,
     min_real: int = MIN_REAL,
-    require_trustworthy: bool = False,
+    seed: int = DEFAULT_SEED,
+    seller_guard: bool = True,
     anchors_kind: str = SERVED_ANCHORS_KIND,
 ) -> dict:
     """Rend le plan de prélèvement, sans rien écrire.
 
-    ``{"classes": [...], "picks": [...], "rejets": {...}}``. Une classe n'est
-    prélevée que si **ce qui reste** au train tient le plancher :
-    ``n_train − quota >= min_real``. Le quota se raisonne sur le reste, jamais
-    sur ce qu'on prend (``real_training_sources`` est partagé par le bake ET le
-    préflight).
+    ``{"classes": [...], "picks": [...], "rejets": {...}}``.
+
+    Deux refus, et ils ne disent pas la même chose :
+
+    * ``plancher`` — prélever ferait passer ce qui RESTE au train sous
+      ``min_real``. Le quota se raisonne sur le reste, jamais sur ce qu'on prend
+      (``real_training_sources`` est partagé par le bake ET le préflight) ;
+    * ``pool_candidat_court`` — après retrait des ancres et, si le garde est
+      actif, des crops du vendeur d'une ancre, il ne reste pas ``quota``
+      candidats. Mesuré le 2026-08-26 : 8 classes sur 60, dont 3 à ZÉRO
+      candidat propre.
     """
+    vendeurs_ancres: dict[str, set[str]] = {}
+    if seller_guard:
+        for r in conn.execute(_ANCHOR_SELLERS_SQL, {"kind": anchors_kind}):
+            vendeurs_ancres.setdefault(r["class_id"], set()).add(r["seller_id"])
+
     par_classe: dict[str, list[sqlite3.Row]] = {}
     for r in conn.execute(_POOL_SQL, {"kind": anchors_kind}):
         par_classe.setdefault(r["class_id"], []).append(r)
@@ -201,40 +227,37 @@ def selectionner(
             rejets["plancher"].append(class_id)
             continue
 
-        cands = [r for r in rows if r["tilt_mesure"] and not r["est_ancre"]]
-        if require_trustworthy:
-            fiables = [r for r in cands if r["tilt_trustworthy"]]
-            if len(fiables) >= quota:
-                cands = fiables
-        # Ordre TOTAL : le plus incliné d'abord, `id` en bris d'égalité.
-        cands.sort(key=lambda r: (-float(r["tilt_deg"]), r["asset_id"]))
+        cands = [r for r in rows if not r["est_ancre"]]
+        n_hors_ancres = len(cands)
+        interdits = vendeurs_ancres.get(class_id, set())
+        if seller_guard:
+            cands = [r for r in cands if r["seller_id"] not in interdits]
 
-        rangs = quantiles_moitie_haute(len(cands), quota)
-        if len(rangs) < quota:
+        # Ordre TOTAL avant tirage : sans lui, l'ordre vient du curseur SQL et
+        # « rejouable » n'est qu'un mot.
+        cands.sort(key=lambda r: r["asset_id"])
+        if len(cands) < quota:
             rejets["pool_candidat_court"].append(class_id)
             continue
 
-        choisis = [cands[i] for i in rangs]
+        choisis = tirage(cands, quota, seed=seed, class_id=class_id)
+        choisis.sort(key=lambda r: r["asset_id"])
+
         classes.append({
             "class_id": class_id,
             "n_train_avant": n_train,
             "n_train_apres": n_train - quota,
             "n_candidats": len(cands),
-            "n_ancres_ecartees": sum(1 for r in rows if r["est_ancre"]),
-            "n_sans_tilt": sum(1 for r in rows if not r["tilt_mesure"]),
-            "tilt_min": round(min(float(r["tilt_deg"]) for r in choisis), 2),
-            "tilt_max": round(max(float(r["tilt_deg"]) for r in choisis), 2),
+            "n_ancres_ecartees": n_train - n_hors_ancres,
+            "n_ecartes_vendeur": n_hors_ancres - len(cands),
         })
-        for rang, r in zip(rangs, choisis):
+        for r in choisis:
             picks.append({
                 "asset_id": r["asset_id"],
                 "class_id": class_id,
                 "eurio_id": r["eurio_id"],
                 "storage_path": r["storage_path"],
-                "rang": rang,
-                "tilt_deg": round(float(r["tilt_deg"]), 3),
-                "tilt_trustworthy": int(r["tilt_trustworthy"] or 0),
-                "quality_score": r["quality_score"],
+                "seller_id": r["seller_id"],
             })
     return {"classes": classes, "picks": picks, "rejets": rejets}
 
@@ -246,9 +269,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--corpus", default=DEFAULT_CORPUS)
     ap.add_argument("--quota", type=int, default=DEFAULT_QUOTA)
     ap.add_argument("--min-real", type=int, default=MIN_REAL)
-    ap.add_argument("--require-trustworthy", action="store_true",
-                    help="restreint aux tilts marqués fiables quand la classe "
-                         "en a assez (change le jeu : cf. §biais)")
+    ap.add_argument("--seed", type=int, default=DEFAULT_SEED,
+                    help="graine du tirage ; combinée au class_id, jamais "
+                         "utilisée seule (cf. §Le hasard est rejouable)")
+    ap.add_argument("--no-seller-guard", action="store_true",
+                    help="retire le garde vendeur. Rend les 60 classes au lieu "
+                         "de 52, au prix d'un chiffre gonflé d'environ 5 points "
+                         "(mesuré : +5,0 pts, p ≈ 0,002)")
     ap.add_argument("--apply", action="store_true",
                     help="marque ET pousse au canonique (défaut = dry-run)")
     ap.add_argument("--plan", type=Path, default=None,
@@ -261,7 +288,8 @@ def main(argv: list[str] | None = None) -> int:
         conn,
         quota=args.quota,
         min_real=args.min_real,
-        require_trustworthy=args.require_trustworthy,
+        seed=args.seed,
+        seller_guard=not args.no_seller_guard,
     )
     conn.close()
 
@@ -269,7 +297,8 @@ def main(argv: list[str] | None = None) -> int:
     plan["quota"] = args.quota
     plan["min_real"] = args.min_real
     plan["selection_rule_version"] = SELECTION_RULE_VERSION
-    plan["require_trustworthy"] = bool(args.require_trustworthy)
+    plan["seed"] = args.seed
+    plan["seller_guard"] = not args.no_seller_guard
 
     print(f"DB (lecture seule) : {args.db}")
     print(f"corpus             : {args.corpus} (règle v{SELECTION_RULE_VERSION})")
@@ -279,12 +308,12 @@ def main(argv: list[str] | None = None) -> int:
         if ids:
             print(f"écartées ({motif}) : {len(ids)} — {ids[:8]}"
                   f"{' …' if len(ids) > 8 else ''}")
-    if plan["picks"]:
-        tilts = sorted(p["tilt_deg"] for p in plan["picks"])
-        print(f"tilt des prélevés  : min {tilts[0]:.1f}° · "
-              f"médiane {tilts[len(tilts) // 2]:.1f}° · max {tilts[-1]:.1f}°")
-        n_fiable = sum(p["tilt_trustworthy"] for p in plan["picks"])
-        print(f"tilt fiable        : {n_fiable}/{len(plan['picks'])}")
+    print(f"garde vendeur      : {'ACTIF' if plan['seller_guard'] else '⚠️ RETIRÉ'}"
+          f" · graine {args.seed}")
+    if plan["classes"]:
+        ecartes = sum(c["n_ecartes_vendeur"] for c in plan["classes"])
+        ancres = sum(c["n_ancres_ecartees"] for c in plan["classes"])
+        print(f"écartés du tirage  : {ancres} ancres · {ecartes} par le vendeur")
 
     if args.plan:
         args.plan.write_text(json.dumps(plan, indent=2, ensure_ascii=False))
