@@ -8,6 +8,42 @@
 > Mets-le à jour à chaque étape franchie. Un suivi qui ment est pire que pas de
 > suivi.
 
+## ⏱️ OÙ ON EN EST — 2026-08-26, fin de session
+
+**Le départage est tranché : ArcFace gagne.** Les étapes 1 à 5 sont jouées, la
+chaîne de mesure existe et tourne en une commande (§Rejouer).
+
+| | |
+|---|---|
+| **verdict** | ArcFace `392205b7f725` (40 epochs) — **99,2 %** de r@1, contre 98,1 % pour `dinov2_vitl14`, à **276× moins de paramètres** et **28× plus vite** |
+| jeu d'éval | `9bc08e19b83c` — **260 frames eBay**, 52 classes, 5 au hasard par classe, garde vendeur. Jamais vues à l'entraînement |
+| banque | `matrice60` — **1 813 ancres**, la même pour les quatre bras |
+| ce qui reste | l'axe **int8** (jamais mesuré), la dette **`provisional`**, et la question du passage à **671 classes** |
+
+**Les deux réserves à ne pas perdre**, détaillées au §Les chiffres :
+
+1. ArcFace a été **entraîné sur les crops de la banque** (perte → 0,0000) — son
+   avantage sur les *références* n'est pas partagé par DINO ;
+2. la mesure porte sur **52 classes**, le produit en aura **671+**, et ArcFace
+   se réentraîne à chaque classe nouvelle là où DINO n'a rien à réentraîner.
+
+### Rejouer la matrice en une commande
+
+```bash
+cd ml && EURIO_CACHE_MAX_GB=0 ./.venv/bin/python -m scripts.bench_encoder_dino \
+  --gold state/validation_gold/matrice_eval_gold.jsonl \
+  --anchors-kind matrice60 \
+  --models arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth \
+           dinov2_vits14 dinov2_vitb14 dinov2_vitl14 \
+  --baseline arcface:lab/iterations/392205b7f725/checkpoints/best_model.pth \
+  --no-push --out ../docs/work-in-progress/juge-et-banc/matrice-dino.md
+```
+
+⚠️ Le checkpoint ArcFace est **gitignoré** (`ml/lab/iterations/`). Sur une
+machine neuve, le rapatrier depuis MinIO :
+`model-artifacts/lab/iterations/392205b7f725/eb02747d3b3c/artifacts.tar.gz`
+(sha256 `eb02747d3b3c…82364e6`).
+
 ## L'objectif, en une phrase
 
 Départager **ArcFace** et **DINO** sur la même tâche, le même jeu d'évaluation

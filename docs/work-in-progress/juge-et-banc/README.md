@@ -4,10 +4,19 @@
 > **mesurable**. Il ne l'était pas, et la raison n'était pas celle qu'on
 > croyait.
 >
-> 🟢 **Ce que la session du 2026-08-25 a établi** : la fuite existait, elle a
-> été coupée, et **on sait maintenant ce qu'elle valait** — +14,7 points sur les
-> photos qu'elle avait vues, −4,4 sur les autres (`p = 6,1 × 10⁻⁵` d'un côté).
-> Sept lots joués, du corpus retrouvé jusqu'à l'écran qui permet d'y agir.
+> ✅ **LE DÉPARTAGE EST FAIT — 2026-08-26. ArcFace gagne.** 99,2 % de r@1
+> contre 98,1 % pour `dinov2_vitl14`, à **276× moins de paramètres** et **28×
+> plus vite**. Indistinguable des deux gros DINO, significativement meilleur
+> que `vits14` (`p = 0,00098`). Le document de pilotage, avec les deux réserves
+> qui comptent, est **[`SUIVI-MATRICE.md`](./SUIVI-MATRICE.md)** — commence par
+> lui, pas par ce README.
+>
+> 🟢 **Ce que la session du 2026-08-25 avait établi** : la fuite existait, elle
+> a été coupée, et **on sait ce qu'elle valait** — +14,7 points sur les photos
+> qu'elle avait vues, −4,4 sur les autres (`p = 6,1 × 10⁻⁵` d'un côté). Sept
+> lots joués, du corpus retrouvé jusqu'à l'écran qui permet d'y agir. C'est ce
+> que raconte la suite de ce fichier, et elle n'a pas été remise à jour depuis :
+> **pour l'état courant, va au suivi.**
 
 ## L'état, lot par lot
 

@@ -312,6 +312,26 @@ absents sur Mac/PC. Ne pas tenter de les lancer ailleurs ni de « réparer » le
 
 Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : **YOLOv8-nano** (`ml/training/train_detector.py:46` : `YOLO("yolov8n.pt")` — le « YOLO11 » écrit ici depuis avril était faux) + OpenCV Hough en parallèle → merge IoU → rerank ArcFace spread-based → consensus buffer 5/3 sticky.
 
+### ArcFace ou DINO — mesuré le 2026-08-26, ArcFace gagne
+
+Le départage est **fait**. 260 frames eBay jamais vues à l'entraînement,
+52 classes, la même banque de 1 813 ancres pour les quatre bras, McNemar
+apparié. Détail et réserves : [`docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md`](docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md).
+
+| Modèle | M params | **r@1** | ms/img | McNemar vs ArcFace |
+|---|---:|---:|---:|---|
+| **ArcFace** `392205b7f725` (40 ep) | **1,1** | **99,2 %** | **4** | — |
+| `dinov2_vitl14` | 304,4 | 98,1 % | 113 | p = 0,375 — indistinguable |
+| `dinov2_vitb14` | 86,6 | 96,9 % | 31 | p = 0,070 — indistinguable |
+| `dinov2_vits14` | 22,1 | 94,2 % | 12 | **p = 0,00098 — ArcFace meilleur** |
+
+**À justesse égale ou supérieure, ArcFace est 276× plus petit et 28× plus
+rapide.** Ne relance pas ce départage sans lire les deux réserves : (1) ArcFace
+a été **entraîné sur les crops de la banque** (perte → 0,0000), son avantage
+sur les *références* n'est pas partagé par DINO ; (2) la mesure porte sur
+**52 classes, le produit en aura 671+** — et ArcFace se réentraîne à chaque
+classe nouvelle (1 h 45 ici) là où DINO n'a rien à réentraîner.
+
 ## Documents à lire avant d'attaquer un changement
 
 | Tu touches à… | Lis d'abord… |
@@ -327,6 +347,7 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : **YOLOv8
 | Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
 | **Sauvegarde / restauration** | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
 | **File de review scopée par la prédiction (« pêche »)** | `docs/work-in-progress/peche-dino/CONSTAT.md` |
+| **Le départage ArcFace ↔ DINO, la matrice d'encodeurs, le corpus d'éval** | [`docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md`](docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md) — le document de pilotage. Puis [`CORPUS-EVAL-EBAY.md`](docs/work-in-progress/juge-et-banc/CORPUS-EVAL-EBAY.md) pour ce que vaut le jeu d'éval |
 | **Banque d'ancres DINO, seuils, choix d'encodeur** | la skill `eurio-banque` d'abord ; puis la **note d'état en tête de `docs/work-in-progress/scan-sans-retrain/PREREQUIS.md`** (où on en est, ce qui attend le PO, dans quel ordre) et `docs/work-in-progress/banque-dino/CONSTAT.md` |
 | **Auto-validation de la review / temps humain de review** | `docs/work-in-progress/review-autovalidation/` — **`MESURE-2026-08-25.md` d'abord** (le geste zéro est joué, et il dément deux prémisses de `PROBLEME.md`), puis `REPRENDRE-ICI.md` (ce qui est déployé), puis `PROBLEME.md` |
 | **Corpus de scan : où sont les photos, comment ne pas les perdre** | `docs/work-in-progress/scan-quality/DURABILITE-CORPUS.md`, puis `docs/work-in-progress/scan-sans-retrain/PROTOCOLE-CAPTURE.md` |
