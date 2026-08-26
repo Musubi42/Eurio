@@ -69,6 +69,12 @@ DEPASSES: dict[str, set[str]] = {
     # `dino_thresholds` a repris sa forme en 0011 ; `dino_threshold_changes` et
     # son index, eux, sont toujours ceux de 0008 et restent comparés.
     "0008_dino_thresholds.sql": {"dino_thresholds"},
+    # `encoder_bench_runs` a gagné `quantization` et `eval_corpus` en 0015
+    # (ALTER). `encoder_bench_predictions` et l'index `..._couple`, eux, sont
+    # toujours ceux de 0009 et restent comparés. Le miroir des deux colonnes
+    # est gardé nommément par
+    # test_les_deux_colonnes_de_0015_sont_dans_les_deux_fichiers.
+    "0009_encoder_bench.sql": {"encoder_bench_runs"},
 }
 
 
@@ -107,6 +113,44 @@ def test_la_migration_est_miroir_dans_schema_sql(nom_migration, objets_schema):
             f"{name} a dérivé entre {nom_migration} et state/schema.sql — "
             "les deux DDL doivent rester identiques."
         )
+
+
+def test_les_deux_colonnes_de_0015_sont_dans_les_deux_fichiers(objets_schema):
+    """0015 ajoute `quantization` / `eval_corpus` par ALTER — donc hors du
+    test paramétré (une migration d'ALTER n'est pas rejouable seule) ET hors
+    de la comparaison de `encoder_bench_runs`, qui est désormais dans
+    `DEPASSES`. Sans ce test nommé, plus rien ne garde ces deux colonnes : le
+    miroir pourrait les perdre, les bases locales ne les auraient jamais, et
+    `record_run` lèverait « colonne absente » après le calcul.
+    """
+    migration = MIGRATIONS / "0015_encoder_bench_quantization_eval_corpus.sql"
+    sql = migration.read_text(encoding="utf-8")
+    assert "ADD COLUMN quantization TEXT NOT NULL DEFAULT 'fp32'" in sql
+    assert "ADD COLUMN eval_corpus TEXT" in sql
+    assert "idx_encoder_bench_runs_corpus" in sql
+
+    ddl = objets_schema["encoder_bench_runs"]
+    assert "quantization" in ddl and "eval_corpus" in ddl, (
+        "state/schema.sql a perdu le miroir de 0015 — les bases locales "
+        "n'auraient jamais ces colonnes (elles ne rejouent pas les migrations)"
+    )
+    assert "idx_encoder_bench_runs_corpus" in objets_schema
+
+    # Le miroir doit produire le MÊME DDL qu'une base migrée : `ALTER TABLE ADD
+    # COLUMN` ajoute à la fin, donc les deux colonnes viennent après `note`.
+    migre = sqlite3.connect(":memory:")
+    migre.executescript(
+        (MIGRATIONS / "0009_encoder_bench.sql").read_text(encoding="utf-8"))
+    migre.executescript(sql)
+    apres = [r[1] for r in migre.execute("PRAGMA table_info(encoder_bench_runs)")]
+    neuve = sqlite3.connect(":memory:")
+    neuve.executescript(SCHEMA.read_text(encoding="utf-8"))
+    assert [
+        r[1] for r in neuve.execute("PRAGMA table_info(encoder_bench_runs)")
+    ] == apres, (
+        "l'ordre des colonnes diverge entre une base migrée (0009 puis 0015) "
+        "et une base neuve (schema.sql)"
+    )
 
 
 def test_les_tables_du_banc_sont_bien_dans_les_deux_fichiers(objets_schema):
@@ -169,6 +213,24 @@ def test_toute_migration_neuve_est_declaree_ou_exclue_sciemment():
         # column » —, et `test_eval_holdout` prouve que les DEUX collectes
         # d'entraînement l'honorent.
         "0014_eval_corpus_holdout.sql",
+        # 0015 — deux `ALTER` sur `encoder_bench_runs` (quantization,
+        # eval_corpus) + un index partiel. Même raison que 0014 : pas rejouable
+        # seule. Son miroir dans schema.sql, l'ordre des colonnes qu'elle
+        # produit et son `_ensure_column` pre-bootstrap sont gardés nommément
+        # par test_les_deux_colonnes_de_0015_sont_dans_les_deux_fichiers.
+        "0015_encoder_bench_quantization_eval_corpus.sql",
+        # 0016 — un `ALTER` nu sur `experiment_iterations` (inputs_digest),
+        # table créée par schema.sql : pas rejouable seule. Son miroir et son
+        # `_ensure_column` sont gardés par test_iteration_inputs_digest.
+        "0016_iteration_inputs_digest.sql",
+        # 0017 — `image_assets.face_source` : un ALTER, un BACKFILL et un
+        # index partiel sur une table créée par schema.sql, donc pas
+        # rejouable seule. Le backfill (`decided_face` → 'human') n'a de
+        # sens que sur une base peuplée. Son miroir dans schema.sql, son
+        # `_ensure_column` pre-bootstrap ET la reprise du backfill au
+        # bootstrap sont gardés nommément par
+        # tests/test_face_source_provenance.py.
+        "0017_image_assets_face_source.sql",
     }
     connues = set(MIROIR_ATTENDU) | exclues
     presentes = {f.name for f in MIGRATIONS.glob("*.sql")}

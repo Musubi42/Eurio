@@ -33,13 +33,21 @@ from store.encoder_bench import (
 )
 
 _MIGRATION = ML_DIR / "serving" / "migrations" / "0009_encoder_bench.sql"
+_MIGRATION_0015 = (
+    ML_DIR / "serving" / "migrations"
+    / "0015_encoder_bench_quantization_eval_corpus.sql"
+)
 
 
 @pytest.fixture()
 def conn():
     c = sqlite3.connect(":memory:")
     c.row_factory = sqlite3.Row
-    c.executescript(_MIGRATION.read_text(encoding="utf-8"))
+    # `ensure_schema` et pas `executescript(_MIGRATION)` : le DDL de la table
+    # n'est plus dans une seule migration depuis 0015 (deux ALTER). Rejouer la
+    # seule 0009 fabriquerait une base d'AVANT 0015, et `record_run` y lèverait
+    # « colonne absente » sur `quantization` — que tout run renseigne.
+    ensure_schema(c)
     yield c
     c.close()
 
@@ -779,6 +787,10 @@ def test_record_run_leve_si_la_colonne_manque():
     # On retire la colonne comme si la migration n'avait pas été amendée.
     assert "\n  n_paired          INTEGER,\n" in ddl
     vieux.executescript(ddl.replace("\n  n_paired          INTEGER,\n", "\n"))
+    # 0015 par-dessus : ce test porte sur `n_paired`, pas sur les colonnes de
+    # 0015 — sans elles le garde lèverait sur `quantization` et on croirait
+    # tester `n_paired` alors qu'on teste autre chose.
+    vieux.executescript(_MIGRATION_0015.read_text(encoding="utf-8"))
     assert "n_paired" not in {
         r[1] for r in vieux.execute("PRAGMA table_info(encoder_bench_runs)")
     }

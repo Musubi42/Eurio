@@ -171,13 +171,37 @@ def test_ingest_faces_writes_when_null(env):
     assert ev["reason"] == "face_ingest" and ev["actor"] == "pipeline"
 
 
-def test_ingest_faces_skips_labeled(env):
+def test_ingest_faces_recalcule_une_face_machine(env):
+    """Depuis 0017 le garde porte sur la PROVENANCE, plus sur la présence.
+
+    Ce test disait l'inverse jusqu'au 2026-08-27 (« skips_labeled ») : une face
+    déjà posée était intouchable, quelle qu'en soit l'origine. C'était le
+    défaut — le seuil de face dérive avec la taille de la banque des avers
+    (rappel des revers durs 73,3 % → 40,0 % entre juin et août), donc une
+    étiquette machine fausse le restait à jamais. Le garde humain, lui, est
+    verrouillé par le test suivant.
+    """
     conn, client = env
-    _seed_asset(conn, "f2")  # face='obverse' par défaut → garde NULL/unknown
+    _seed_asset(conn, "f2")  # face='obverse' posée par la machine
+    conn.execute("UPDATE image_assets SET face_source='pipeline' WHERE id='f2'")
+    conn.commit()
     r = client.post("/ingest/faces", json={"faces": [{"asset_id": "f2", "face": "reverse"}]})
     assert r.status_code == 200, r.text
+    assert r.json() == {"updated": 1, "skipped": 0, "missing": []}
+    assert conn.execute("SELECT face FROM image_assets WHERE id='f2'").fetchone()[0] == "reverse"
+
+
+def test_ingest_faces_epargne_un_verdict_humain(env):
+    """L'assouplissement ne va PAS jusque-là : une décision humaine est la
+    seule donnée du projet qu'aucun calcul ne régénère."""
+    conn, client = env
+    _seed_asset(conn, "f2h")
+    conn.execute("UPDATE image_assets SET face_source='human' WHERE id='f2h'")
+    conn.commit()
+    r = client.post("/ingest/faces", json={"faces": [{"asset_id": "f2h", "face": "reverse"}]})
+    assert r.status_code == 200, r.text
     assert r.json() == {"updated": 0, "skipped": 1, "missing": []}
-    assert conn.execute("SELECT face FROM image_assets WHERE id='f2'").fetchone()[0] == "obverse"
+    assert conn.execute("SELECT face FROM image_assets WHERE id='f2h'").fetchone()[0] == "obverse"
 
 
 def test_ingest_faces_missing_and_scope(env, tmp_path):

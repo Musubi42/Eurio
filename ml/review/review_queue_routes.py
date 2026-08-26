@@ -1368,6 +1368,12 @@ class LotCrop(BaseModel):
     current_eurio_id: str | None
     candidate_eurio_ids: list[ReviewCandidate]
     bbox: ReviewBbox | None
+    # Miroir de `serving/review_queue/models.LotCrop` — le front lit le
+    # canonique, mais les deux réponses doivent rester superposables. Ces deux
+    # champs sont ce qui permet au consommateur de séparer les crops encore
+    # ouverts en file lot de ceux qui sont déjà tranchés.
+    review_status: str | None = None
+    review_kind: str | None = None
 
 
 class LotDetection(BaseModel):
@@ -1671,13 +1677,16 @@ def get_lot(
         # Skip rows where the LEFT JOIN didn't produce a crop (image with 0 detect).
         if r["asset_id"] is None:
             continue
-        # Only surface crops that are actually in the lot review queue
-        # (or any crop on a multi-crop image — useful for context).
-        # V1.5 : on liste tous les crops du listing, le front filtrera
-        # les actions sur ceux dont rq.kind='lot' AND rq.status='open'.
+        # On liste TOUS les crops du listing — ceux déjà tranchés portent le
+        # contexte visuel du coffret. Le tri « actionnable » se fait chez le
+        # consommateur, sur `review_status`/`review_kind` qu'on lui donne enfin :
+        # jusqu'au 2026-08-26 la requête les lisait sans jamais les renvoyer, et
+        # le front devinait sur `review_id` non vide.
         by_si[si_id].crops.append(LotCrop(
             asset_id=r["asset_id"],
             review_id=r["review_id"] or "",
+            review_status=r["rq_status"],
+            review_kind=r["rq_kind"],
             crop_url=f"/sources/{r['source']}/assets/{r['asset_id']}/file",
             crop_index=r["crop_index"] or 0,
             phash=r["phash"],
@@ -1845,9 +1854,19 @@ def add_lot_crop(listing_key: str, source_image_id: str,
     from serving.crop_edit import create_manual_crop
     new = create_manual_crop(
         _store(), source_image_id, payload.cx, payload.cy, payload.r)
+    # L'état de la row qui vient d'être enfilée, RELU plutôt que supposé : le
+    # `kind` est calculé par `_kind_for_source_image`, il n'est pas forcément
+    # 'lot'. Sans ces deux champs le crop tout juste créé serait rendu « déjà
+    # tranché » par le front et deviendrait inactionnable.
+    rq_new = conn.execute(
+        "SELECT status, kind FROM review_queue WHERE id = ?",
+        (new.review_id,),
+    ).fetchone()
     return LotCrop(
         asset_id=new.asset_id,
         review_id=new.review_id,
+        review_status=rq_new["status"] if rq_new else None,
+        review_kind=rq_new["kind"] if rq_new else None,
         crop_url=f"/sources/{src['source']}/assets/{new.asset_id}/file",
         crop_index=new.crop_index,
         phash=new.phash,
@@ -1944,7 +1963,7 @@ def sync_lot_crops(listing_key: str, source_image_id: str) -> LotSyncCropsRespon
         """
         SELECT a.id AS asset_id, a.crop_index, a.bbox_json, a.phash,
                a.eurio_id AS current_eurio_id, a.candidate_eurio_ids_json,
-               rq.id AS review_id
+               rq.id AS review_id, rq.status AS rq_status, rq.kind AS rq_kind
           FROM image_assets a
           LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
          WHERE a.source_image_id = ?
@@ -1956,6 +1975,8 @@ def sync_lot_crops(listing_key: str, source_image_id: str) -> LotSyncCropsRespon
         LotCrop(
             asset_id=r["asset_id"],
             review_id=r["review_id"] or "",
+            review_status=r["rq_status"],
+            review_kind=r["rq_kind"],
             crop_url=f"/sources/{img['source']}/assets/{r['asset_id']}/file",
             crop_index=r["crop_index"] or 0,
             phash=r["phash"],

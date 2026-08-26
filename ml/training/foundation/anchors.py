@@ -1208,6 +1208,24 @@ def build_anchors_2eur_all(
     # servirait à rien — cf. scripts/build_dino_anchors.py).
     bank.build = build
     bank.ref_rows = ref_rows
+
+    # ⚠️ Le détecteur de FACE dérive avec CETTE banque, et rien d'autre ne le
+    # dira. Sa marge est `max cos sur 34 ancres de revers − max cos sur la
+    # banque ci-dessus` (`steps/auto_validate._decide_face`) : un max sur plus
+    # de vecteurs est plus haut par construction, donc agrandir cette banque
+    # rabote la marge et rend le détecteur plus aveugle aux revers, à τ
+    # constant. Mesuré : entre juin et août 2026 la banque est passée de ~1 250
+    # à 2 062 ancres (+65 %) et le rappel des revers durs est tombé de 73,3 %
+    # à 40,0 % — personne ne l'avait vu, parce qu'aucun rebuild ne le disait.
+    # L'alarme est posée ICI, à la CAUSE, et pas au symptôme.
+    logger.warning(
+        "⚠️ banque des avers rebâtie (%d ancres) — le seuil de détection de "
+        "FACE est calibré contre sa TAILLE et vient donc de bouger. Rejoue "
+        "`python -m scripts.bench_face_recall` et compare au tableau de "
+        "`FACE_REVERSE_TAU` : si le rappel des revers a baissé, c'est ce "
+        "rebuild qui l'a fait, pas les crops.",
+        bank.count,
+    )
     return bank
 
 

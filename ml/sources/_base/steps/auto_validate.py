@@ -56,6 +56,7 @@ from training.foundation import (
     top_k_match_country,
 )
 from review.review_lanes import compute_lane
+from shared.face_rule import FACE_REVERSE_TAU, decide_face
 from sources._base.run_logger import RunHandle
 from sources._base.steps.enqueue import _kind_for_source_image
 from store import DinoPredictionRow
@@ -65,15 +66,12 @@ logger = logging.getLogger(__name__)
 
 _TOP_K_STORE = 5  # how many candidates to persist per asset
 
-# Détection de face (C7) : un crop est le REVERS commun 2€ si sa similarité au
-# revers dépasse sa similarité à l'avers d'au moins τ. Seuil recalibré pour la
-# banque ENRICHIE (2 canoniques + 32 ancres wild, cf. `_REVERSE_WILD_FILE`
-# dans anchors.py) — bench `bench_face_recall.py` (2026-06-13) : τ=+0,065 →
-# FP 0/566 avers confirmés, rappel revers durs (denom-rescue) 0 % → 73,3 %,
-# revers faciles 100 %. Pire avers à +0,059, prochain revers dur à +0,070 →
-# τ équidistant. Conservateur (précision > rappel) car un faux « reverse »
-# jetterait un avers identifiable.
-FACE_REVERSE_TAU = 0.065
+# Détection de face (C7). La RÈGLE — seuil et décision — vit dans
+# `shared/face_rule.py`, stdlib pure : l'image lean du VPS n'a ni cv2 ni torch
+# et ne copie pas `ml/scripts/`, donc toute passe corrective jouée au canonique
+# devait sans cela réécrire la règle et se mettre à diverger. Ré-exportées ici
+# pour les appelants historiques.
+
 
 # Kinds calculés au fil de l'eau (scrape/sync) : la prédiction consensus
 # (2eur_commemo) + la prédiction suggestions (2eur_all). Un seul encodage
@@ -188,8 +186,8 @@ def _get_reverse_bank() -> AnchorBank | None:
 
 
 def _decide_face(reverse_sim: float, obverse_sim: float) -> str:
-    """Verdict de face depuis la marge reverse-ness − obverse-ness (cf. C7)."""
-    return "reverse" if (reverse_sim - obverse_sim) >= FACE_REVERSE_TAU else "obverse"
+    """Alias historique de ``shared.face_rule.decide_face``."""
+    return decide_face(reverse_sim, obverse_sim)
 
 
 def _is_lot_source(
@@ -866,18 +864,26 @@ def _run_inner(
     _dire(i_asset)
 
     # ── Écriture de la face (C7) ─────────────────────────────────────────
-    # UNIQUEMENT si face IS NULL : ne clobbe pas les labels humains/Claude
-    # (review_queue.decided_face → image_assets.face) ni un run précédent →
-    # idempotent. Le routing (rejet face_reverse) se fait à l'enqueue / backfill.
+    # Le garde porte sur la PROVENANCE, pas sur la présence (migration 0017).
+    # Avant : `WHERE face IS NULL`. L'intention était bonne — ne jamais écraser
+    # un verdict humain (review_queue.decided_face → image_assets.face) — mais
+    # la colonne ne distinguait pas l'humain de la machine, donc protéger l'un
+    # gelait l'autre. Et comme τ dérive avec la taille de la banque des avers
+    # (cf. FACE_REVERSE_TAU), une étiquette machine fausse le restait à jamais.
+    # Désormais : une face posée par la MACHINE se recalcule, un verdict
+    # HUMAIN ne bouge pour personne.
+    # Le routing (rejet face_reverse) se fait à l'enqueue / backfill.
     if face_writes:
         conn.executemany(
-            "UPDATE image_assets SET face=? WHERE id=? AND face IS NULL",
+            "UPDATE image_assets SET face=?, face_source='pipeline' "
+            " WHERE id=? AND (face_source IS NULL OR face_source='pipeline')",
             face_writes,
         )
         n_rev = sum(1 for f, _ in face_writes if f == "reverse")
         logger.info(
             "auto_validate: face écrit sur %d crops (%d reverse, %d obverse) "
-            "[face IS NULL only]", len(face_writes), n_rev, len(face_writes) - n_rev,
+            "[verdicts humains épargnés]",
+            len(face_writes), n_rev, len(face_writes) - n_rev,
         )
 
     # ── Écriture de la dénomination (C7 pilier 2) — miroir de la face ─────

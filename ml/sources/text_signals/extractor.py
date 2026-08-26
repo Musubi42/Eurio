@@ -44,6 +44,7 @@ from .dictionaries import (
     VALID_FACE_VALUES,
     YEAR_MAX,
     YEAR_MIN,
+    YEAR_RANGE_RE,
     YEAR_RE,
 )
 
@@ -107,6 +108,13 @@ class ListingTextSignals:
     rejected_markers: tuple[str, ...]
     is_lot: bool
     coverage: Coverage
+    # Les millésimes du titre forment une PLAGE (« 2004 bis 2022 ») : le
+    # vendeur annonce un choix, il n'affirme rien sur la pièce photographiée.
+    # ⚠️ Ce drapeau ne touche PAS `is_lot` : le multi-années y a été testé
+    # puis retiré parce qu'il sur-capturait les offres « au choix » (une
+    # seule pièce vendue), cf. `_extract_lot`. On ne rouvre pas cette
+    # décision — on corrige seulement l'axe année du comparateur.
+    years_are_range: bool = False
     matched: dict[str, tuple[str, ...]] = field(default_factory=dict)
     listing_kind: ListingKind = "single"
     listing_kind_confidence: float = _KIND_CONFIDENCE["single"]
@@ -136,7 +144,13 @@ def _normalize(title: str) -> str:
 # ── Extraction par axe ──────────────────────────────────────────────────────
 
 
-def _extract_years(text: str) -> tuple[frozenset[int], list[str]]:
+def _extract_years(text: str) -> tuple[frozenset[int], list[str], bool]:
+    """``(années, formes brutes, est_une_plage)``.
+
+    ``est_une_plage`` distingue « 2004 bis 2022 » (le vendeur propose un
+    choix) de « 2004, 2007 » (deux millésimes affirmés). Le comparateur
+    en a besoin : une plage ne peut pas contredire une cible.
+    """
     matches = YEAR_RE.findall(text)
     years: set[int] = set()
     raw: list[str] = []
@@ -148,7 +162,8 @@ def _extract_years(text: str) -> tuple[frozenset[int], list[str]]:
         if YEAR_MIN <= y <= YEAR_MAX:
             years.add(y)
             raw.append(m)
-    return frozenset(years), raw
+    is_range = len(years) >= 2 and YEAR_RANGE_RE.search(text) is not None
+    return frozenset(years), raw, is_range
 
 
 # Forme fractionnaire du 2½ euro : « 2 1/2 », « 2-1/2 », « 2½ », « 2 ½ ».
@@ -476,7 +491,7 @@ def extract_listing_text_signals(
     title_lower = _normalize(text)
     title_lower_noaccents = _strip_accents(title_lower)
 
-    years, years_raw = _extract_years(title_lower)
+    years, years_raw, years_are_range = _extract_years(title_lower)
     denoms, denoms_raw = _extract_denominations(title_lower)
     countries, countries_raw = _extract_countries(title_lower, title_lower_noaccents)
     rej_markers, rej_raw = _extract_rejection_markers(title_lower)
@@ -503,6 +518,7 @@ def extract_listing_text_signals(
     matched = {
         "countries": tuple(countries_raw),
         "years": tuple(years_raw),
+        "year_range": ("oui",) if years_are_range else (),
         "denominations": tuple(denoms_raw),
         "rejected_markers": tuple(rej_raw),
         "lot": tuple(lot_raw),
@@ -520,6 +536,7 @@ def extract_listing_text_signals(
     return ListingTextSignals(
         countries=countries,
         years=years,
+        years_are_range=years_are_range,
         denominations=denoms,
         theme_tokens=theme_tokens,
         rejected_markers=rej_markers,

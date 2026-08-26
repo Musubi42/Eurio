@@ -80,7 +80,8 @@ def test_lot_decide_foreign_asset_errors(env):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["done"] == 0
-    assert any("does not belong" in e for e in body["errors"])
+    assert [e["asset_id"] for e in body["errors"]] == ["X9"]
+    assert any("n'appartient pas" in e["message"] for e in body["errors"])
 
 
 def test_lot_decide_unknown_listing_404(env):

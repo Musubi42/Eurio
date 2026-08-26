@@ -6,11 +6,11 @@ marquage ``image_assets.eval_corpus`` au canonique (``POST
 /ingest/eval-corpus``) — le calcul reste où sont les mesures, seules les lignes
 voyagent (même doctrine que ``backfill_quality_score``).
 
-La règle, en une phrase — version 2, 2026-08-26
+La règle, en une phrase — version 3, 2026-08-26
 ================================================
 
-**5 crops au hasard par classe, graine fixe, parmi ceux dont le vendeur ne
-porte aucune ancre de cette classe.** C'est tout.
+**5 crops au hasard par classe, graine fixe, parmi ceux dont ni la photo brute
+ni le vendeur ne portent d'ancre de cette classe.** C'est tout.
 
 Pourquoi la v1 (quantiles de tilt) a été jetée
 -----------------------------------------------
@@ -39,8 +39,8 @@ contrôle. **Le tirage au hasard, lui, ne ment pas** — il est le seul estimate
 non biaisé de la population dont il sort. On y revient tant qu'aucun signal de
 difficulté n'est démontré.
 
-Le seul garde conservé, et il est mesuré
------------------------------------------
+Les deux gardes conservés, et ils sont mesurés
+-----------------------------------------------
 
 **Le vendeur.** Un crop dont le ``seller_id`` porte aussi une ancre de sa
 classe partage le fond, la lumière et la session avec la référence contre
@@ -62,6 +62,24 @@ lot/seller, pas par photo individuelle. »*
 Ce que ce garde coûte, mesuré : à 5/classe, **52 des 60 classes** tiennent
 (3 classes n'ont AUCUN crop non contaminé). ``--no-seller-guard`` le retire et
 rend les 60 classes, au prix d'un chiffre gonflé d'environ 5 points.
+``--no-dup-guard`` retire le garde photo, au prix d'environ 0,5 point.
+
+**La photo brute** — le quasi-doublon. Un crop dont le ``source_image_id``
+porte aussi une ancre de sa classe n'est pas « une autre photo du même
+vendeur » : c'est *presque la même image*, recadrée ailleurs dans le même
+fichier. Mesuré le 2026-08-26 sur les 300 crops du corpus v1 : **36/300
+(12 %)**, tous justes sous ``vitb14`` (100 % contre 95,8 % pour les autres),
+soit **+0,5 pt** d'inflation sur le total.
+
+⚠️ **Ce garde n'est pas un doublon du précédent, et c'est mesurable.** Deux
+crops issus du même ``source_image_id`` partagent forcément leur
+``seller_id`` — donc le garde vendeur les attrape *quand ce vendeur est
+connu*. Il ne l'est pas toujours : ``_ANCHOR_SELLERS_SQL`` exige
+``si.seller_id IS NOT NULL``, et un listing sans vendeur renseigné passe
+entre les mailles. Le garde photo, lui, joint sur une clé ``NOT NULL``. Il
+reste donc actif sous ``--no-seller-guard``, et c'est voulu : les deux
+répondent à deux questions (« même séance ? » / « même fichier ? ») dont
+seule la seconde a une réponse certaine.
 
 Le hasard est REJOUABLE, et par classe
 ---------------------------------------
@@ -113,8 +131,9 @@ DEFAULT_CORPUS = "matrice-encodeurs-2026-08"
 
 #: Version de la RÈGLE de sélection. La bumper signifie « le jeu n'est plus le
 #: même » — donc les mesures d'avant ne se comparent plus à celles d'après.
-#: v1 = quantiles de tilt (jetée, cf. en-tête). v2 = 5 au hasard + garde vendeur.
-SELECTION_RULE_VERSION = 2
+#: v1 = quantiles de tilt (jetée, cf. en-tête). v2 = 5 au hasard + garde
+#: vendeur. v3 = v2 + garde photo brute (quasi-doublons, +0,5 pt mesuré).
+SELECTION_RULE_VERSION = 3
 
 #: La graine du tirage. Elle est COMBINÉE au class_id, jamais utilisée seule.
 DEFAULT_SEED = 20260826
@@ -130,6 +149,7 @@ _POOL_SQL = """
            a.id                                      AS asset_id,
            a.eurio_id                                AS eurio_id,
            a.storage_path                            AS storage_path,
+           a.source_image_id                         AS source_image_id,
            si.seller_id                              AS seller_id,
            (a.id IN (SELECT asset_id FROM dino_class_references
                       WHERE anchors_kind = :kind AND asset_id IS NOT NULL))
@@ -143,6 +163,19 @@ _POOL_SQL = """
        AND (a.face IS NULL OR a.face != 'reverse')
        AND a.eval_corpus IS NULL
      ORDER BY class_id, a.id
+"""
+
+#: Les photos BRUTES qui portent une ancre, PAR CLASSE. C'est le garde de la
+#: v3 — et il joint sur `image_assets.source_image_id`, qui est `NOT NULL` :
+#: contrairement au garde vendeur, il n'a pas de maille par laquelle fuir.
+_ANCHOR_SOURCE_IMAGES_SQL = """
+    SELECT COALESCE(co.design_group_id, co.eurio_id) AS class_id,
+           a.source_image_id                         AS source_image_id
+      FROM dino_class_references r
+      JOIN image_assets a   ON a.id = r.asset_id
+      JOIN coins co         ON co.eurio_id = a.eurio_id
+     WHERE r.anchors_kind = :kind
+       AND r.asset_id IS NOT NULL
 """
 
 #: Les vendeurs qui portent une ancre, PAR CLASSE. C'est le garde de D5 v2.
@@ -191,6 +224,7 @@ def selectionner(
     min_real: int = MIN_REAL,
     seed: int = DEFAULT_SEED,
     seller_guard: bool = True,
+    dup_guard: bool = True,
     anchors_kind: str = SERVED_ANCHORS_KIND,
 ) -> dict:
     """Rend le plan de prélèvement, sans rien écrire.
@@ -202,15 +236,24 @@ def selectionner(
     * ``plancher`` — prélever ferait passer ce qui RESTE au train sous
       ``min_real``. Le quota se raisonne sur le reste, jamais sur ce qu'on prend
       (``real_training_sources`` est partagé par le bake ET le préflight) ;
-    * ``pool_candidat_court`` — après retrait des ancres et, si le garde est
-      actif, des crops du vendeur d'une ancre, il ne reste pas ``quota``
-      candidats. Mesuré le 2026-08-26 : 8 classes sur 60, dont 3 à ZÉRO
+    * ``pool_candidat_court`` — après retrait des ancres et, si les gardes sont
+      actifs, des crops issus de la photo brute d'une ancre puis de ceux du
+      vendeur d'une ancre, il ne reste pas ``quota`` candidats. Mesuré le
+      2026-08-26 (garde vendeur seul) : 8 classes sur 60, dont 3 à ZÉRO
       candidat propre.
+
+    Les deux gardes sont indépendants — cf. l'en-tête du module : le garde
+    photo tient là où le garde vendeur fuit (``seller_id`` nullable).
     """
     vendeurs_ancres: dict[str, set[str]] = {}
     if seller_guard:
         for r in conn.execute(_ANCHOR_SELLERS_SQL, {"kind": anchors_kind}):
             vendeurs_ancres.setdefault(r["class_id"], set()).add(r["seller_id"])
+
+    photos_ancres: dict[str, set[str]] = {}
+    if dup_guard:
+        for r in conn.execute(_ANCHOR_SOURCE_IMAGES_SQL, {"kind": anchors_kind}):
+            photos_ancres.setdefault(r["class_id"], set()).add(r["source_image_id"])
 
     par_classe: dict[str, list[sqlite3.Row]] = {}
     for r in conn.execute(_POOL_SQL, {"kind": anchors_kind}):
@@ -229,6 +272,17 @@ def selectionner(
 
         cands = [r for r in rows if not r["est_ancre"]]
         n_hors_ancres = len(cands)
+
+        # Garde photo brute d'abord : il joint sur une clé NOT NULL, donc son
+        # verdict ne dépend d'aucun champ optionnel. Le compter en premier rend
+        # aussi les deux compteurs lisibles — `n_ecartes_vendeur` ne dit alors
+        # que ce que le vendeur a écarté EN PLUS du quasi-doublon.
+        photos_interdites = photos_ancres.get(class_id, set())
+        if dup_guard:
+            cands = [r for r in cands
+                     if r["source_image_id"] not in photos_interdites]
+        n_hors_doublons = len(cands)
+
         interdits = vendeurs_ancres.get(class_id, set())
         if seller_guard:
             cands = [r for r in cands if r["seller_id"] not in interdits]
@@ -249,7 +303,8 @@ def selectionner(
             "n_train_apres": n_train - quota,
             "n_candidats": len(cands),
             "n_ancres_ecartees": n_train - n_hors_ancres,
-            "n_ecartes_vendeur": n_hors_ancres - len(cands),
+            "n_ecartes_doublon": n_hors_ancres - n_hors_doublons,
+            "n_ecartes_vendeur": n_hors_doublons - len(cands),
         })
         for r in choisis:
             picks.append({
@@ -276,6 +331,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="retire le garde vendeur. Rend les 60 classes au lieu "
                          "de 52, au prix d'un chiffre gonflé d'environ 5 points "
                          "(mesuré : +5,0 pts, p ≈ 0,002)")
+    ap.add_argument("--no-dup-guard", action="store_true",
+                    help="retire le garde quasi-doublon (crop issu de la MÊME "
+                         "photo brute qu'une ancre de sa classe), au prix "
+                         "d'environ +0,5 pt (mesuré : 36/300, tous justes)")
     ap.add_argument("--apply", action="store_true",
                     help="marque ET pousse au canonique (défaut = dry-run)")
     ap.add_argument("--plan", type=Path, default=None,
@@ -290,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
         min_real=args.min_real,
         seed=args.seed,
         seller_guard=not args.no_seller_guard,
+        dup_guard=not args.no_dup_guard,
     )
     conn.close()
 
@@ -299,6 +359,7 @@ def main(argv: list[str] | None = None) -> int:
     plan["selection_rule_version"] = SELECTION_RULE_VERSION
     plan["seed"] = args.seed
     plan["seller_guard"] = not args.no_seller_guard
+    plan["dup_guard"] = not args.no_dup_guard
 
     print(f"DB (lecture seule) : {args.db}")
     print(f"corpus             : {args.corpus} (règle v{SELECTION_RULE_VERSION})")
@@ -309,11 +370,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"écartées ({motif}) : {len(ids)} — {ids[:8]}"
                   f"{' …' if len(ids) > 8 else ''}")
     print(f"garde vendeur      : {'ACTIF' if plan['seller_guard'] else '⚠️ RETIRÉ'}"
+          f" · garde doublon : {'ACTIF' if plan['dup_guard'] else '⚠️ RETIRÉ'}"
           f" · graine {args.seed}")
     if plan["classes"]:
         ecartes = sum(c["n_ecartes_vendeur"] for c in plan["classes"])
+        doublons = sum(c["n_ecartes_doublon"] for c in plan["classes"])
         ancres = sum(c["n_ancres_ecartees"] for c in plan["classes"])
-        print(f"écartés du tirage  : {ancres} ancres · {ecartes} par le vendeur")
+        print(f"écartés du tirage  : {ancres} ancres · {doublons} quasi-doublons "
+              f"· {ecartes} par le vendeur")
 
     if args.plan:
         args.plan.write_text(json.dumps(plan, indent=2, ensure_ascii=False))

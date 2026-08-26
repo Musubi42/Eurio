@@ -7,6 +7,7 @@
 > [`../architecture/README.md`](../architecture/README.md).
 >
 > Revu le **2026-08-24** : 40 chantiers → 13. Les 25 autres ont été archivés.
+> Le **2026-08-26**, `debit-enrichissement/` est ouvert : 14.
 
 ## 🎯 Par où reprendre
 
@@ -30,6 +31,7 @@ github/repo-cleanup`.
 
 | Chantier | Où il en est |
 |---|---|
+| [`debit-enrichissement/`](./debit-enrichissement/SUIVI.md) | **Le débit de crops validés — les 4 leviers : scraper, cropper, reconnaître, auto-valider.** Photo de départ prise le 2026-08-26. ⚠️ **Le goulot a basculé : ce n'est plus le scrape, c'est la review** (307 classes bloquées par un humain contre 265 par le quota ; file ouverte 10 440). L'auto-accept machine est **à l'arrêt depuis le 2026-07-08**, et les deux seuils sont mesurés **quasi inertes** (les désarmer rapporte +3,2 %, pas ×2). ⛔ Deux bloquants ouverts et un débris de mutation dans le code — tout est en haut de `SUIVI.md`. 👉 **Entrée : [`SUIVI.md`](./debit-enrichissement/SUIVI.md)** |
 | [`pipeline-propre/`](./pipeline-propre/) | `/besoin` — quelle classe nourrir, par quel geste, quand s'arrêter. Lots 0-4 déployés, **5-6 commités non déployés**. 671 classes, couverture 250/671 |
 | [`review-collaborative-v2/`](./review-collaborative-v2/) | **En production et utilisée.** Un ami tranche depuis `eurio-admin.musubi.dev`, en quarantaine. Reste : une vérif d'écriture du recadrage, le bail sur la file (lot 7), le full clean (lot 9). Décision : [ADR-012](../adr/012-review-collaborative-ecriture-directe.md) |
 | [`scan-sans-retrain/`](./scan-sans-retrain/PREREQUIS.md) | La voie « backbone gelé + banque » de [ADR-008](../adr/008-deux-voies-backbone-gele-et-arcface.md). Le plancher `min_exemplars` a été mesuré nuisible puis retiré. **Note d'état en tête de `PREREQUIS.md`** : où on en est, ce qui attend le PO, dans quel ordre |
@@ -64,7 +66,7 @@ pilote plus rien — c'est ce qu'on vient de corriger.
 
 ## Les portes d'entrée, pour les chantiers sans `README`
 
-Sept des treize chantiers n'ont pas de `README.md` : le lien du tableau ci-dessus
+Huit des quatorze chantiers n'ont pas de `README.md` : le lien du tableau ci-dessus
 pointe donc directement leur **porte d'entrée**, et cette table liste le reste. C'est
 ce qui manquait, et c'est ainsi que des documents devenaient orphelins — un lien de
 dossier nu dépose le lecteur sur une liste de fichiers sans hiérarchie, et le doc écrit
@@ -72,6 +74,7 @@ hier s'y noie au milieu de ceux de juin.
 
 | Chantier | Entrer par | Les autres |
 |---|---|---|
+| `debit-enrichissement/` | [`SUIVI.md`](./debit-enrichissement/SUIVI.md) | PLAN-PECHE-PAYS.md · PLAN-ECRAN-BINAIRE.md · PLAN-SCRAPE.md |
 | `banque-dino/` | [`CONSTAT.md`](./banque-dino/CONSTAT.md) | DECISIONS.md · PROTOCOLE-BENCH.md |
 | `peche-dino/` | [`CONSTAT.md`](./peche-dino/CONSTAT.md) | DECISIONS.md |
 | `scan-sans-retrain/` | [`PREREQUIS.md`](./scan-sans-retrain/PREREQUIS.md) | DECISION.md · FINDINGS.md · COURBE-REFERENCES.md · BENCH-ENCODEURS.md · ALLOCATEUR-SCRAPE.md · PROTOCOLE-CAPTURE.md · GESTE-P3.md |

@@ -21,6 +21,7 @@ Run: `.venv/bin/python -m pytest ml/tests/test_eval_holdout.py -q`
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -61,14 +62,19 @@ def test_une_base_anterieure_rattrape_eval_corpus(tmp_path):
     # son index. Fabriquer un `image_assets` de fantaisie ne prouverait rien —
     # ce qu'on veut exercer, c'est l'ordre pre-bootstrap → executescript.
     schema = (ML_DIR / "state" / "schema.sql").read_text(encoding="utf-8")
-    lignes = [
-        ligne for ligne in schema.splitlines()
-        if "eval_corpus" not in ligne
-    ]
+    # Amputation CIBLÉE de `image_assets.eval_corpus` et de son index. Filtrer
+    # toute ligne contenant « eval_corpus » ne marche plus depuis 0015 :
+    # `encoder_bench_runs` porte désormais une colonne du même nom, et la
+    # retirer laissait une virgule orpheline → `near ")": syntax error`, une
+    # panne qui n'a rien à voir avec ce que ce test veut prouver.
+    ampute = schema.replace("  eval_corpus              TEXT,\n", "")
+    ampute = ampute.replace(
+        "CREATE INDEX IF NOT EXISTS idx_image_assets_eval_corpus\n"
+        "  ON image_assets(eval_corpus) WHERE eval_corpus IS NOT NULL;\n", "")
+    assert ampute != schema and "image_assets(eval_corpus)" not in ampute
     db = tmp_path / "ancienne.db"
     brut = sqlite3.connect(db)
-    brut.executescript("\n".join(lignes).replace(
-        "CREATE INDEX IF NOT EXISTS idx_image_assets_eval_corpus\n", ""))
+    brut.executescript(ampute)
     brut.commit()
     brut.close()
     assert "eval_corpus" not in {
@@ -232,6 +238,14 @@ def test_la_graine_est_par_CLASSE_pour_quune_classe_ne_bouge_pas_les_autres():
 
 
 def _base_de_selection(tmp_path, *, n_par_classe=20, n_classes=3):
+    """Un pool réaliste : UNE photo brute et UN vendeur par crop.
+
+    Le partage d'un `source_image_id` (ou d'un `seller_id`) est justement ce
+    que les deux gardes détectent — le poser par défaut ferait passer chaque
+    test de sélection dans un cas de contamination, et les gardes n'auraient
+    plus de cas témoin à exclure. Les tests qui veulent la contamination la
+    fabriquent explicitement.
+    """
     store = Store(tmp_path / "t.db")
     conn = store._connection()  # noqa: SLF001
     conn.execute("PRAGMA foreign_keys=OFF")
@@ -240,20 +254,30 @@ def _base_de_selection(tmp_path, *, n_par_classe=20, n_classes=3):
         conn.execute(
             "INSERT INTO coins (eurio_id, country, year, face_value, numista_id) "
             "VALUES (?, 'AT', 2002, 2.0, ?)", (eid, 100 + c))
-        conn.execute(
-            "INSERT INTO source_images (id, source, source_ref) VALUES (?, 'ebay', ?)",
-            (f"si{c}", f"r{c}"))
         for i in range(n_par_classe):
+            si = f"si{c}-{i:02d}"
+            conn.execute(
+                "INSERT INTO source_images (id, source, source_ref, seller_id) "
+                "VALUES (?, 'ebay', ?, ?)", (si, f"r{c}-{i}", f"vendeur-{c}-{i}"))
             conn.execute(
                 "INSERT INTO image_assets (id, source_image_id, crop_index, "
                 "eurio_id, resolution_status, face, training_eligible, "
                 "storage_status, storage_path, tilt_deg, tilt_trustworthy) "
                 "VALUES (?, ?, ?, ?, 'manual', 'obverse', 1, 'present', ?, ?, 1)",
-                (f"{eid}-a{i:02d}", f"si{c}", i, eid,
-                 f"ebay/si{c}/a{i}.png", float(i)))
+                (f"{eid}-a{i:02d}", si, i, eid,
+                 f"ebay/{si}/a{i}.png", float(i)))
     conn.commit()
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _declare_ancre(conn, asset_id, *, class_id="c0", kind="2eur_all"):
+    conn.execute(
+        "INSERT INTO dino_class_references (anchors_kind, class_id, eurio_id, "
+        "asset_id, method, encoder_version) "
+        "VALUES (?, ?, ?, ?, 'fps', 'dinov2-vitl14')",
+        (kind, class_id, class_id, asset_id))
+    conn.commit()
 
 
 def test_la_selection_est_rejouable_a_lidentique(tmp_path):
@@ -285,14 +309,108 @@ def test_une_ancre_de_la_banque_servie_nest_jamais_prelevee(tmp_path):
     conn = _base_de_selection(tmp_path, n_par_classe=20, n_classes=1)
     # Les 5 plus inclinés du pool sont déclarés ancres de `2eur_all`.
     for i in range(15, 20):
-        conn.execute(
-            "INSERT INTO dino_class_references (anchors_kind, class_id, eurio_id, "
-            "asset_id, method, encoder_version) "
-            "VALUES ('2eur_all', 'c0', 'c0', ?, 'fps', 'dinov2-vitl14')",
-            (f"c0-a{i:02d}",))
-    conn.commit()
+        _declare_ancre(conn, f"c0-a{i:02d}")
     picks = {p["asset_id"] for p in selectionner(conn, quota=5, min_real=10)["picks"]}
     assert not (picks & {f"c0-a{i:02d}" for i in range(15, 20)})
+
+
+def test_le_garde_VENDEUR_ecarte_les_crops_du_vendeur_dune_ancre(tmp_path):
+    """Règle v2, et le seul effet franchement significatif du 2026-08-26.
+
+    Un crop dont le `seller_id` porte aussi une ancre de sa classe partage le
+    fond, la lumière et la session avec la référence contre laquelle il est
+    noté : **+5,0 pts de r@1, z ≈ 3,05, p ≈ 0,002** (364 crops contaminés à
+    96,2 % contre 791 propres à 91,2 %). Sans ce test, la règle v2 pouvait
+    disparaître du code sans qu'aucune suite ne rougisse.
+    """
+    conn = _base_de_selection(tmp_path, n_par_classe=20, n_classes=1)
+    # a19 devient une ancre, et a00..a09 sont vendus par le MÊME vendeur.
+    conn.execute(
+        "UPDATE source_images SET seller_id = 'vendeur-ancre' "
+        "WHERE id IN (SELECT source_image_id FROM image_assets "
+        "             WHERE id = 'c0-a19' OR crop_index < 10)")
+    conn.commit()
+    _declare_ancre(conn, "c0-a19")
+
+    picks = {p["asset_id"] for p in selectionner(conn, quota=5, min_real=10)["picks"]}
+    assert picks and not (picks & {f"c0-a{i:02d}" for i in range(10)}), (
+        "un crop du vendeur d'une ancre ne doit pas entrer dans le jeu d'éval")
+    # Le compteur le DIT : 10 crops écartés par le vendeur, et pas par autre chose.
+    classe = selectionner(conn, quota=5, min_real=10)["classes"][0]
+    assert classe["n_ecartes_vendeur"] == 10
+    assert classe["n_ecartes_doublon"] == 0
+
+    # `--no-seller-guard` les rend au tirage — c'est l'échappatoire documentée.
+    sans = selectionner(conn, quota=5, min_real=10, seller_guard=False)
+    assert sans["classes"][0]["n_ecartes_vendeur"] == 0
+
+
+def test_le_garde_QUASI_DOUBLON_ecarte_les_crops_de_la_photo_dune_ancre(tmp_path):
+    """Règle v3. Un crop issu du MÊME `source_image_id` qu'une ancre de sa
+    classe est presque la même image, recadrée ailleurs dans le même fichier.
+    Mesuré le 2026-08-26 : 36/300 (12 %), tous justes sous `vitb14`, +0,5 pt.
+    """
+    conn = _base_de_selection(tmp_path, n_par_classe=20, n_classes=1)
+    # a17, a18, a19 sortent de la MÊME photo brute ; a19 en est l'ancre.
+    conn.execute(
+        "UPDATE image_assets SET source_image_id = 'si0-19' "
+        "WHERE id IN ('c0-a17', 'c0-a18')")
+    conn.commit()
+    _declare_ancre(conn, "c0-a19")
+
+    plan = selectionner(conn, quota=5, min_real=10)
+    picks = {p["asset_id"] for p in plan["picks"]}
+    assert picks and not (picks & {"c0-a17", "c0-a18"}), (
+        "un crop issu de la photo brute d'une ancre est un quasi-doublon")
+    assert plan["classes"][0]["n_ecartes_doublon"] == 2
+
+    sans = selectionner(conn, quota=5, min_real=10, dup_guard=False)
+    assert sans["classes"][0]["n_ecartes_doublon"] == 0
+
+
+def test_le_garde_doublon_tient_LA_OU_le_garde_vendeur_fuit(tmp_path):
+    """LE test de la v3, et sa seule justification d'exister à part.
+
+    Deux crops de la même photo brute ont forcément le même vendeur — le garde
+    vendeur devrait donc suffire. Il ne suffit pas : `_ANCHOR_SELLERS_SQL`
+    exige `si.seller_id IS NOT NULL`, et un listing eBay sans vendeur
+    renseigné passe entre ses mailles. `source_image_id`, lui, est NOT NULL.
+
+    Si quelqu'un « simplifie » en retirant le garde doublon au motif qu'il est
+    redondant, c'est ce test qui rougit.
+    """
+    conn = _base_de_selection(tmp_path, n_par_classe=20, n_classes=1)
+    conn.execute(
+        "UPDATE image_assets SET source_image_id = 'si0-19' "
+        "WHERE id IN ('c0-a17', 'c0-a18')")
+    # Vendeur INCONNU sur la photo partagée : le garde vendeur est aveugle.
+    conn.execute("UPDATE source_images SET seller_id = NULL WHERE id = 'si0-19'")
+    conn.commit()
+    _declare_ancre(conn, "c0-a19")
+
+    seul_vendeur = selectionner(conn, quota=5, min_real=10, dup_guard=False)
+    assert seul_vendeur["classes"][0]["n_ecartes_vendeur"] == 0, (
+        "le garde vendeur ne peut rien voir : le seller_id est NULL")
+
+    les_deux = selectionner(conn, quota=5, min_real=10)
+    assert les_deux["classes"][0]["n_ecartes_doublon"] == 2
+    assert not ({p["asset_id"] for p in les_deux["picks"]} & {"c0-a17", "c0-a18"})
+
+
+def test_la_regle_de_selection_est_versionnee_et_le_plan_la_porte(tmp_path):
+    """Un plan qui ne dit pas SOUS QUELLE RÈGLE il a été tiré ne se relit pas :
+    deux prélèvements à deux règles différentes ne se comparent pas, et rien
+    dans les asset_id ne le dirait."""
+    from scripts.select_eval_holdout import SELECTION_RULE_VERSION, main
+
+    plan_path = tmp_path / "plan.json"
+    conn = _base_de_selection(tmp_path, n_par_classe=20, n_classes=1)
+    conn.close()
+    assert main(["--db", str(tmp_path / "t.db"), "--min-real", "10",
+                 "--plan", str(plan_path)]) == 0
+    plan = json.loads(plan_path.read_text())
+    assert plan["selection_rule_version"] == SELECTION_RULE_VERSION >= 3
+    assert plan["seller_guard"] is True and plan["dup_guard"] is True
 
 
 def test_une_classe_qui_tomberait_sous_le_plancher_nest_pas_prelevee(tmp_path):

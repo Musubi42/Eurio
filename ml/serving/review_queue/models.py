@@ -251,6 +251,14 @@ class LotCrop(BaseModel):
     current_eurio_id: str | None
     candidate_eurio_ids: list[ReviewCandidate]
     bbox: ReviewBbox | None
+    # L'ÉTAT de la row de review de ce crop, tel quel. Le détail d'un lot sert
+    # TOUS les crops du listing — y compris ceux déjà tranchés, qui portent le
+    # contexte visuel du coffret. Sans ces deux champs, le front ne pouvait pas
+    # distinguer « à trancher » de « déjà tranché » : il se rabattait sur
+    # `review_id` non vide et re-servait des crops clos comme actionnables (751
+    # lots, 2303 crops, mesuré le 2026-08-26). `None` = aucune row de review.
+    review_status: str | None = None
+    review_kind: str | None = None
     # PÊCHE : la banque rattache-t-elle CE crop à la classe qu'on pêche ?
     # `None` hors pêche. Sans ce drapeau, un coffret de 36 vignettes dont une
     # seule est la classe se trie entièrement à l'œil — l'écran saurait laquelle

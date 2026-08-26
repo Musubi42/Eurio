@@ -44,7 +44,21 @@ logger = logging.getLogger(__name__)
 
 # v2 (chunk C2) : ajoute listing_kind + condition_normalized. Le bump
 # force la ré-extraction des rows v1 (l'idempotence est clé sur version).
-EXTRACTOR_VERSION = "v2"
+#
+# v3 (2026-08-27) : quatre correctifs d'extraction issus de l'audit visuel —
+# millésime collé à la lettre d'atelier (« 2016R »), noms de pays espagnols
+# (« alemania », « luxemburgo »… : 1 638 crops de la file ouverte les
+# rendaient invisibles), marqueur d'accessoire, et surtout la PLAGE de
+# millésimes qui ne contredit plus une cible.
+#
+# ⚠️ Le bump n'est pas cosmétique : sans lui, les 22 423 rows `v2` déjà en
+# base resteraient périmées et un backfill sans `--force` les SAUTERAIT
+# toutes, en annonçant « Selected 0 » et un exit 0. Toute évolution des
+# règles d'extraction DOIT bumper cette constante — c'est la seule clé
+# d'idempotence, et une règle neuve sur une version inchangée est une panne
+# muette. Les rows `extractor_version='manual'` restent épargnées même en
+# force (garde plus bas dans ce fichier).
+EXTRACTOR_VERSION = "v3"
 
 
 @dataclass

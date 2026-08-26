@@ -292,11 +292,30 @@ class LotDecideOutcome:
     errors: list
 
 
+def _lot_error(asset_id: str, message: str) -> dict:
+    """Un échec d'assignment, PORTEUR de son asset_id.
+
+    L'appelant doit pouvoir dire à l'humain quelles décisions n'ont pas été
+    écrites, et les lui rendre pour qu'il les rejoue. Une phrase libre l'aurait
+    obligé à parser ; c'est cette friction-là qui a fait que personne n'a jamais
+    lu `errors`, alors qu'il porte « déjà tranché » et « tranché en parallèle ».
+    """
+    return {"asset_id": asset_id, "message": message}
+
+
 def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
     """Décision bulk sur un listing entier. Pour chaque assignment : decide
     (eurio_id), reject (reject_reason) ou skip. Idempotent par état terminal :
     une row déjà non-'open' part dans ``errors`` sans casser. Valide que chaque
     asset appartient au listing. Lève DecisionError(404) si le lot est inconnu.
+
+    ``errors`` est une liste de ``{"asset_id", "message"}`` : chaque entrée
+    désigne une décision que l'humain a prise et que le serveur n'a PAS écrite.
+    L'appelant est censé la lui rendre — c'est la seule donnée du projet
+    qu'aucun calcul ne régénère.
+
+    Aucune complétude n'est exigée : un POST partiel est sûr et idempotent
+    (chaque UPDATE est gardé par ``AND status='open'``).
 
     ``assignments`` = itérable d'objets avec .asset_id/.eurio_id/.face/
     .variant_kind/.reject_reason/.skip (duck-typé : pydantic OU dataclass)."""
@@ -329,22 +348,23 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
     for asg in assignments:
         asset_row = listing_assets.get(asg.asset_id)
         if asset_row is None:
-            errors.append(f"asset {asg.asset_id} does not belong to lot {listing_key}")
+            errors.append(_lot_error(
+                asg.asset_id, f"n'appartient pas au lot {listing_key}"))
             continue
         review_id = asset_row["review_id"]
         rq_status = asset_row["rq_status"]
         if review_id is None:
-            errors.append(f"asset {asg.asset_id} has no review_queue row")
+            errors.append(_lot_error(asg.asset_id, "aucune row de review"))
             continue
         if rq_status != "open":
-            errors.append(f"asset {asg.asset_id} already {rq_status}")
+            errors.append(_lot_error(asg.asset_id, f"déjà {rq_status}"))
             continue
 
         # Decide path
         if asg.eurio_id:
             face = asg.face or "unknown"
             if face not in _VALID_FACES:
-                errors.append(f"asset {asg.asset_id} invalid face '{face}'")
+                errors.append(_lot_error(asg.asset_id, f"face invalide '{face}'"))
                 continue
             conn.execute(
                 """
@@ -376,7 +396,8 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
                  review_id),
             )
             if cur.rowcount != 1:
-                errors.append(f"asset {asg.asset_id} decided concurrently — skipped")
+                errors.append(_lot_error(
+                    asg.asset_id, "tranché en parallèle — non écrit"))
                 continue
             applied = conn.execute(
                 "SELECT variant_kind FROM image_assets WHERE id = ?",
@@ -409,10 +430,11 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
         # Reject path
         elif asg.reject_reason:
             if asg.reject_reason not in _VALID_REJECT_REASONS:
-                errors.append(
-                    f"asset {asg.asset_id} invalid reject_reason "
-                    f"'{asg.reject_reason}' — accepted: {_VALID_REJECT_REASONS}"
-                )
+                errors.append(_lot_error(
+                    asg.asset_id,
+                    f"reject_reason invalide '{asg.reject_reason}' — "
+                    f"acceptés : {_VALID_REJECT_REASONS}",
+                ))
                 continue
             conn.execute(
                 """
@@ -439,7 +461,8 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
                  review_id),
             )
             if cur.rowcount != 1:
-                errors.append(f"asset {asg.asset_id} decided concurrently — skipped")
+                errors.append(_lot_error(
+                    asg.asset_id, "tranché en parallèle — non écrit"))
                 continue
             emit_state_event(
                 conn, asset_id=asg.asset_id, to_state="rejected",
@@ -469,7 +492,8 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
                 (review_id,),
             )
             if cur.rowcount != 1:
-                errors.append(f"asset {asg.asset_id} decided concurrently — skipped")
+                errors.append(_lot_error(
+                    asg.asset_id, "tranché en parallèle — non écrit"))
                 continue
             emit_state_event(
                 conn, asset_id=asg.asset_id, to_state="skipped",
@@ -479,10 +503,10 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
             n_skipped += 1
 
         else:
-            errors.append(
-                f"asset {asg.asset_id} has no action "
-                "(provide eurio_id, reject_reason, or skip=true)"
-            )
+            errors.append(_lot_error(
+                asg.asset_id,
+                "aucune action (fournir eurio_id, reject_reason ou skip=true)",
+            ))
 
     return {
         "done": n_done, "rejected": n_rejected,

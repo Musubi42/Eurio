@@ -71,6 +71,11 @@ class IterationSnapshot(BaseModel):
     finished_at: str | None = None
     created_on: str | None = None
     summary: dict | None = None
+    #: Migration 0016 — l'empreinte des entrées du bake. ⚠️ Déclarée ICI sous
+    #: peine d'être perdue : pydantic laisse tomber un champ non déclaré sans
+    #: un mot, et l'itération monterait au canonique amputée de sa provenance
+    #: pendant que le PUT répond 200.
+    inputs_digest: str | None = None
 
 
 # Scopes par-route, explicites et testables en isolation : lecture = `lab:read`,

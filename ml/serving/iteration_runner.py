@@ -918,6 +918,7 @@ class IterationRunner:
             ITERATION_TRAIN_ROOTS,
             class_sample_counts,
             generate_for_iteration,
+            rollup_inputs_digest,
         )
         from training.eval.class_resolver import build_resolver
 
@@ -938,9 +939,21 @@ class IterationRunner:
                 "via le tiroir I2 avant de lancer."
             )
         total_written = sum(r.written for r in reports)
+        # Migration 0016 — l'empreinte des ENTRÉES de ce bake est persistée sur
+        # l'itération, puis poussée au canonique par `_sync_canonical`. Sans
+        # elle, `inputs_digest` ne vivait que dans les `_manifest.json` de la
+        # machine qui a baké : le canonique ne savait pas AVEC QUOI un modèle
+        # avait été entraîné, alors même que le pool grossit sous la MÊME
+        # cohorte (5 051 → 6 594 samples, +30,5 %, du 2026-08-16 au 2026-08-25).
+        # Posée ICI et pas dans le bake : le bake est une fonction de calcul,
+        # partagée par la route `/bake` et le CLI ; c'est le runner qui possède
+        # le cycle de vie de l'itération et sa propagation.
+        digest = rollup_inputs_digest(reports)
+        self._store.update_iteration(iteration.id, inputs_digest=digest)
         logger.info(
-            "Iteration %s: baked %d augmentation samples across %d coin(s)",
-            iteration.id, total_written, len(reports),
+            "Iteration %s: baked %d augmentation samples across %d coin(s) "
+            "(inputs_digest=%s)",
+            iteration.id, total_written, len(reports), digest[:12],
         )
 
         # Phase 2 (lab-prod-refacto) : chaque itération vit sous

@@ -125,8 +125,14 @@ Le point central en est écrit depuis des mois, et il n'a **pas** été appliqu�
 > 1 en eval, l'eval est trop optimiste. Donc **split par lot/seller**, pas par
 > photo individuelle. »
 
-`scripts/select_eval_holdout.py` ne fait **aucun** split par vendeur ni par
+`scripts/select_eval_holdout.py` ne faisait **aucun** split par vendeur ni par
 lot. La suite de ce document mesure ce que ça coûte.
+
+> ✅ **Corrigé depuis.** Règle **v2** (2026-08-26, commit `22364b34`) : garde
+> vendeur. Règle **v3** (lot 5, même jour) : garde quasi-doublon sur
+> `source_image_id`, et un test nommé par garde — sans quoi la règle pouvait
+> disparaître du code sans qu'aucune suite ne rougisse. Les chiffres ci-dessous
+> restent ceux du corpus v1, qui est ce qu'ils mesurent.
 
 ### ✅ « Il va falloir plus de review, c'est un trade-off que j'accepte »
 

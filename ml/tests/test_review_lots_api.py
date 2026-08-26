@@ -412,7 +412,8 @@ def test_decide_lot_rejects_invalid_reason(app_client):
     assert body["done"] == 0
     assert body["rejected"] == 0
     assert len(body["errors"]) == 1
-    assert "made_up_reason" in body["errors"][0]
+    assert body["errors"][0]["asset_id"] == asset_id
+    assert "made_up_reason" in body["errors"][0]["message"]
 
 
 def test_decide_lot_rejects_asset_not_in_listing(app_client):
@@ -429,7 +430,8 @@ def test_decide_lot_rejects_asset_not_in_listing(app_client):
     )
     body = resp.json()
     assert body["done"] == 0
-    assert any("does not belong to lot" in e for e in body["errors"])
+    assert [e["asset_id"] for e in body["errors"]] == [other_asset]
+    assert any("n'appartient pas au lot" in e["message"] for e in body["errors"])
 
 
 def test_decide_lot_idempotent_on_already_done(app_client):
@@ -456,7 +458,8 @@ def test_decide_lot_idempotent_on_already_done(app_client):
     )
     body = r2.json()
     assert body["done"] == 0
-    assert any("already done" in e for e in body["errors"])
+    assert [e["asset_id"] for e in body["errors"]] == [asset_id]
+    assert any("déjà done" in e["message"] for e in body["errors"])
     # face inchangée
     a = conn.execute(
         "SELECT face FROM image_assets WHERE id=?", (asset_id,),

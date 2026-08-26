@@ -48,8 +48,21 @@ class LotDecidePayload(BaseModel):
     assignments: list[LotAssignment]
 
 
+class LotDecideError(BaseModel):
+    """Un assignment que le serveur n'a PAS écrit.
+
+    `asset_id` est typé, et ce n'est pas cosmétique : l'écran doit pouvoir
+    garder la décision correspondante en mémoire pour que l'humain la rejoue.
+    Tant que l'erreur n'était qu'une phrase (« asset a3 already done »), le
+    front aurait dû la parser pour savoir de quel crop elle parlait — il ne le
+    faisait pas, et jetait la décision avec le message.
+    """
+    asset_id: str
+    message: str
+
+
 class LotDecideResponse(BaseModel):
     done: int
     rejected: int
     skipped: int
-    errors: list[str]
+    errors: list[LotDecideError]

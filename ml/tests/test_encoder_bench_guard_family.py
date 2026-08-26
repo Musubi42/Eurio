@@ -52,6 +52,7 @@ from serving.auth_principal import Principal, require_principal
 from store import Store
 from store.encoder_bench import (
     SCHEMA_SQL,
+    ensure_schema,
     CalibrationNotVerified,
     EncoderBenchPrediction,
     EncoderBenchRun,
@@ -95,7 +96,9 @@ def conn(tmp_path) -> sqlite3.Connection:
     ce qui n'est pas mesurable n'est pas promouvable.
     """
     c = sqlite3.connect(tmp_path / "t.db")
-    c.executescript(SCHEMA_SQL)
+    # `ensure_schema` : depuis 0015 le DDL de la table n'est plus dans une
+    # seule migration (deux ALTER), et `SCHEMA_SQL` n'en porte que la 0009.
+    ensure_schema(c)
     return c
 
 
@@ -112,7 +115,7 @@ def http(tmp_path):
 
     store = Store(tmp_path / "api.db")
     c = store._connection()  # noqa: SLF001
-    c.executescript(SCHEMA_SQL)
+    ensure_schema(c)
     ingest_routes.bind(store)
     app = FastAPI()
     app.include_router(ingest_routes.router)

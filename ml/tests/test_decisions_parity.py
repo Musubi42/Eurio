@@ -170,6 +170,40 @@ def test_lot_decide(conn):
     assert conn.execute("SELECT status FROM review_queue WHERE image_asset_id='L2'").fetchone()["status"] == "skipped"
 
 
+def test_lot_decide_refus_porte_son_asset_et_n_ecrit_rien(conn):
+    """Le refus du serveur est la seule trace d'une décision perdue.
+
+    Une row déjà `done` ne se réécrit pas : l'humain a tranché, rien n'est
+    écrit, et `done` reste à 0. L'entrée d'`errors` doit désigner l'asset —
+    sinon l'écran ne peut ni le dire ni rendre la décision à rejouer.
+    """
+    _seed_asset(conn, "D0", ebay_item="77", si_id="si_d", crop_index=0,
+                rq_status="done")
+    _seed_asset(conn, "D1", ebay_item="77", si_id="si_d", crop_index=1)
+    _coin(conn, "fr-2003-2eur-z")
+
+    class A:
+        def __init__(self, **k):
+            self.asset_id = k["asset_id"]
+            self.eurio_id = k.get("eurio_id")
+            self.face = k.get("face")
+            self.variant_kind = k.get("variant_kind")
+            self.reject_reason = k.get("reject_reason")
+            self.skip = k.get("skip", False)
+
+    avant = _row(conn, "D0")["eurio_id"]
+    out = apply_lot_decide(conn, "ebay_77", [
+        A(asset_id="D0", eurio_id="fr-2003-2eur-z", face="obverse"),
+        A(asset_id="D1", eurio_id="fr-2003-2eur-z", face="obverse"),
+    ])
+
+    assert out["done"] == 1, "seul le crop encore ouvert doit être écrit"
+    assert [e["asset_id"] for e in out["errors"]] == ["D0"]
+    assert "déjà done" in out["errors"][0]["message"]
+    # Et la row close n'a pas bougé : le refus n'est pas un demi-succès.
+    assert _row(conn, "D0")["eurio_id"] == avant
+
+
 def test_lot_decide_unknown_listing(conn):
     with pytest.raises(DecisionError) as e:
         apply_lot_decide(conn, "ebay_does_not_exist", [type("A", (), {"asset_id": "x", "eurio_id": None, "face": None, "variant_kind": None, "reject_reason": None, "skip": True})()])

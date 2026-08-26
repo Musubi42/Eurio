@@ -1758,7 +1758,8 @@ def get_lot_detail(
             """
             SELECT a.id AS asset_id, a.crop_index, a.bbox_json, a.phash,
                    a.eurio_id, a.candidate_eurio_ids_json, a.storage_path,
-                   rq.id AS review_id
+                   rq.id AS review_id, rq.status AS rq_status,
+                   rq.kind AS rq_kind
               FROM image_assets a
               LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
              WHERE a.source_image_id = ?
@@ -1810,6 +1811,13 @@ def get_lot_detail(
                 ),
                 asset_id=a["asset_id"],
                 review_id=a["review_id"] or "",
+                # Servis tels quels : le JOIN n'est PAS filtré sur
+                # `status='open'`, et c'est délibéré — filtrer ferait
+                # disparaître `review_id`, donc la différence entre « jamais mis
+                # en queue » et « déjà tranché », deux états que l'écran rend
+                # différemment. C'est au consommateur de choisir.
+                review_status=a["rq_status"],
+                review_kind=a["rq_kind"],
                 crop_url=_crop_url(source, a["asset_id"], a["storage_path"]),
                 crop_index=a["crop_index"],
                 phash=a["phash"],

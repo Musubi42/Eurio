@@ -688,6 +688,12 @@ class EncoderBenchRunPayload(BaseModel):
     host: str | None = None
     git_commit: str | None = None
     note: str | None = None
+    #: Migration 0015. ⚠️ Ces deux champs DOIVENT être déclarés ici : pydantic
+    #: ignore silencieusement un champ non déclaré, et le run monterait au
+    #: canonique amputé de sa précision et de son corpus — deux runs
+    #: indiscernables, exactement ce que 0015 existe pour éviter.
+    quantization: str = "fp32"
+    eval_corpus: str | None = None
 
 
 class EncoderBenchPredictionPayload(BaseModel):

@@ -35,27 +35,27 @@ from typing import Iterable
 COUNTRY_NAMES: dict[str, frozenset[str]] = {
     "AD": frozenset({"andorre", "andorra"}),
     "AT": frozenset({"autriche", "austria", "österreich", "osterreich"}),
-    "BE": frozenset({"belgique", "belgium", "belgien", "belgio"}),
+    "BE": frozenset({"belgique", "belgium", "belgien", "belgio", "bélgica", "belgica"}),
     "BG": frozenset({"bulgarie", "bulgaria", "bulgarien"}),
-    "CY": frozenset({"chypre", "cyprus", "zypern"}),
-    "DE": frozenset({"allemagne", "germany", "deutschland", "germania"}),
+    "CY": frozenset({"chypre", "cyprus", "zypern", "chipre"}),
+    "DE": frozenset({"allemagne", "germany", "deutschland", "germania", "alemania"}),
     "EE": frozenset({"estonie", "estonia", "estland"}),
     "ES": frozenset({"espagne", "spain", "españa", "espana", "spanien"}),
-    "FI": frozenset({"finlande", "finland", "finnland", "suomi"}),
+    "FI": frozenset({"finlande", "finland", "finnland", "suomi", "finlandia"}),
     "FR": frozenset({"france", "frankreich", "francia"}),
-    "GR": frozenset({"grèce", "grece", "greece", "griechenland", "ellada"}),
-    "HR": frozenset({"croatie", "croatia", "kroatien", "hrvatska"}),
-    "IE": frozenset({"irlande", "ireland", "irland", "eire"}),
+    "GR": frozenset({"grèce", "grece", "greece", "griechenland", "ellada", "grecia"}),
+    "HR": frozenset({"croatie", "croatia", "kroatien", "hrvatska", "croacia"}),
+    "IE": frozenset({"irlande", "ireland", "irland", "eire", "irlanda"}),
     "IT": frozenset({"italie", "italy", "italia", "italien"}),
-    "LT": frozenset({"lituanie", "lithuania", "litauen", "lietuva"}),
-    "LU": frozenset({"luxembourg", "luxemburg", "lussemburgo"}),
-    "LV": frozenset({"lettonie", "latvia", "lettland", "latvija"}),
-    "MC": frozenset({"monaco"}),
+    "LT": frozenset({"lituanie", "lithuania", "litauen", "lietuva", "lituania"}),
+    "LU": frozenset({"luxembourg", "luxemburg", "lussemburgo", "luxemburgo"}),
+    "LV": frozenset({"lettonie", "latvia", "lettland", "latvija", "letonia"}),
+    "MC": frozenset({"monaco", "mónaco"}),
     "MT": frozenset({"malte", "malta"}),
-    "NL": frozenset({"pays-bas", "pays bas", "netherlands", "niederlande", "olanda", "holland"}),
+    "NL": frozenset({"pays-bas", "pays bas", "netherlands", "niederlande", "olanda", "holland", "países bajos", "paises bajos"}),
     "PT": frozenset({"portugal"}),
-    "SI": frozenset({"slovénie", "slovenie", "slovenia", "slowenien", "slovenija"}),
-    "SK": frozenset({"slovaquie", "slovakia", "slowakei", "slovensko"}),
+    "SI": frozenset({"slovénie", "slovenie", "slovenia", "slowenien", "slovenija", "eslovenia"}),
+    "SK": frozenset({"slovaquie", "slovakia", "slowakei", "slovensko", "eslovaquia"}),
     "SM": frozenset({"saint-marin", "saint marin", "san marino"}),
     "VA": frozenset({"vatican", "vaticano", "vatikan"}),
 }
@@ -115,7 +115,24 @@ ALL_COUNTRY_ISO2: frozenset[str] = frozenset(COUNTRY_NAMES.keys())
 # Eurozone : 1999 = première frappe (lancement 2002), commémo depuis 2004.
 # Borne haute large pour absorber les listings prospectifs et garder la
 # regex simple.
-YEAR_RE = re.compile(r"\b(199[9]|20[0-3]\d)\b")
+# ⚠️ La borne DROITE n'est pas `\b` mais `(?![\d])`, et c'est délibéré.
+# `\b` refusait « 2016R » — millésime collé à la lettre d'atelier, forme
+# courante des annonces italiennes et allemandes (mesuré le 2026-08-27 :
+# 37 crops de la file ouverte portaient un millésime au titre et rendaient
+# `years_json = []`). La borne GAUCHE reste `\b` : sans elle, un numéro de
+# catalogue « KM2016 » deviendrait un millésime. Un chiffre à droite reste
+# refusé, donc « 20161 » ne rend rien.
+YEAR_RE = re.compile(r"\b(199[9]|20[0-3]\d)(?![\d])")
+
+# Plage de millésimes — « 2004 bis 2022 », « 2004 a 2024 », « 2004-2022 ».
+# Une plage n'affirme RIEN sur l'année de la pièce photographiée : le
+# vendeur annonce un choix. Le comparateur en fait un axe `absent`, jamais
+# un `contradict` (cf. comparator._year_axis).
+YEAR_RANGE_RE = re.compile(
+    r"\b(?:199[9]|20[0-3]\d)\s*(?:-|–|—|/|bis|to|a|à|au|until|hasta|fino\s+al)"
+    r"\s*(?:199[9]|20[0-3]\d)(?![\d])",
+    re.IGNORECASE,
+)
 YEAR_MIN, YEAR_MAX = 1999, 2039
 
 
@@ -158,6 +175,16 @@ REJECTION_MARKERS: dict[str, re.Pattern[str]] = {
     "error_struck": re.compile(r"\b(faut[eé]e?|erreur\s*de\s*frappe|mint\s*error|d[eé]sax[eé]e?|mal\s*frapp[eé]e?)\b", re.IGNORECASE),
     "replica": re.compile(r"\b(replica|copy|reproduction|fake|copie|nachbildung)\b", re.IGNORECASE),
     "fantasy": re.compile(r"\b(souvenir|fantasy|fantaisie|jeton|token)\b", re.IGNORECASE),
+    # L'objet vendu EST le rangement, pas une pièce. Volontairement
+    # étroit : « album », « étui », « capsule » et « blister » sont exclus
+    # car ils accompagnent presque toujours une vraie pièce (mesuré le
+    # 2026-08-27 : 1 213 crops de la file ouverte portent blister/coincard/
+    # capsule, contre 1 seul les marqueurs ci-dessous).
+    "accessory": re.compile(
+        r"(sammlerbox|m[üu]nzbox|sortierbox|aufbewahrungsbox|m[üu]nzalbum|"
+        r"3d[-\s]?druck|3d[-\s]?print|coin\s*holder|presentoir|pr[ée]sentoir)",
+        re.IGNORECASE,
+    ),
 }
 
 

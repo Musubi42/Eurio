@@ -419,15 +419,103 @@ mêmes pour les deux modèles et le McNemar est apparié : il reste utilisable
 pour les départager *entre eux*. Ce document sert à savoir ce que le chiffre
 vaudra, pas à retarder sa production.
 
-## Reste-à-faire hors étapes
+## Lot 5 — durcir la matrice (2026-08-26) : les quatre dettes sont fermées
 
-- **Persister `inputs_digest` sur l'itération** (~3 lignes). Il existe déjà
-  — recette + graine + cible + liste ordonnée des sources — mais il vit dans le
-  `_manifest.json` du bake et ne quitte jamais le disque. Sans lui, on ne saura
-  pas plus tard **avec quoi** un modèle a été entraîné.
-  ⚠️ Le pool grossit : **5 051 samples le 2026-08-16, 6 594 le 2026-08-25**
-  (+30,5 %) pour la même cohorte. Deux runs à deux semaines d'écart ne bakent
-  pas la même chose, et rien ne le dit.
+> Écrit, testé, **non déployé**. Deux migrations attendent la décision du PO
+> (§Ce qu'il faut lancer, plus bas). Rien n'a été appliqué au canonique, et la
+> matrice n'a **pas** été rejouée.
+
+| Dette | État | Où |
+|---|---|---|
+| 1. la règle v2 n'est pas dans le code | **était déjà faite** (commit `22364b34`) — mais **aucun test ne gardait le garde vendeur**. Ajouté, et la règle passe en **v3** | `ml/scripts/select_eval_holdout.py`, `ml/tests/test_eval_holdout.py` |
+| 2. quasi-doublons non exclus | ✅ garde `source_image_id`, `--no-dup-guard` pour le retirer, compteur `n_ecartes_doublon` dans le plan | idem |
+| 3. `encoder_bench_runs` — 2 colonnes | ✅ migration **0015** : `quantization` + `eval_corpus`, miroir `schema.sql`, `_ensure_column` pre-bootstrap | `ml/serving/migrations/0015_*.sql`, `ml/tests/test_encoder_bench_matrice_axes.py` |
+| 4. `inputs_digest` non persisté | ✅ migration **0016** : `experiment_iterations.inputs_digest`, rollup posé par le runner après le bake, poussé au canonique | `ml/serving/migrations/0016_*.sql`, `ml/tests/test_iteration_inputs_digest.py` |
+
+Trois décisions prises en chemin, et ce qu'elles écartent :
+
+- **`quantization` est RELEVÉE sur le modèle chargé, pas déclarée**
+  (`bench_encoder_dino._quantization_of`). Un champ déclaratif dirait « int8 »
+  d'un modèle resté en fp32 sans que rien ne rougisse — la matrice porterait
+  une comparaison fausse *en croyant se protéger*. Son vocabulaire est gardé à
+  la porte d'écriture (`record_run`), pas par un `CHECK` SQL : un CHECK
+  imposerait une reconstruction de table pour admettre une précision de plus,
+  et resterait **absent des bases antérieures à 0015**, donc muet là où il
+  compte.
+- **Pas de colonne `eval_corpus_version`** (que `MATRICE.md` §4 proposait) :
+  `gold_version` porte déjà l'empreinte du manifeste figé (`9bc08e19b83c` pour
+  les 260 frames). Deux sources de version qui divergent valent moins qu'une.
+  La valeur d'`eval_corpus` vient du **sidecar du gold**, jamais d'une requête
+  au moment du run — un gold doit rester relisible quand la base a bougé.
+- **Le garde quasi-doublon n'écarte rien de plus que le garde vendeur — sur la
+  donnée d'aujourd'hui.** ⚠️ Ce document a d'abord affirmé le contraire ;
+  corrigé le **2026-08-27** après mesure. Le raisonnement était juste en
+  principe — `_ANCHOR_SELLERS_SQL` exige `si.seller_id IS NOT NULL`, donc un
+  listing sans vendeur renseigné passe entre ses mailles, là où
+  `source_image_id` est `NOT NULL` — mais il ne mord sur rien :
+
+  ```bash
+  sqlite3 -readonly ml/state/eurio.replica.db \
+    "SELECT COUNT(*) FROM source_images WHERE source='ebay' AND seller_id IS NULL;"
+  # 5  sur ~20 845 — et 0 d'entre elles ne porte d'ancre
+  ```
+
+  `selectionner()` rejoué en process neuf, quatre combinaisons :
+
+  | gardes | classes | picks |
+  |---|---:|---:|
+  | vendeur + doublon | 43 | 215 |
+  | vendeur seul | 43 | 215 |
+  | doublon seul | 60 | 300 |
+  | aucun | 61 | 305 |
+
+  Différence symétrique des `asset_id` entre les deux premières lignes : **0**.
+  Le « +0,5 pt d'inflation » annoncé plus bas vaut **0** aujourd'hui.
+
+  **Le garde reste en place**, et c'est délibéré : il coûte un prédicat, il
+  ferme un trou réel, et le jour où `seller_id` sera moins bien renseigné il
+  mordra. Ce qui change, c'est ce qu'on a le droit d'en dire — il ne justifie
+  aucun chiffre. Un test nommé rougit si quelqu'un « simplifie ».
+
+### Ce qu'il faut lancer (décision du PO — rien n'a été appliqué)
+
+```bash
+# 1. Au canonique (VPS). Les migrations sont appliquées au DÉMARRAGE de
+#    eurio-api (serving/server_serve.py:81, AVANT l'ouverture du Store) :
+#    déployer le code et redémarrer le conteneur suffit.
+cd /opt/eurio && git fetch github repo-cleanup \
+  && git merge --ff-only github/repo-cleanup
+cd infra/eurio-api && direnv exec /opt/eurio docker compose up -d --build
+
+# 2. Vérifier — un exit 0 ne prouve rien, les colonnes si :
+sqlite3 -readonly /opt/eurio/ml/state/eurio.db \
+  "SELECT filename FROM _schema_migrations ORDER BY filename DESC LIMIT 3;
+   SELECT COUNT(*) FROM pragma_table_info('encoder_bench_runs')
+     WHERE name IN ('quantization','eval_corpus');
+   SELECT COUNT(*) FROM pragma_table_info('experiment_iterations')
+     WHERE name = 'inputs_digest';"
+# attendu : 0016…, 0015…, 0014… puis 2 puis 1
+```
+
+⚠️ **L'ordre migrations → Store est ce qui rend 0015/0016 sûres.**
+`ALTER TABLE ADD COLUMN` n'a pas d'`IF NOT EXISTS` : si un script ouvrait un
+Store **inscriptible** sur le canonique avant le boot de l'API, son
+`_ensure_column` poserait les colonnes et la migration crasherait ensuite en
+« duplicate column name ». Le crash est bruyant (au boot), pas muet — mais il
+faut le savoir. C'est le même montage que 0014, qui est passée.
+
+⚠️ **La matrice n'a pas été rejouée** (2 h). Les runs déjà en base porteront
+`quantization='fp32'` (le défaut, qui est leur vérité — `_load_model` ne
+convertit aucun dtype) et `eval_corpus=NULL`. Le prochain run de la matrice
+posera `eval_corpus='matrice-encodeurs-2026-08'` tout seul.
+
+⚠️ **La règle de prélèvement est en v3.** Le corpus servi
+(`matrice-encodeurs-2026-08`, 260 frames) a été prélevé en **v2** : il reste
+valable et comparable à lui-même, mais le **prochain** prélèvement ne sortira
+plus tout à fait de la même population. `SELECTION_RULE_VERSION` est écrit dans
+le plan JSON pour que ça se lise.
+
+## Reste-à-faire hors étapes
 - **La couche de textures est inerte** — la recette `test-3` déclare 3 couches,
   en applique 2 (`ml/training/data/overlays/` n'existe pas). Générer les
   textures change le bake, donc rend tout run ultérieur non comparable aux
@@ -446,12 +534,13 @@ vaudra, pas à retarder sa production.
   **Contournement immédiat** : recalculer dans un process neuf, ou redémarrer
   `:8042`. **Correctif de fond non fait.** Ne jamais conclure d'un
   `training-readiness` lu sur un serveur plus vieux que la dernière écriture.
-- **`encoder_bench_runs`** manque deux colonnes pour porter la matrice :
-  `quantization` et `eval_corpus` (cf. [`MATRICE.md`](./MATRICE.md) §4).
-- **Le prélèvement d'éval devrait exclure les quasi-doublons** : un crop dont
-  le `source_image_id` porte aussi une ancre de sa classe est presque la même
-  image. Mesuré le 2026-08-26 : 36/300 (12 %), tous justes sous `vitb14`,
-  +0,5 pt d'inflation. Un prédicat de plus dans `select_eval_holdout`.
+- ~~**`encoder_bench_runs`** manque deux colonnes~~ — ✅ **migration 0015**
+  (lot 5, non déployée). Cf. §Lot 5 plus haut.
+- ~~**Le prélèvement d'éval devrait exclure les quasi-doublons**~~ — ✅ **règle
+  v3** (lot 5). ⚠️ La mesure qui l'a motivé (36/300, 12 %, +0,5 pt d'inflation)
+  portait sur le corpus **v1**, prélevé **sans garde vendeur**. Sous la règle
+  v2/v3, le garde vendeur les écarte déjà tous : le garde doublon ajoute **0**
+  pick écarté. Mesure et tableau au §Lot 5.
 - **`provisional`** est gardé à l'écriture mais son prédicat croit quatre champs
   déclarés par l'appelant — à fermer avant qu'une page ne fonde un choix
   d'encodeur dessus.

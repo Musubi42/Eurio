@@ -1,0 +1,40 @@
+-- 0016 — L'empreinte des entrées d'un bake quitte le disque et devient une
+-- donnée de l'itération.
+--
+-- Chantier `juge-et-banc`, lot 5. `inputs_digest` EXISTE déjà — configuration
+-- de la recette + graine par pièce + cible + liste ORDONNÉE des sources
+-- (`training/iteration_augmentations._inputs_digest`) — mais il vit dans le
+-- `_manifest.json` de chaque pièce, sous
+-- `ml/datasets/<nid>/augmentations/<iid>/`, et ne quitte jamais la machine qui
+-- a baké. Trois conséquences, et la troisième est celle qui coûte :
+--
+--   1. le canonique ne sait pas AVEC QUOI un modèle a été entraîné ;
+--   2. une itération rapatriée d'une autre machine n'a pas ses manifestes ;
+--   3. **le pool grossit sous la même cohorte.** Mesuré : 5 051 samples le
+--      2026-08-16, 6 594 le 2026-08-25 (+30,5 %) pour la MÊME cohorte — les
+--      crops eBay scrapés entre-temps sont entrés dans le bake sans que rien
+--      ne le dise. Deux runs à deux semaines d'écart ne bakent pas la même
+--      chose, et aucune colonne ne permettait de le voir.
+--
+-- La colonne porte le ROLLUP des digests par pièce (cf.
+-- `iteration_augmentations.rollup_inputs_digest`), pas un digest par pièce :
+-- la maille de la question (« ce modèle a-t-il été entraîné sur les mêmes
+-- entrées que celui-là ? ») est l'itération. Le détail par pièce reste dans
+-- les manifestes, là où il sert au bake pour décider de régénérer.
+--
+-- NULL = itération bakée avant 0016, ou pas encore bakée. Ce n'est pas un
+-- trou à combler après coup : rejouer le digest sur un bake ancien
+-- fabriquerait une provenance re-devinée, exactement ce que le manifeste v2
+-- existe pour interdire.
+--
+-- Pas d'index : la colonne se lit sur une itération qu'on tient déjà, jamais
+-- en critère de balayage. Un index partiel ici obligerait un `_ensure_column`
+-- PRE-bootstrap (le piège de 0014/0015) pour rien.
+--
+-- ⚠️ Miroir DDL obligatoire dans `ml/state/schema.sql` + `_ensure_column` dans
+-- `store/connection.py` : les bases locales ne rejouent pas les migrations.
+-- Et le champ doit exister sur `IterationSnapshot`
+-- (`serving/iteration_sync_routes.py`), sinon pydantic le laisse tomber en
+-- silence et l'itération monte au canonique amputée de sa provenance.
+
+ALTER TABLE experiment_iterations ADD COLUMN inputs_digest TEXT;

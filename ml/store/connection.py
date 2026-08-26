@@ -334,6 +334,52 @@ class StoreBase:
                 self._ensure_column(
                     conn, table="image_assets", column="eval_corpus", decl="TEXT",
                 )
+                # Migration 0017 pre-bootstrap : `image_assets.face_source`
+                # AVANT executescript — schema.sql crée
+                # idx_image_assets_face_source ON (face_source) WHERE
+                # face_source = 'pipeline', qui planterait en « no such
+                # column » sur une base antérieure. Même piège qu'en 0014.
+                if self._ensure_column(
+                    conn, table="image_assets", column="face_source",
+                    decl="TEXT CHECK (face_source IS NULL OR "
+                         "face_source IN ('pipeline','human'))",
+                ):
+                    # Le BACKFILL de 0017, rejoué ici — sinon une base
+                    # antérieure verrait tous ses `face_source` à NULL, donc
+                    # tous ses verdicts HUMAINS comme écrasables par la passe
+                    # de face. L'ALTER seul poserait le défaut au lieu de le
+                    # corriger. Ne tourne qu'à la création de la colonne.
+                    if conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' "
+                        "AND name='review_queue'"
+                    ).fetchone():
+                        conn.execute(
+                            "UPDATE image_assets SET face_source='human' "
+                            " WHERE id IN (SELECT image_asset_id FROM review_queue"
+                            "              WHERE decided_face IN ('obverse','reverse'))"
+                        )
+                    conn.execute(
+                        "UPDATE image_assets SET face_source='pipeline' "
+                        " WHERE face IS NOT NULL AND face_source IS NULL"
+                    )
+            # Migration 0015 pre-bootstrap : `encoder_bench_runs.quantization` et
+            # `.eval_corpus` AVANT executescript, pour la MÊME raison qu'au-dessus
+            # — schema.sql crée l'index PARTIEL idx_encoder_bench_runs_corpus ON
+            # (eval_corpus, created_at DESC) WHERE eval_corpus IS NOT NULL, qui
+            # échouerait en « no such column: eval_corpus » sur une base portant
+            # déjà la table de 0009. Base fraîche : la table n'existe pas encore,
+            # executescript la crée avec les deux colonnes.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='encoder_bench_runs'"
+            ).fetchone():
+                for column, decl in (
+                    ("quantization", "TEXT NOT NULL DEFAULT 'fp32'"),
+                    ("eval_corpus", "TEXT"),
+                ):
+                    self._ensure_column(
+                        conn, table="encoder_bench_runs", column=column, decl=decl,
+                    )
             conn.executescript(schema)
             # Seed source_registry (idempotent, INSERT OR IGNORE) : la FK
             # coin_source_refs.source → source_registry (ON DELETE RESTRICT) est
@@ -377,6 +423,16 @@ class StoreBase:
                 table="experiment_iterations",
                 column="augmentations_seed",
                 decl="INTEGER",
+            )
+            # Migration 0016 : l'empreinte des entrées du bake. POST-bootstrap
+            # suffit (contrairement à 0014/0015) — aucun index de schema.sql ne
+            # référence cette colonne, donc `executescript` ne peut pas planter
+            # avant d'arriver ici.
+            self._ensure_column(
+                conn,
+                table="experiment_iterations",
+                column="inputs_digest",
+                decl="TEXT",
             )
             self._ensure_column(
                 conn,
@@ -731,11 +787,22 @@ class StoreBase:
         table: str,
         column: str,
         decl: str,
-    ) -> None:
+    ) -> bool:
+        """``True`` si la colonne vient d'être AJOUTÉE, ``False`` si elle
+        existait déjà.
+
+        Le retour n'est pas décoratif : une colonne dont la migration porte
+        aussi un BACKFILL ne peut pas se contenter de l'``ALTER`` ici. Sans lui,
+        une base antérieure gagnerait la colonne à NULL et un défaut lu comme
+        « inconnu » serait traité comme « écrasable » (cf. 0017 / face_source,
+        où NULL doit vouloir dire « pas encore de face », jamais « verdict
+        humain oublié »)."""
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
         existing = {r["name"] for r in rows}
-        if column not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        if column in existing:
+            return False
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        return True
 
     @contextmanager
     def _writing(self) -> Iterator[sqlite3.Connection]:

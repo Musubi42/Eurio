@@ -45,17 +45,55 @@ _MIGRATION = (
     / "0009_encoder_bench.sql"
 )
 
+_MIGRATION_0015 = (
+    Path(__file__).resolve().parent.parent
+    / "serving"
+    / "migrations"
+    / "0015_encoder_bench_quantization_eval_corpus.sql"
+)
+
 #: Le DDL, lu depuis la migration : une seule source, pas de copie qui dérive.
 SCHEMA_SQL = _MIGRATION.read_text(encoding="utf-8")
+
+#: Les colonnes ajoutées par 0015, avec leur déclaration. Elles ne peuvent pas
+#: être servies par ``executescript(SCHEMA_SQL)`` : ``ALTER TABLE ADD COLUMN``
+#: n'a pas de ``IF NOT EXISTS`` et lèverait « duplicate column name » au
+#: deuxième appel — or ``ensure_schema`` est explicitement rejouable.
+_COLUMNS_0015 = (
+    ("quantization", "TEXT NOT NULL DEFAULT 'fp32'"),
+    ("eval_corpus", "TEXT"),
+)
+
+#: Le vocabulaire admis par ``quantization``. Gardé ICI et pas par un ``CHECK``
+#: SQL : un CHECK imposerait une reconstruction de table pour admettre une
+#: précision de plus, et resterait absent des bases antérieures à 0015 — donc
+#: muet là où il compte. Cf. le commentaire de la colonne dans schema.sql.
+QUANTIZATIONS = ("fp32", "fp16", "int8_dynamic", "int8_static")
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     """Crée les tables si elles manquent (``IF NOT EXISTS``, rejouable).
 
     Sert les bases locales et les tests. Sur le canonique, c'est ``db_migrate``
-    qui applique la migration ; l'appeler ici ne fait rien de plus.
+    qui applique les migrations ; l'appeler ici ne fait rien de plus.
+
+    Applique aussi 0015 (``quantization`` / ``eval_corpus``) : sans ça une base
+    de test montée par cette fonction obtiendrait la table de 0009 et
+    :func:`record_run` lèverait « colonne absente » sur un champ que TOUT run
+    renseigne. La panne serait bruyante — mais au pire moment, après le calcul.
     """
     conn.executescript(SCHEMA_SQL)
+    present = _table_columns(conn, "encoder_bench_runs")
+    for column, decl in _COLUMNS_0015:
+        if column not in present:
+            conn.execute(
+                f"ALTER TABLE encoder_bench_runs ADD COLUMN {column} {decl}"
+            )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_encoder_bench_runs_corpus "
+        "ON encoder_bench_runs(eval_corpus, created_at DESC) "
+        "WHERE eval_corpus IS NOT NULL"
+    )
 
 
 @contextmanager
@@ -124,6 +162,15 @@ class EncoderBenchRun:
     host: str | None = None
     git_commit: str | None = None
     note: str | None = None
+    #: Migration 0015 — la PRÉCISION à laquelle l'encodeur a tourné. Elle est
+    #: RELEVÉE sur le modèle chargé, jamais déclarée par l'appelant (cf.
+    #: ``scripts.bench_encoder_dino._quantization_of``) : l'axe int8 n'a pas
+    #: encore été mesuré, et le jour où il le sera, un champ déclaratif dirait
+    #: « int8 » d'un modèle resté en fp32 sans que rien ne rougisse.
+    quantization: str = "fp32"
+    #: Migration 0015 — le corpus d'évaluation noté (``image_assets.eval_corpus``,
+    #: 0014), recopié du sidecar du gold. NULL = gold de review.
+    eval_corpus: str | None = None
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
@@ -376,6 +423,11 @@ def record_run(conn: sqlite3.Connection, run: EncoderBenchRun) -> None:
     DESTINATION, pas la réplique où l'appelant a calculé. Violation =
     :class:`CalibrationNotVerified`, jamais un silence.
 
+    Second garde, même porte : ``quantization`` doit appartenir à
+    :data:`QUANTIZATIONS`. Une précision inventée passerait le typage (c'est un
+    TEXT), s'écrirait, et rendrait deux bras de la matrice incomparables sans
+    qu'aucune lecture ne le dise.
+
     ``provisional=1`` n'est pas mesuré : se déclarer non-promouvable est
     toujours recevable, et le faire mesurer coûterait quatre requêtes SQL à
     chaque run du banc pour un verdict qui ne peut que confirmer.
@@ -391,6 +443,13 @@ def record_run(conn: sqlite3.Connection, run: EncoderBenchRun) -> None:
     serait exactement la panne muette que ce module passe son temps à traquer :
     un run qui croit avoir tracé son recouvrement et n'a rien tracé.
     """
+    if run.quantization not in QUANTIZATIONS:
+        raise ValueError(
+            f"encoder_bench_runs.quantization={run.quantization!r} hors "
+            f"vocabulaire {QUANTIZATIONS} — une precision inventee rendrait "
+            "deux bras de la matrice incomparables sans qu'aucune lecture ne "
+            "le dise"
+        )
     if int(run.provisional or 0) == 0:
         blockers = measured_blockers(conn, run)
         if blockers:

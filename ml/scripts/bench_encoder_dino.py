@@ -467,6 +467,39 @@ def score_crops(
     return preds, agg
 
 
+def _quantization_of(model: Any) -> str:
+    """La précision RELEVÉE sur le modèle chargé — jamais déclarée.
+
+    ``encoder_bench_runs.quantization`` (migration 0015) existe pour que deux
+    bras du même encodeur à deux précisions cessent d'être indiscernables. Un
+    champ déclaré par l'appelant ne rendrait pas ce service : il dirait
+    « int8 » d'un modèle resté en fp32 sans que rien ne rougisse, et la
+    matrice porterait une comparaison fausse en croyant se protéger. On lit
+    donc les paramètres.
+
+    Aujourd'hui ``_load_model`` ne convertit aucun dtype : les quatre bras du
+    2026-08-26 sont tous en ``fp32``. Le jour où l'axe int8 sera mesuré, cette
+    fonction le verra sans qu'on ait à s'en souvenir.
+    """
+    quantifie = any(
+        "quantized" in type(m).__module__ for m in model.modules()
+    )
+    if quantifie:
+        return "int8_dynamic"
+    try:
+        dtype = next(model.parameters()).dtype
+    except StopIteration:  # modèle sans paramètre : rien à relever
+        return "fp32"
+    if dtype in (torch.float16, torch.bfloat16):
+        return "fp16"
+    if dtype == torch.float32:
+        return "fp32"
+    raise RuntimeError(
+        f"dtype {dtype} inconnu du vocabulaire de `quantization` — nommer la "
+        "precision avant d'ecrire un run, plutot que de la ranger en fp32"
+    )
+
+
 def _bench_model(
     spec: str,
     anchor_eids: list[str],
@@ -515,6 +548,8 @@ def _bench_model(
         "params_m": n_params / 1e6,
         "input_px": input_px,
         "device": str(device),
+        # RELEVÉE sur le modèle, pas déclarée (cf. `_quantization_of`).
+        "quantization": _quantization_of(encoder),
         "preds": preds,
         "t_load": t_load,
         "t_encode": t_anchors + t_crops,
@@ -658,6 +693,7 @@ def build_run(
     mcnemar: Any | None = None,
     note: str | None = None,
     anchors_kind: str = BENCH_KIND,
+    eval_corpus: str | None = None,
 ) -> EncoderBenchRun:
     """Assemble la ligne ``encoder_bench_runs``. Fonction pure, donc testable.
 
@@ -710,6 +746,13 @@ def build_run(
         host=socket.gethostname(),
         git_commit=_git_commit(),
         note=note,
+        # Migration 0015 — les deux axes qui rendent deux runs comparables (ou
+        # explicitement non comparables) des mois plus tard. La précision est
+        # relevée sur le modèle par `_bench_model` ; le corpus vient du SIDECAR
+        # du gold (`meta['eval_corpus']`), donc du manifeste figé, jamais d'une
+        # requête d'ici : le gold peut être relu quand la base a bougé.
+        quantization=result.get("quantization", "fp32"),
+        eval_corpus=eval_corpus,
     )
 
 
@@ -1008,6 +1051,7 @@ def main(argv: list[str] | None = None) -> int:
                 mcnemar=mcnemar,
                 note=args.note,
                 anchors_kind=args.anchors_kind,
+                eval_corpus=meta.get("eval_corpus"),
             )
         )
 

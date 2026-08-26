@@ -6,8 +6,13 @@ Direction A, ``face`` est une colonne CANONIQUE lue depuis le VPS par le funnel
 split (le funnel lit une face que le scan a écrite ailleurs). Ce helper applique
 les verdicts au canonique via ``POST /ingest/faces`` (miroir de store/crops.py).
 
-Même garde que le scan : n'écrit ``face`` que si elle est NULL ou ``'unknown'``
-(jamais par-dessus un label humain/existant). Commit-free (le caller possède la
+Même garde que le scan, et il porte désormais sur la PROVENANCE et non sur la
+présence (migration 0017) : une face posée par la MACHINE (``face_source`` NULL
+ou ``'pipeline'``) se recalcule, un verdict HUMAIN (``'human'``) ne bouge pour
+personne. L'ancienne règle ``face IS NULL OR face='unknown'`` protégeait bien
+l'humain, mais gelait aussi la machine — or le seuil de face dérive avec la
+taille de la banque des avers (cf. ``FACE_REVERSE_TAU``), donc une étiquette
+machine fausse le restait à jamais. Commit-free (le caller possède la
 transaction). Idempotent. asset_id inconnus → ``missing`` (tolérant).
 """
 from __future__ import annotations
@@ -20,7 +25,7 @@ def apply_ingest_faces(conn, faces) -> dict:
 
     ``faces`` = itérable d'objets avec .asset_id / .face (duck-typé : pydantic OU
     dataclass). Retourne ``{"updated": n, "skipped": m, "missing": [asset_id…]}``
-    (``skipped`` = déjà labellisé, garde NULL/unknown).
+    (``skipped`` = verdict humain, épargné par le garde de provenance).
     """
     updated = 0
     skipped = 0
@@ -33,8 +38,8 @@ def apply_ingest_faces(conn, faces) -> dict:
             missing.append(f.asset_id)
             continue
         cur = conn.execute(
-            "UPDATE image_assets SET face = ? "
-            "WHERE id = ? AND (face IS NULL OR face = 'unknown')",
+            "UPDATE image_assets SET face = ?, face_source = 'pipeline' "
+            "WHERE id = ? AND (face_source IS NULL OR face_source = 'pipeline')",
             (f.face, f.asset_id),
         )
         if cur.rowcount:

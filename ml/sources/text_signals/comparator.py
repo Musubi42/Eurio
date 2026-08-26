@@ -98,8 +98,19 @@ def _country_axis(
 def _year_axis(
     signals_years: frozenset[int],
     target_year: int,
+    *,
+    years_are_range: bool = False,
 ) -> Literal["convergent", "contradict", "absent"]:
     if not signals_years:
+        return "absent"
+    # Une PLAGE n'affirme rien sur la pièce photographiée — « Italien 2 Euro
+    # 2004 bis 2022 » veut dire « choisis ton millésime ». La traiter comme
+    # une affirmation produisait un `contradict` sur un titre honnête, donc
+    # un `divergent`, donc de la review humaine pour rien. L'axe est `absent`.
+    # ⚠️ Ce n'est PAS couvert par la plage englobante ci-dessous : celle-ci
+    # ne rattrape que les cibles STRICTEMENT à l'intérieur, et laissait donc
+    # contredire toute cible tombant sur une borne ou au-delà.
+    if years_are_range:
         return "absent"
     if target_year in signals_years:
         return "convergent"
@@ -140,7 +151,10 @@ def compare_to_target(
     """
     axis_results = {
         "country": _country_axis(signals.countries, target.country),
-        "year": _year_axis(signals.years, target.year),
+        "year": _year_axis(
+            signals.years, target.year,
+            years_are_range=signals.years_are_range,
+        ),
         "denomination": _denomination_axis(
             signals.denominations, target.face_value
         ),

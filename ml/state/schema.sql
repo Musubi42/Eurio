@@ -207,7 +207,13 @@ CREATE TABLE IF NOT EXISTS experiment_iterations (
   -- dénormalisé des métriques (R@1/loss/verdict) pour afficher les chiffres
   -- partout sans pousser training_runs/benchmark_runs. Miroir : migration 0005.
   created_on                TEXT,
-  summary_json              TEXT
+  summary_json              TEXT,
+  -- Migration 0016 : l'empreinte des ENTRÉES du bake (rollup des digests par
+  -- pièce — config de recette + graine + cible + liste ordonnée des sources).
+  -- Sans elle on ne sait pas avec quoi un modèle a été entraîné, et le pool
+  -- grossit sous la même cohorte (5 051 → 6 594 samples entre le 2026-08-16 et
+  -- le 2026-08-25, +30,5 %). NULL = bakée avant 0016, ou pas encore bakée.
+  inputs_digest             TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_experiment_iterations_cohort ON experiment_iterations(cohort_id);
@@ -467,6 +473,18 @@ CREATE TABLE IF NOT EXISTS image_assets (
   -- mesure doit pouvoir nommer celui sur lequel elle a été faite.
   eval_corpus              TEXT,
 
+  -- Chantier debit-enrichissement (2026-08-27, migration 0017) : QUI a écrit
+  -- `face`. La passe de face n'écrivait qu'une fois (`WHERE face IS NULL`)
+  -- pour ne pas écraser un verdict humain — mais la colonne ne savait pas
+  -- distinguer les deux, donc protéger l'humain gelait aussi la machine.
+  -- Or le seuil de face DÉRIVE : la marge compare 34 ancres de revers à
+  -- 2 062 d'avers, et chaque rebuild de la banque la rabote (rappel des
+  -- revers durs 73,3 % → 40,0 % entre juin et août, τ inchangé).
+  --   'pipeline' → recalculable ; 'human' → jamais écrasée, par personne.
+  face_source              TEXT
+                           CHECK (face_source IS NULL
+                                  OR face_source IN ('pipeline', 'human')),
+
   UNIQUE (source_image_id, crop_index)
 );
 
@@ -481,6 +499,8 @@ CREATE INDEX IF NOT EXISTS idx_image_assets_storage_status
   ON image_assets(storage_status) WHERE storage_status != 'present';
 CREATE INDEX IF NOT EXISTS idx_image_assets_eval_corpus
   ON image_assets(eval_corpus) WHERE eval_corpus IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_image_assets_face_source
+  ON image_assets(face_source) WHERE face_source = 'pipeline';
 
 -- ─── Auto-validation: Dino predictions per crop ───────────────────────────
 -- Voir docs/sources-refacto/auto-validation/dino-verifier-kickoff.md.
@@ -742,10 +762,34 @@ CREATE TABLE IF NOT EXISTS encoder_bench_runs (
   host              TEXT,
   git_commit        TEXT,
   note              TEXT
+  -- ─── migration 0015 ─────────────────────────────────────────────────────
+  -- Les deux axes que la matrice d'encodeurs exige pour rester comparable dans
+  -- le temps. Ils sont DÉCLARÉS APRÈS `note` et pas au milieu : `ALTER TABLE
+  -- ADD COLUMN` ne sait ajouter qu'à la fin, et le miroir doit coller au DDL
+  -- qu'une base migrée obtient réellement — sinon test_schema_mirror rougit.
+  --
+  -- `quantization` : sans elle, deux bras du même modèle à deux précisions
+  -- s'écrasent (l'axe int8 n'est pas encore mesuré, il le sera). Le défaut
+  -- 'fp32' est la vérité de tous les runs existants ; le vocabulaire admis
+  -- ('fp32'|'fp16'|'int8_dynamic'|'int8_static') est gardé côté écriture par
+  -- `store.encoder_bench.record_run`, pas par un CHECK — un CHECK imposerait
+  -- une reconstruction de table pour ajouter une précision, et rendrait la
+  -- panne muette sur les bases antérieures qui ne l'ont pas.
+  --
+  -- `eval_corpus` : le nom du corpus d'évaluation noté (`image_assets.
+  -- eval_corpus`, migration 0014), recopié du sidecar du gold. NULL = gold de
+  -- review, le cas de tous les runs d'avant.
+  ,
+  quantization      TEXT NOT NULL DEFAULT 'fp32',
+  eval_corpus       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_encoder_bench_runs_couple
   ON encoder_bench_runs(anchors_kind, encoder_version, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_encoder_bench_runs_corpus
+  ON encoder_bench_runs(eval_corpus, created_at DESC)
+  WHERE eval_corpus IS NOT NULL;
 
 -- ~120 o/ligne. Volontairement SANS `top_k_json` : c'est ce qui fait peser
 -- 975 o/ligne à `image_asset_dino_predictions` (19,7 Mo pour 20 234 lignes).

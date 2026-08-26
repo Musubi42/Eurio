@@ -100,6 +100,13 @@ class CoinAugReport:
     n_real_ebay: int = 0          # crops eBay reviewés (training_eligible=1) utilisés
     n_ref_images: int = 0         # réfs officielles BCE / EUR-Lex JO utilisées
     below_floor_real: bool = False  # True si < FLOOR_REAL_EBAY crops eBay réels
+    #: L'empreinte des ENTRÉES de CETTE pièce (``_inputs_digest``). Remontée
+    #: dans le rapport pour que l'appelant puisse la persister sur l'itération
+    #: (migration 0016) sans relire les manifestes sur disque — ils n'existent
+    #: que sur la machine qui a baké. ``None`` pour une pièce sautée : elle n'a
+    #: pas d'entrées, et son absence DOIT changer le rollup (cf.
+    #: :func:`rollup_inputs_digest`).
+    inputs_digest: str | None = None
 
 
 # Schéma du ``_manifest.json`` par pièce. v1 = sans ``inputs_digest`` (on ne peut
@@ -136,6 +143,36 @@ def _inputs_digest(
         except OSError:
             size = -1  # source disparue entre la collecte et ici → digest différent
         h.update(f"{p}\0{size}\0".encode())
+    return h.hexdigest()
+
+
+def rollup_inputs_digest(reports: list[CoinAugReport]) -> str:
+    """L'empreinte des entrées de TOUTE l'itération, à partir des rapports.
+
+    Migration 0016. La maille de la question — « ces deux modèles ont-ils été
+    entraînés sur les mêmes entrées ? » — est l'ITÉRATION ; le détail par pièce
+    reste dans les manifestes, où il sert au bake à décider s'il régénère.
+
+    Trois propriétés, et chacune a coûté un raisonnement :
+
+    * **trié par ``eurio_id``**, donc indépendant de l'ordre dans lequel
+      ``bake_member_ids`` a rendu les pièces. Sans ça deux bakes identiques
+      rendraient deux digests différents et la colonne ne servirait à rien ;
+    * **une pièce SAUTÉE compte**, sous la forme ``skip:<motif>``. C'est le
+      point qui rend la colonne utile : le pool grossit (5 051 → 6 594 samples
+      pour la même cohorte entre le 2026-08-16 et le 2026-08-25), donc une
+      classe sans source un jour en a une le lendemain. Si les sautées étaient
+      omises, le rollup ne bougerait pas et dirait « mêmes entrées » d'un bake
+      qui a gagné une classe ;
+    * **la liste des pièces entre dans le hachage**, pas seulement leurs
+      digests : ajouter une pièce dont le digest coïncide par hasard avec une
+      autre ne doit pas passer inaperçu.
+    """
+    h = hashlib.sha256()
+    h.update(f"rollup-v{MANIFEST_VERSION}\0".encode())
+    for r in sorted(reports, key=lambda r: r.eurio_id):
+        marque = r.inputs_digest or f"skip:{r.skipped_reason or 'inconnu'}"
+        h.update(f"{r.eurio_id}\0{marque}\0".encode())
     return h.hexdigest()
 
 
@@ -565,6 +602,13 @@ def generate_for_iteration(
                 n_real_ebay=real_ebay,
                 n_ref_images=ref_sources,
                 below_floor_real=real_ebay < frozen_min_real,
+                # Remontée QUE le snapshot ait été régénéré ou réutilisé : dans
+                # les deux cas c'est bien l'empreinte des entrées courantes
+                # (`_reusable_snapshot` a justement prouvé qu'elles n'ont pas
+                # bougé). Ne la poser que sur la branche « régénéré » ferait
+                # dire au rollup « entrées inconnues » d'un bake parfaitement
+                # à jour — le pire des deux mondes.
+                inputs_digest=digest,
             )
         )
 

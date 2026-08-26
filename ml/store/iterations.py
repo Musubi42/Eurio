@@ -36,6 +36,12 @@ class ExperimentIterationRow:
     # métriques (R@1/loss/verdict). Poussés au canonique pour la sync Mac↔PC.
     created_on: str | None = None
     summary: dict | None = None
+    #: Migration 0016 — empreinte des ENTRÉES du dernier bake de cette
+    #: itération (rollup des digests par pièce, cf.
+    #: ``training.iteration_augmentations.rollup_inputs_digest``). NULL tant
+    #: qu'aucun bake n'a tourné depuis 0016 : on ne la reconstitue jamais après
+    #: coup, une provenance re-devinée vaut moins que pas de provenance.
+    inputs_digest: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -62,6 +68,7 @@ class ExperimentIterationRow:
             "finished_at": self.finished_at,
             "created_on": self.created_on,
             "summary": self.summary,
+            "inputs_digest": self.inputs_digest,
         }
 
 
@@ -153,6 +160,8 @@ def _row_to_iteration(r: sqlite3.Row) -> ExperimentIterationRow:
         # la migration 0005 ne les expose pas → traitées comme NULL.
         created_on=_optional_column(r, "created_on"),
         summary=_json_or_none(_optional_column(r, "summary_json")),
+        # Lue en gracieux elle aussi : une DB antérieure à 0016 ne l'expose pas.
+        inputs_digest=_optional_column(r, "inputs_digest"),
     )
 
 
@@ -232,9 +241,10 @@ class IterationsMixin:
                   verdict, verdict_override,
                   delta_vs_parent_json, diff_from_parent_json,
                   notes, error, augmentations_seed,
-                  created_at, started_at, finished_at, created_on, summary_json
+                  created_at, started_at, finished_at, created_on, summary_json,
+                  inputs_digest
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          COALESCE(?, datetime('now')), ?, ?, ?, ?)
+                          COALESCE(?, datetime('now')), ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   cohort_id            = excluded.cohort_id,
                   parent_iteration_id  = excluded.parent_iteration_id,
@@ -257,7 +267,8 @@ class IterationsMixin:
                   started_at           = excluded.started_at,
                   finished_at          = excluded.finished_at,
                   created_on           = excluded.created_on,
-                  summary_json         = excluded.summary_json
+                  summary_json         = excluded.summary_json,
+                  inputs_digest        = excluded.inputs_digest
                 """,
                 (
                     iteration.id,
@@ -283,6 +294,7 @@ class IterationsMixin:
                     iteration.finished_at,
                     iteration.created_on,
                     json.dumps(iteration.summary) if iteration.summary is not None else None,
+                    iteration.inputs_digest,
                 ),
             )
 
@@ -303,6 +315,7 @@ class IterationsMixin:
         finished_at: str | None = None,
         recipe_id: str | None = None,
         variant_count: int | None = None,
+        inputs_digest: str | None = None,
     ) -> None:
         fields_sql: list[str] = []
         params: list = []
@@ -345,6 +358,9 @@ class IterationsMixin:
         if variant_count is not None:
             fields_sql.append("variant_count = ?")
             params.append(variant_count)
+        if inputs_digest is not None:
+            fields_sql.append("inputs_digest = ?")
+            params.append(inputs_digest)
         if not fields_sql:
             return
         params.append(iteration_id)
