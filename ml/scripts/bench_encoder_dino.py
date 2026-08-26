@@ -169,6 +169,13 @@ def default_db() -> Path:
 
 
 BENCH_KIND = "2eur_all"
+
+#: Préfixe de spec pour NOTRE modèle entraîné. Le reste est un chemin vers un
+#: `best_model.pth` — cf. `_load_model` pour ce que ce bras mesure vraiment.
+ARCFACE_PREFIX = "arcface:"
+
+#: Résolution d'entrée de `CoinEmbedder` (`get_val_transforms`).
+ARCFACE_INPUT_PX = 224
 TOP_K = 5
 
 #: Où atterrit un run que la sync n'a pas pu remonter. Un fichier local, jamais
@@ -193,9 +200,31 @@ def encoder_version_of(spec: str) -> str:
     masquerait le vrai.
     """
     spec = spec.strip()
+    if spec.startswith(ARCFACE_PREFIX):
+        # `arcface:<chemin>/lab/iterations/<iid>/checkpoints/best_model.pth`
+        # → `arcface-<iid>`. Le chemin ne doit PAS entrer dans l'identité :
+        # il diffère d'une machine à l'autre, et deux runs du même modèle
+        # seraient alors deux encodeurs distincts en base. L'itération, elle,
+        # est l'identité canonique du modèle.
+        return f"arcface-{_iteration_id_of(spec[len(ARCFACE_PREFIX):])}"
     if spec.startswith("timm:"):
         return spec
     return spec.replace("_", "-", 1)
+
+
+def _iteration_id_of(chemin: str) -> str:
+    """L'id d'itération dans un chemin d'artefact, ou le nom du fichier.
+
+    ``…/lab/iterations/b55b61b59632/checkpoints/best_model.pth`` → ``b55b61b59632``.
+    Repli sur le nom du fichier quand le chemin ne suit pas cette forme : mieux
+    vaut un identifiant moche qu'un identifiant faux.
+    """
+    parties = Path(chemin).resolve().parts
+    if "iterations" in parties:
+        i = parties.index("iterations")
+        if i + 1 < len(parties):
+            return parties[i + 1]
+    return Path(chemin).stem
 
 
 def _slug(spec: str) -> str:
@@ -284,10 +313,55 @@ def blocker_banner(
 def _load_model(spec: str, device) -> tuple[Any, Any, int, int]:
     """Charge un encodeur d'après sa spec → (model, transform, n_params, input_px).
 
-    ``timm:<name>`` charge via timm avec la transform recommandée du modèle
-    (num_classes=0 → features poolées) ; sinon torch.hub DINOv2 + transform
-    foundation (224).
+    Trois familles :
+
+    * ``timm:<name>`` — n'importe quel backbone timm pré-entraîné, avec SA
+      transform recommandée (num_classes=0 → features poolées) ;
+    * ``arcface:<chemin vers best_model.pth>`` — NOTRE modèle entraîné, chargé
+      comme un simple encodeur ;
+    * sinon — torch.hub DINOv2 + transform foundation (224).
+
+    🔴 **Ce que le bras ArcFace mesure, et ce qu'il ne mesure PAS.** On charge
+    le backbone et on lui fait encoder **la même banque d'ancres** que les
+    autres bras. Ses **centroïdes entraînés ne servent pas**. Deux
+    conséquences, et il faut les dire avec le chiffre :
+
+    1. c'est une mesure de **représentation**, pas du système qui shippe. En
+       production ArcFace compare à ses centroïdes, pas au plus proche voisin
+       d'une banque d'ancres ;
+    2. en revanche l'espace de labels devient **identique** pour les quatre
+       bras (celui de la banque), donc la comparaison est appariée et le garde
+       d'espace de labels n'a rien à refuser. Sans ça, ArcFace affronterait ses
+       60 centroïdes là où DINO n'a que les 52 classes du jeu — on mesurerait
+       la taille des espaces de recherche.
+
+    ⚠️ **Et une asymétrie réelle, qui n'est pas un défaut du protocole** :
+    ArcFace a été ENTRAÎNÉ sur les crops qui composent la banque (ils sont dans
+    le pool de train). DINO n'a rien vu. Les requêtes, elles, sont inconnues
+    des deux (c'est tout l'objet du hold-out). L'avantage d'ArcFace sur les
+    références est donc réel et voulu — c'est ce qu'on paie par un
+    ré-entraînement à chaque classe nouvelle, là où DINO n'en demande aucun.
     """
+    if spec.startswith(ARCFACE_PREFIX):
+        # ⚠️ Pas d'`import torch` ici : `torch` est importé au niveau MODULE
+        # (ligne 109), et un import local le rendrait local à TOUTE la
+        # fonction — la branche DINOv2 plus bas lèverait alors
+        # `UnboundLocalError: cannot access local variable 'torch'`. Vécu le
+        # 2026-08-26 : les trois bras DINO sont tombés, seul ArcFace a tourné.
+        from training.train_embedder import CoinEmbedder, get_val_transforms
+
+        chemin = Path(spec[len(ARCFACE_PREFIX):]).expanduser()
+        if not chemin.exists():
+            raise SystemExit(f"checkpoint ArcFace introuvable : {chemin}")
+        ckpt = torch.load(chemin, map_location=device, weights_only=False)
+        model = CoinEmbedder(embedding_dim=ckpt.get("embedding_dim", 256))
+        model.load_state_dict(ckpt["model_state_dict"])
+        transform = get_val_transforms()
+        input_px = ARCFACE_INPUT_PX
+        model.eval()
+        model.to(device)
+        n_params = sum(p.numel() for p in model.parameters())
+        return model, transform, n_params, input_px
     if spec.startswith("timm:"):
         import timm
         name = spec[len("timm:"):]

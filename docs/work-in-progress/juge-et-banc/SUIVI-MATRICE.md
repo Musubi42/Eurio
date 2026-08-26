@@ -196,7 +196,7 @@ Répartition des 68 classes riches : 8 à `10-14`, 9 à `15-19`, 23 à `20-29`,
 | **2bis** | Composer la cohorte des 60 (bloqueur `REVUE-ETAPE3` §B4) | Mac | ✅ **fait** 2026-08-26 — `matrice-60c` = **`2e51f2b3d633`**, clonée de `rich10-68c` moins les 8 classes sans hold-out. Préflight : **60 classes, `ready=true`, 0 block, 0 warn, `n_ebay = 1908`**. Classe la plus pauvre : 12 crops. **Encore `draft`** — créer l'itération la gèlera irréversiblement |
 | **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | ✅ **calibration jouée et rapatriée** 2026-08-26 — `b55b61b59632`, `status=completed`, 3 epochs en **9 min 28 s**, 13 988 samples bakés. Artefacts sur le Mac. Reste : le run complet à 40 epochs (≈ 2 h 06, **mesuré** et non plus extrapolé) |
 | **4** | Sous-banque DINO restreinte aux 60 classes | Mac | 🔜 |
-| **5** | La matrice — les bras sur les mêmes 260 frames | Mac | 🟡 **3 bras DINO mesurés** sur le corpus v2, cf. §Les chiffres. Le bras **ArcFace manque** : sans lui, aucun McNemar contre le modèle qui shippe |
+| **5** | La matrice — les 4 bras sur les mêmes 260 frames | Mac | 🟡 **4 bras mesurés** 2026-08-26, cf. §Les chiffres. ⚠️ Le bras ArcFace est un run de **calibration à 3 epochs**, non convergé : la comparaison qui compte attend les 40 epochs |
 
 ✅ **`0014` est au canonique depuis le 2026-08-26.** Ce qui suit reste vrai comme RÈGLE : Le
 prédicat `eval_corpus IS NULL` est en place dans les deux collectes ; sur une base
@@ -255,49 +255,73 @@ préflight contrôle — c'est voulu, et c'est pourquoi le quota se raisonne sur
 
 Préparée ici, jouée là-bas. La revue de préparation dira si elle est prête.
 
-## Les chiffres — 3 bras DINO, corpus v2, 2026-08-26
+## Les chiffres — LES 4 BRAS, 2026-08-26
 
 Rapport brut : [`matrice-dino.md`](./matrice-dino.md). Jeu `9bc08e19b83c`
-(**260 frames, 52 classes**, règle v2 : 5 au hasard + garde vendeur), banque
-`matrice60` (**1 813 ancres**, tout le pool moins les vendeurs du jeu).
+(260 frames, 52 classes, règle v2), banque `matrice60` (1 813 ancres).
 Appariement vérifié : 52 classes toutes présentes, 0 distracteur, 0 crop non
-encodé. **Recouvrement vendeur nul par construction, dans les deux sens.**
+encodé. **Les quatre bras encodent la MÊME banque et les MÊMES frames** — même
+espace de labels, McNemar apparié.
 
 | Modèle | M params | dim | **r@1** | r@5 | pays@1 | ms/img |
 |---|---:|---:|---:|---:|---:|---:|
-| `dinov2_vits14` | 22,1 | 384 | 94,2 % | 99,2 % | 88,1 % | **13** |
-| `dinov2_vitb14` | 86,6 | 768 | 96,9 % | 99,6 % | **89,2 %** | 32 |
-| **`dinov2_vitl14`** | 304,4 | 1024 | **98,1 %** | 99,6 % | 88,5 % | 108 |
+| **ArcFace** `b55b61b59632` | **1,1** | 256 | **76,5 %** | 93,8 % | 83,8 % | **4** |
+| `dinov2_vits14` | 22,1 | 384 | 94,2 % | 99,2 % | 88,1 % | 13 |
+| `dinov2_vitb14` | 86,6 | 768 | 96,9 % | 99,6 % | **89,2 %** | 31 |
+| `dinov2_vitl14` | 304,4 | 1024 | **98,1 %** | 99,6 % | 88,5 % | 101 |
 
-McNemar apparié, référence `vits14` :
+McNemar apparié, référence **ArcFace** :
 
-| bras | gagne | perd | discordants | p |
-|---|---:|---:|---:|---:|
-| `vitb14` | 12 | 5 | 17 | 0,144 |
-| **`vitl14`** | **14** | **4** | **18** | **0,031** ✅ |
+| bras | gagne | perd | p |
+|---|---:|---:|---:|
+| `vits14` | 50 | 4 | 3,8 × 10⁻¹¹ |
+| `vitb14` | 57 | 4 | 4,9 × 10⁻¹³ |
+| `vitl14` | 59 | 3 | **1,7 × 10⁻¹⁴** |
 
-**`vitl14` bat `vits14` de façon significative** (p = 0,031), et le classement
-est désormais **monotone en taille** (94,2 < 96,9 < 98,1) — alors que la mesure
-v1 mettait `vitl14` SOUS `vitb14`. Ce qui ressemblait à un fait dans la v1
-était bien du bruit.
+### 🔴 CE CHIFFRE NE DIT PAS QUE DINO BAT ARCFACE
 
-⚠️ **Trois réserves, à dire avec le chiffre :**
+**L'ArcFace mesuré est un run de CALIBRATION à 3 epochs, pas un modèle
+entraîné.** Sa perte valait encore **5,42 et descendait** (9,93 → 6,22 → 5,42)
+quand le run s'est arrêté. Il n'a pas convergé, et il n'a jamais prétendu le
+faire : son but était de valider la plomberie avant les 40 epochs.
 
-1. **on ne peut PAS attribuer l'écart avec la mesure v1.** Deux choses ont
-   changé en même temps : la règle du jeu (v1 tilt → v2 hasard + garde vendeur)
-   **et** la banque (893 ancres FPS → 1 813, tout le pool). Les taux absolus
-   ont MONTÉ malgré la décontamination, parce que doubler la banque aide plus
-   que la propreté ne coûte — mais la part de chacun n'est pas mesurée ;
-2. **p = 0,031 tient à 18 paires discordantes.** Une seule frame qui bascule
-   fait passer la p-value au-dessus de 0,05. C'est significatif, ce n'est pas
-   robuste ;
-3. **`vitl14` vs `vitb14` n'est pas testé** — la référence du McNemar est
-   `vits14`. Leur écart de 1,2 pt n'a pas de p-value ici.
+Comparer un modèle à 3 epochs à trois encodeurs pré-entraînés sur des millions
+d'images et en tirer « DINO gagne » serait malhonnête. **La comparaison qui
+compte attend le run à 40 epochs** (≈ 2 h 06, mesuré).
 
-**Ce que ça ne dit toujours pas** : rien sur ArcFace (le bras manque), rien sur
-l'int8 (tous les bras en fp32), aucun seuil (run `provisional=1`). Non poussé
-au canonique — `MATRICE.md §4` prévient qu'une page affichant cette table
-fonderait un choix d'encodeur sur `provisional`, dette encore ouverte.
+### Ce qui EST acquis, et qui ne bougera pas
+
+* **la chaîne de mesure fonctionne de bout en bout** : 4 bras, une banque, un
+  jeu, un espace de labels commun, un McNemar apparié. C'était l'objet du
+  chantier, et c'est fait ;
+* **le coût d'ArcFace est écrasant en sa faveur** : 1,1 M de paramètres et
+  **4 ms/image**, contre 304 M et 101 ms pour `vitl14` — **25× plus rapide,
+  276× plus petit**. Cet écart-là ne dépend pas de l'entraînement. Si le run à
+  40 epochs le rapproche des DINO, la question du choix devient sérieuse ;
+* **`r@5 = 93,8 %` à 3 epochs** alors que `r@1` n'est qu'à 76,5 % : la bonne
+  réponse est presque toujours dans les cinq. C'est la signature d'un modèle
+  qui a appris à séparer grossièrement et pas encore à trancher — exactement ce
+  qu'on attend à mi-entraînement.
+
+### Le protocole, et ce qu'il coûte
+
+ArcFace entre dans le banc **comme un encodeur** : on lui fait encoder la même
+banque d'ancres que les autres, et **ses 60 centroïdes entraînés ne servent
+pas**. Deux conséquences :
+
+* c'est une mesure de **représentation**, pas du système qui shippe — en
+  production ArcFace compare à ses centroïdes, pas au plus proche voisin d'une
+  banque ;
+* mais l'espace de labels devient **identique pour les quatre bras**, donc la
+  comparaison est appariée. Sans ça, ArcFace aurait affronté ses 60 centroïdes
+  là où DINO n'a que 52 classes, et on aurait mesuré la taille des espaces de
+  recherche.
+
+⚠️ **Une asymétrie réelle, qui n'est pas un défaut** : ArcFace a été ENTRAÎNÉ
+sur les crops qui composent la banque ; DINO n'a rien vu. Les requêtes sont
+inconnues des deux. L'avantage d'ArcFace sur les références est donc réel — et
+il perd quand même, ce qui confirme qu'il est sous-entraîné plutôt que
+désavantagé.
 
 ## Le run ArcFace de calibration — joué, rapatrié, 2026-08-26
 
@@ -491,6 +515,8 @@ Verrouillé par 7 tests dans `tests/test_replay_corpus_iteration.py`.
 | 2026-08-26 | ⚠️ **Panne muette trouvée en vérifiant l'étape 2** : l'API `:8042` déjà lancée répondait encore `n_ebay=2296` sur `training-readiness` alors que le fichier réplique qu'elle lit disait 1996. Sa connexion read-only thread-local ne voit pas les pages neuves écrites par `sqlite3_rsync`. **Un `training-readiness` lu sur un serveur lancé avant une écriture ment.** Cf. §Reste-à-faire. |
 | 2026-08-26 | **3 bras DINO, mesure v1** (300 frames, règle tilt, banque FPS 893) : 94,0 / 96,3 / 95,3 %. **Aucun écart significatif.** Jeu contaminé à 40,7 % au vendeur. |
 | 2026-08-26 | **Règle v2 + banque complète, remesure** : jeu `9bc08e19b83c` (260 frames, 52 classes, 5 au hasard, garde vendeur symétrique), banque 1 813 ancres. vits14 94,2 %, vitb14 96,9 %, **vitl14 98,1 %** — et **`vitl14` bat `vits14`, p = 0,031**. Classement monotone en taille, alors que la v1 inversait vitl14/vitb14. ⚠️ Deux changements simultanés : l'écart avec la v1 n'est PAS attribuable. |
+| 2026-08-26 | **Les 4 bras mesurés.** ArcFace (3 epochs) 76,5 % · vits14 94,2 % · vitb14 96,9 % · vitl14 98,1 %. Les trois DINO battent ArcFace à `p < 10⁻¹⁰` — **mais ArcFace n'a pas convergé** (perte 5,42 et descendante). Ce qui est acquis : la chaîne de mesure marche, et ArcFace est 25× plus rapide / 276× plus petit que `vitl14`. |
+| 2026-08-26 | **Run ArcFace rapatrié du PC par MinIO**, sha256 identique des deux côtés. 3 epochs en 9 min 28 s sur 13 988 samples → les 40 epochs coûteront ≈ 2 h 06. |
 | 2026-08-26 | **La libération du corpus d'éval existe** (`--release`). Il était une porte à sens unique : un crop entré ne pouvait plus revenir au train, donc changer de règle était impossible sans le perdre. 300 ramenés, 0 échec. |
 | 2026-08-26 | **Itération de calibration `b55b61b59632` créée** — 3 epochs, `val_source=none`, `centroid_source=train_mean`, graine `20260826`, recette `test-3`, `variant_count=100`. Les cinq clés **relues sur la ligne**. La cohorte `matrice-60c` est **gelée** (`2026-08-26T01:36:48Z`). Le run court valide la plomberie (bake, MinIO, boucle, embeddings, TFLite) — **pas** la notation sur les 300 frames, qui attend le **lot A**. |
 | 2026-08-26 | **Cohorte `matrice-60c` (`2e51f2b3d633`) composée** : 60 classes, `ready=true`, 0 block, 0 warn, `n_ebay=1908`. Encore `draft`. |
