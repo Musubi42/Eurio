@@ -1,9 +1,31 @@
-"""Bench encodeurs zero-shot sur le GOLD FIGÉ de review (offline).
+"""Bench encodeurs zero-shot sur un GOLD FIGÉ (offline).
 
-Ré-encode la banque d'ancres (même composition que la banque SERVIE
-``2eur_all`` : on reprend ses ``source_paths``) ET les crops du gold figé
-(``review/bench_gold.py``) avec chaque encodeur, puis mesure recall@1/@5
-global et bande pays sur les crops in-scope.
+Ré-encode une banque d'ancres (on reprend ses ``source_paths``) ET les crops
+d'un gold figé avec chaque encodeur, puis mesure recall@1/@5 global et bande
+pays sur les crops in-scope.
+
+DEUX COUPLES (gold, banque) AUJOURD'HUI — ET ILS VONT ENSEMBLE
+---------------------------------------------------------------
+==================================== =============== ==========================
+--gold                                --anchors-kind  ce qu'on mesure
+==================================== =============== ==========================
+``encoder_bench_gold.jsonl`` (défaut) ``2eur_all``    tout ce que la review a
+                                                      tranché, contre la banque
+                                                      SERVIE (1 958 crops,
+                                                      188 classes / 671)
+``matrice_eval_gold.jsonl``           ``matrice60``   le hold-out de la matrice
+                                                      d'encodeurs (300 crops,
+                                                      60 classes / 60)
+==================================== =============== ==========================
+
+🔴 **Les deux arguments se choisissent ENSEMBLE.** Une banque qui ne couvre pas
+les classes du gold ferait partir ses crops en ``n_out_of_scope`` : le recall
+serait calculé sur un dénominateur que personne n'a choisi, et il resterait
+parfaitement plausible. Mesuré sur le mauvais couple (gold de review contre
+``matrice60``) : **822 frames sur 1 958, soit 42 %**, disparaîtraient. D'où
+``assert_gold_covered_by_bank``, qui refuse **avant le premier encodage** —
+refuser après vingt minutes de calcul laisserait sur disque des chiffres qu'on
+serait tenté de lire quand même.
 
 CE QUE CE BANC LIT, ET CE QU'IL N'ÉCRIT PAS
 -------------------------------------------
@@ -87,6 +109,7 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from training.foundation import (  # noqa: E402
+    DEFAULT_ENCODER_VERSION,
     DINOV2_REPO,
     AnchorBank,
     build_transform,
@@ -375,6 +398,7 @@ def _bench_model(
     anchor_eids: list[str],
     anchor_paths: list[Path],
     crops: Sequence[tuple[GoldCrop, Path]],
+    anchors_kind: str = BENCH_KIND,
 ) -> dict:
     device = pick_device()
     print(f"\n=== {spec} on {device} ===", file=sys.stderr)
@@ -393,7 +417,7 @@ def _bench_model(
         eurio_ids=eids,
         matrix=anchor_matrix,
         encoder_version=encoder_version_of(spec),
-        anchors_kind=BENCH_KIND,
+        anchors_kind=anchors_kind,
         built_at="bench",
     )
 
@@ -439,6 +463,51 @@ def _git_commit() -> str | None:
     return out.stdout.strip() or None
 
 
+def assert_gold_covered_by_bank(gold, bank, *, gold_name: str, kind: str) -> None:
+    """Refuse d'apparier un manifeste et une banque qui ne se recouvrent pas.
+
+    ``score_crops`` écarte silencieusement un crop dont la classe n'est pas
+    dans la banque (``n_out_of_scope``). C'est le bon comportement au moment de
+    noter — mais si la MOITIÉ du gold y passe, le recall est calculé sur un
+    dénominateur que personne n'a choisi, et il reste parfaitement plausible.
+
+    Le garde s'exécute **avant le premier encodage**, comme
+    ``assert_same_label_space`` : refuser après vingt minutes de calcul
+    laisserait sur disque des chiffres qu'on serait tenté de lire quand même.
+
+    Les classes de la banque ABSENTES du gold ne sont pas une erreur : ce sont
+    les distracteurs, et c'est leur nombre qui fait la difficulté de la tâche.
+    On les compte, on ne les refuse pas.
+    """
+    classes_gold = {c.class_id for c in gold}
+    classes_bank = set(bank.eurio_ids)
+    manquantes = sorted(classes_gold - classes_bank)
+    if not manquantes:
+        n_frames = len(gold)
+        print(
+            f"appariement OK : {len(classes_gold)} classes du gold toutes "
+            f"présentes dans `{kind}` · {len(classes_bank) - len(classes_gold)} "
+            f"classe(s) de banque en distracteurs · {n_frames} frames",
+            file=sys.stderr,
+        )
+        return
+
+    perdues = sum(1 for c in gold if c.class_id in set(manquantes))
+    raise SystemExit(
+        f"Manifeste et banque ne s'apparient pas — banc REFUSÉ.\n"
+        f"  gold {gold_name} : {len(classes_gold)} classes\n"
+        f"  banque {kind} : {len(classes_bank)} classes\n"
+        f"  {len(manquantes)} classe(s) du gold ABSENTES de la banque, soit "
+        f"{perdues} frames sur {len(gold)} "
+        f"({perdues / len(gold):.1%}) : {manquantes[:5]}"
+        f"{' …' if len(manquantes) > 5 else ''}\n"
+        f"Ces frames partiraient en `out_of_scope` et disparaîtraient du "
+        f"dénominateur : le recall serait calculé sur moins de classes "
+        f"qu'annoncé — faux, pas partiel. Vérifie que --gold et "
+        f"--anchors-kind sont le couple prévu."
+    )
+
+
 def _bank_build_id(conn: sqlite3.Connection, kind: str, encoder_version: str) -> str | None:
     """Le dernier ``dino_anchor_builds.build_id`` du couple, ou ``None``.
 
@@ -473,6 +542,7 @@ def build_run(
     baseline_run_id: str | None = None,
     mcnemar: Any | None = None,
     note: str | None = None,
+    anchors_kind: str = BENCH_KIND,
 ) -> EncoderBenchRun:
     """Assemble la ligne ``encoder_bench_runs``. Fonction pure, donc testable.
 
@@ -487,7 +557,10 @@ def build_run(
         gold_version=gold_version,
         gold_n_crops=gold_n_crops,
         gold_sample_n=gold_sample_n,
-        anchors_kind=BENCH_KIND,
+        # La banque NOTÉE, jamais une constante : deux runs contre deux banques
+        # différentes seraient indiscernables dans `encoder_bench_runs`, et on
+        # comparerait un recall à 60 classes avec un recall à 671.
+        anchors_kind=anchors_kind,
         encoder_spec=result["model"],
         encoder_version=result["encoder_version"],
         n_in_scope=result["n_in_scope"],
@@ -599,6 +672,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--gold", type=Path, default=DEFAULT_GOLD,
                         help=f"manifeste figé (défaut : {DEFAULT_GOLD})")
+    parser.add_argument(
+        "--anchors-kind", default=BENCH_KIND,
+        help=f"le `kind` de la banque d'ancres à noter (défaut : {BENCH_KIND}, "
+             "la banque SERVIE). `matrice60` = la sous-banque des 60 classes "
+             "du chantier juge-et-banc. ⚠️ Le kind et le --gold vont ENSEMBLE : "
+             "une banque qui ne couvre pas les classes du manifeste ferait "
+             "partir ses crops en `out_of_scope`, donc disparaître du "
+             "dénominateur — c'est vérifié avant tout encodage.",
+    )
     parser.add_argument("--limit", type=int, default=None,
                         help="échantillon déterministe de N crops du gold — "
                              "marque le run comme non promouvable")
@@ -615,11 +697,17 @@ def main(argv: list[str] | None = None) -> int:
 
     db_path = Path(args.db) if args.db else default_db()
 
-    base = load_anchors(BENCH_KIND)
+    # `encoder_version=None` → la banque SERVIE du kind. Pour une sous-banque
+    # (`matrice60`) le fichier servi n'existe pas : on demande alors l'artefact
+    # scopé de l'encodeur de la banque source.
+    base = load_anchors(args.anchors_kind) or load_anchors(
+        args.anchors_kind, DEFAULT_ENCODER_VERSION
+    )
     if base is None or not base.source_paths:
         raise RuntimeError(
-            f"Banque {BENCH_KIND} introuvable ou sans source_paths — lancer "
-            "`go-task ml:dino-anchors:build` (kind 2eur_all) d'abord"
+            f"Banque {args.anchors_kind} introuvable ou sans source_paths. "
+            f"Pour `{BENCH_KIND}` : `go-task ml:dino-anchors:build`. Pour "
+            f"`matrice60` : `python -m scripts.build_matrice_subbank --apply`."
         )
     anchor_paths = [Path(p) for p in base.source_paths]
 
@@ -636,6 +724,11 @@ def main(argv: list[str] | None = None) -> int:
         present, missing = resolve_local_paths(gold, _c)
     crops = select_sample(present, args.limit)
     gold_sample_n = len(crops) if len(crops) < len(gold) else None
+
+    # Le couple (manifeste, banque) se vérifie AVANT le premier encodage.
+    assert_gold_covered_by_bank(
+        gold, base, gold_name=args.gold.name, kind=args.anchors_kind
+    )
 
     print(
         f"gold {gold_version} : {len(gold)} crops figés · {len(present)} présents "
@@ -663,7 +756,7 @@ def main(argv: list[str] | None = None) -> int:
             blockers = {
                 m: calibration_blockers(
                     conn,
-                    anchors_kind=BENCH_KIND,
+                    anchors_kind=args.anchors_kind,
                     encoder_version=encoder_version_of(m),
                     gold_sample_n=sample_by_model.get(m),
                     gold_n_crops=len(gold),
@@ -672,7 +765,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 for m in models
             }
-            build_id = _bank_build_id(conn, BENCH_KIND, base.encoder_version)
+            build_id = _bank_build_id(conn, args.anchors_kind, base.encoder_version)
         finally:
             conn.close()
         return blockers, build_id
@@ -687,7 +780,10 @@ def main(argv: list[str] | None = None) -> int:
     failures: list[tuple[str, str]] = []
     for m in args.models:
         try:
-            results.append(_bench_model(m, base.eurio_ids, anchor_paths, crops))
+            results.append(
+                _bench_model(m, base.eurio_ids, anchor_paths, crops,
+                             anchors_kind=args.anchors_kind)
+            )
         except Exception as exc:  # noqa: BLE001 — un candidat KO ne tue pas le banc
             # N2 : le tombé est journalisé ICI (stderr, pour l'opérateur) ET
             # retenu, pour qu'il ressorte dans le rapport, dans la bannière de
@@ -800,6 +896,7 @@ def main(argv: list[str] | None = None) -> int:
                 baseline_run_id=baseline_run_id,
                 mcnemar=mcnemar,
                 note=args.note,
+                anchors_kind=args.anchors_kind,
             )
         )
 
@@ -813,7 +910,8 @@ def main(argv: list[str] | None = None) -> int:
         "",
         f"- gold `{gold_version}` · {len(gold)} crops figés · {len(crops)} soumis"
         + (" (échantillon)" if gold_sample_n else " (gold entier)"),
-        f"- banque `{BENCH_KIND}` servie : {base.count} ancres, build "
+        f"- banque `{args.anchors_kind}` : {base.count} ancres · "
+        f"{len(set(base.eurio_ids))} classes · build "
         f"`{bank_build_id or 'inconnu'}`",
         "- Recall mesuré sur crops in-scope (classe de banque présente) ; bande "
         "pays = ancres du pays de la VÉRITÉ tranchée (`truth_country`).",

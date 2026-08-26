@@ -126,13 +126,19 @@ def wired(monkeypatch, gold_file):
     """Le banc, ses I/O lourdes doublées. Rend le journal des pushes."""
     monkeypatch.setattr(
         bench, "load_anchors",
-        lambda kind: AnchorBank(
-            eurio_ids=["fr-2010-2eur-x"],
-            matrix=np.zeros((1, 4), dtype=np.float32),
+        # La banque bouchon COUVRE les classes du gold : sans ça
+        # `assert_gold_covered_by_bank` refuse, et il a raison — un gold dont
+        # les 2/3 des classes manquent à la banque n'est pas notable.
+        # (`n_out_of_scope` du faux résultat reste indépendant : le scoring
+        # réel est doublé par `_bench_model`.)
+        lambda kind, encoder_version=None: AnchorBank(
+            eurio_ids=["fr-2010-2eur-x", "de-2011-2eur-y", "it-2012-2eur-rep"],
+            matrix=np.zeros((3, 4), dtype=np.float32),
             encoder_version="dinov2-vitl14",
             anchors_kind=kind,
             built_at="2026-08-19T00:28:21+00:00",
-            source_paths=["/tmp/anchor-1.jpg"],
+            source_paths=["/tmp/anchor-1.jpg", "/tmp/anchor-2.jpg",
+                          "/tmp/anchor-3.jpg"],
         ),
     )
     monkeypatch.setattr(
@@ -143,7 +149,7 @@ def wired(monkeypatch, gold_file):
     )
     monkeypatch.setattr(
         bench, "_bench_model",
-        lambda spec, eids, apaths, crops: _fake_result(spec),
+        lambda spec, eids, apaths, crops, anchors_kind=None: _fake_result(spec),
     )
     pushed: list[dict] = []
 
@@ -471,7 +477,8 @@ def test_les_crops_non_encodes_sont_comptes_imprimes_et_bloquent(
     """
     monkeypatch.setattr(
         bench, "_bench_model",
-        lambda spec, eids, apaths, crops: _fake_result(spec, n_not_encoded=1),
+        lambda spec, eids, apaths, crops, anchors_kind=None: _fake_result(
+            spec, n_not_encoded=1),
     )
     bench.main([
         "--db", str(empty_db), "--gold", str(gold_file),
@@ -511,7 +518,7 @@ def test_un_encodeur_tombe_sort_en_erreur_et_le_rapport_le_dit(
     """Avant correctif : ``RC=0``, une seule ligne de table, une seule ligne de
     traçabilité, et la bannière citait quand même l'encodeur tombé — le ``.md``
     archivé donnait à croire que les deux avaient été évalués."""
-    def _bench(spec, eids, apaths, crops):
+    def _bench(spec, eids, apaths, crops, anchors_kind=None):
         if spec == "dinov2_vits14":
             raise RuntimeError("CUDA out of memory")
         return _fake_result(spec)
@@ -534,7 +541,7 @@ def test_la_banniere_finale_ne_credite_pas_l_encodeur_tombe(
 ):
     """La bannière de pied est recalculée APRÈS le bench : elle ne peut plus
     nommer comme évalué un encodeur qui n'a pas tourné, et elle dit sa chute."""
-    def _bench(spec, eids, apaths, crops):
+    def _bench(spec, eids, apaths, crops, anchors_kind=None):
         if spec == "dinov2_vits14":
             raise RuntimeError("CUDA out of memory")
         return _fake_result(spec)
@@ -607,7 +614,7 @@ def test_un_recouvrement_partiel_bloque_le_candidat(
 ):
     """2 crops côté baseline, 1 seul côté candidat → le McNemar ne porte que
     sur 1 paire, et rien dans b/c ne le dirait. Le bloqueur doit le dire."""
-    def _bench(spec, eids, apaths, crops):
+    def _bench(spec, eids, apaths, crops, anchors_kind=None):
         return _fake_result(spec) if spec == "dinov2_vitl14" else _resultat_partiel(spec)
 
     monkeypatch.setattr(bench, "_bench_model", _bench)
@@ -623,3 +630,81 @@ def test_un_recouvrement_partiel_bloque_le_candidat(
     assert candidat["provisional"] == 1
     # Le baseline, lui, n'est pas accusé d'un recouvrement qu'il ne déclare pas.
     assert "apparie:" not in (runs["dinov2_vitl14"]["provisional_reason"] or "")
+
+
+# ─── Le couple (manifeste, banque) — juge-et-banc, étape 5 ───────────────────
+#
+# Le banc sait maintenant noter une AUTRE banque que la servie (`--anchors-kind`),
+# ce qui rend possible le bras DINO de la matrice : les 300 crops d'éval contre
+# la sous-banque des 60 classes. Deux choses doivent tenir, et aucune n'est
+# visible depuis l'écran : le couple gold↔banque doit s'apparier, et la LIGNE
+# poussée doit dire contre quelle banque le chiffre a été obtenu.
+
+
+def test_un_gold_que_la_banque_ne_couvre_pas_est_refuse_avant_tout_encodage():
+    """LE test de ce câblage.
+
+    `score_crops` écarte silencieusement un crop hors banque. C'est correct au
+    moment de noter — mais si la moitié du gold y passe, le recall est calculé
+    sur un dénominateur que personne n'a choisi, et il reste parfaitement
+    plausible. Le refus est donc AVANT le premier encodage, comme
+    `assert_same_label_space` : refuser après vingt minutes de calcul
+    laisserait sur disque des chiffres qu'on serait tenté de lire quand même.
+    """
+    bank = AnchorBank(
+        eurio_ids=["fr-2010-2eur-x"],
+        matrix=np.zeros((1, 4), dtype=np.float32),
+        encoder_version="dinov2-vitl14",
+        anchors_kind="matrice60",
+        built_at="bench",
+    )
+    with pytest.raises(SystemExit) as exc:
+        bench.assert_gold_covered_by_bank(
+            GOLD_ROWS, bank, gold_name="matrice_eval_gold.jsonl",
+            kind="matrice60")
+    msg = str(exc.value)
+    assert "ne s'apparient pas" in msg
+    # Le message doit chiffrer la perte, pas seulement la nommer : « 2 classes
+    # manquent » ne dit pas si c'est 1 % ou 60 % du jeu.
+    assert "frames sur" in msg and "%" in msg
+    assert "de-2011-2eur-y" in msg
+
+
+def test_des_classes_de_banque_hors_gold_sont_des_distracteurs_pas_une_erreur():
+    """C'est même leur nombre qui fait la difficulté de la tâche : la
+    sous-banque des 60 existe précisément pour que DINO n'en affronte pas 671
+    quand ArcFace n'en a que 60."""
+    bank = AnchorBank(
+        eurio_ids=[c.class_id for c in GOLD_ROWS] + ["distracteur-1",
+                                                     "distracteur-2"],
+        matrix=np.zeros((len(GOLD_ROWS) + 2, 4), dtype=np.float32),
+        encoder_version="dinov2-vitl14",
+        anchors_kind="2eur_all",
+        built_at="bench",
+    )
+    # Ne lève pas.
+    bench.assert_gold_covered_by_bank(
+        GOLD_ROWS, bank, gold_name="g.jsonl", kind="2eur_all")
+
+
+def test_la_ligne_poussee_porte_la_banque_notee_pas_une_constante(
+    wired, gold_file, empty_db
+):
+    """Sans ça, un run contre la sous-banque des 60 et un run contre la banque
+    servie des 671 seraient indiscernables dans `encoder_bench_runs` — et on
+    comparerait un recall à 60 classes avec un recall à 671."""
+    bench.main([
+        "--db", str(empty_db), "--gold", str(gold_file),
+        "--models", "dinov2_vits14", "--anchors-kind", "matrice60",
+    ])
+    assert wired, "aucun run poussé"
+    assert {p["run"]["anchors_kind"] for p in wired} == {"matrice60"}
+
+
+def test_le_defaut_reste_la_banque_servie(wired, gold_file, empty_db):
+    """Le câblage ne doit pas changer le comportement du banc historique."""
+    bench.main([
+        "--db", str(empty_db), "--gold", str(gold_file),
+        "--models", "dinov2_vits14",
+    ])
+    assert {p["run"]["anchors_kind"] for p in wired} == {bench.BENCH_KIND}
