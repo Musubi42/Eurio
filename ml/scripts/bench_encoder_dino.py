@@ -109,9 +109,9 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from training.foundation import (  # noqa: E402
-    DEFAULT_ENCODER_VERSION,
     DINOV2_REPO,
     AnchorBank,
+    anchor_path,
     build_transform,
     encode_paths,
     encoder_slug,
@@ -463,6 +463,47 @@ def _git_commit() -> str | None:
     return out.stdout.strip() or None
 
 
+def resolve_bank(kind: str):
+    """La banque d'un ``kind``, sans jamais DEVINER sa version d'encodeur.
+
+    Deux nommages coexistent : ``foundation_anchors_<kind>.npz`` (la banque
+    servie du kind) et ``foundation_anchors_<kind>__<encodeur>.npz`` (les
+    artefacts scopés). On essaie le premier, puis on RÉSOUT le second en
+    listant ce qui est sur disque.
+
+    Pourquoi cette fonction existe : la version précédente se repliait sur
+    ``DEFAULT_ENCODER_VERSION``. Elle vaut ``dinov2-vits14`` — or la
+    sous-banque de la matrice porte ``dinov2-vitl14``, celui de la banque
+    source. Le repli cherchait donc un fichier qui n'a jamais existé et le
+    banc rendait « banque introuvable » alors qu'elle était là, à côté.
+    Deviner une version d'encodeur ne marche que par coïncidence.
+
+    Plusieurs artefacts scopés → on REFUSE en les nommant : en choisir un
+    ferait noter contre une banque que l'appelant n'a pas demandée, et le
+    chiffre serait plausible.
+    """
+    bank = load_anchors(kind)
+    if bank is not None:
+        return bank
+
+    scopes = sorted(anchor_path(kind, "x").parent.glob(
+        f"foundation_anchors_{kind}__*.npz"))
+    if not scopes:
+        return None
+    if len(scopes) > 1:
+        raise SystemExit(
+            f"Plusieurs artefacts pour le kind `{kind}` et aucun fichier "
+            f"servi — impossible de choisir sans deviner :\n"
+            + "".join(f"  · {p.name}\n" for p in scopes)
+            + f"Rebâtis la banque servie du kind, ou passe le fichier voulu "
+              f"en le renommant `foundation_anchors_{kind}.npz`."
+        )
+    from training.foundation.anchors import _peek_meta  # noqa: PLC0415
+
+    meta = _peek_meta(scopes[0])
+    return load_anchors(kind, meta.get("encoder_version"))
+
+
 def assert_gold_covered_by_bank(gold, bank, *, gold_name: str, kind: str) -> None:
     """Refuse d'apparier un manifeste et une banque qui ne se recouvrent pas.
 
@@ -697,17 +738,13 @@ def main(argv: list[str] | None = None) -> int:
 
     db_path = Path(args.db) if args.db else default_db()
 
-    # `encoder_version=None` → la banque SERVIE du kind. Pour une sous-banque
-    # (`matrice60`) le fichier servi n'existe pas : on demande alors l'artefact
-    # scopé de l'encodeur de la banque source.
-    base = load_anchors(args.anchors_kind) or load_anchors(
-        args.anchors_kind, DEFAULT_ENCODER_VERSION
-    )
+    base = resolve_bank(args.anchors_kind)
     if base is None or not base.source_paths:
         raise RuntimeError(
-            f"Banque {args.anchors_kind} introuvable ou sans source_paths. "
+            f"Banque `{args.anchors_kind}` introuvable ou sans source_paths. "
             f"Pour `{BENCH_KIND}` : `go-task ml:dino-anchors:build`. Pour "
-            f"`matrice60` : `python -m scripts.build_matrice_subbank --apply`."
+            f"`matrice60` : "
+            f"`python -m scripts.build_matrice_subbank --apply`."
         )
     anchor_paths = [Path(p) for p in base.source_paths]
 

@@ -263,6 +263,18 @@ def main(argv: list[str] | None = None) -> int:
         asset_ids=[(base.asset_ids[i] if i < len(base.asset_ids) else None)
                    for i in garde],
     )
+    # `write_legacy=False` : SEULEMENT l'artefact scopé
+    # `foundation_anchors_<kind>__<encodeur>.npz`.
+    #
+    # ⚠️ Ne pas « simplifier » en écrivant aussi `foundation_anchors_<kind>.npz`
+    # pour que `load_anchors(kind)` le trouve sans nommer l'encodeur. Ce nom-là
+    # SIGNIFIE « banque servie » : `tests/test_anchor_bank_serving.py` balaie
+    # tout fichier qui le porte et exige que la review sache le charger. Essayé
+    # le 2026-08-26 — la review rejetait aussitôt le fichier
+    # (`encoder=dinov2-vitl14, expected dinov2-vits14 → treating as missing`).
+    # Une sous-banque de banc n'est servie par personne : elle ne prend pas ce
+    # nom. C'est l'appelant qui RÉSOUT la version d'encodeur
+    # (`bench_encoder_dino.resolve_bank`), il ne la devine pas.
     chemin = save_anchors(sous, write_legacy=False)
     print(f"\n→ {chemin}")
     print(json.dumps({"ancres": sous.count, "classes": len(plan["par_classe"]),
