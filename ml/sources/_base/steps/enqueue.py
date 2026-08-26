@@ -28,6 +28,17 @@ import uuid
 from dataclasses import dataclass
 
 from review.review_lanes import DEFAULT_LANE
+# Les trois helpers de rejet/routage vivent dans `store/review_routing.py`
+# depuis le 2026-08-27 : ils sont du SQL pur, mais ce module-ci tire
+# `training` via review_lanes / review.validation, donc l'image lean du VPS ne
+# peut pas l'importer — et le canonique est le SEUL writer. Une passe
+# corrective y aurait dû réécrire le rejet. Ré-importés sous leurs anciens
+# noms privés : il n'y a qu'UNE définition, et tous les appelants tiennent.
+from store.review_routing import (
+    kind_for_source_image as _kind_for_source_image,
+    reject_crop_terminal as _reject_crop_terminal,
+    route_decision_for_source_image as _route_decision_for_source_image,
+)
 from review.validation.consensus import RULE_VERSION, consensus_verdict
 from review.validation.experts import collect_signals
 from review.validation.persist import upsert_consensus_verdict
@@ -46,58 +57,6 @@ _FACE_ENGINE_VERSION = "face@v1"
 _DENOM_ENGINE_VERSION = "denom@v1"
 
 
-def _reject_crop_terminal(
-    conn: sqlite3.Connection,
-    *,
-    asset_id: str,
-    review_id: str,
-    quality_reason: str,
-    decided_by: str,
-    state_reason: str,
-    engine_version: str,
-    decision_payload: dict,
-    target_eurio_id: str | None,
-    run_id: str | None,
-) -> None:
-    """Rejet auto ré-ouvrable d'un crop (pattern partagé consensus / face).
-
-    Même état terminal qu'un reject humain mais estampillé pipeline : apparaît
-    dans la grille /rejected et se ré-ouvre via /restore (la row review_queue
-    doit exister → l'appelant l'insère d'abord). actor='pipeline' (CHECK
-    image_state_events.actor). La row review_queue est marquée `done` avec
-    ``decided_by`` (ex. 'consensus', 'pipeline').
-    """
-    conn.execute(
-        """
-        UPDATE image_assets
-           SET resolution_status = 'rejected',
-               training_eligible = 0,
-               quality_reason    = ?,
-               resolved_at       = datetime('now')
-         WHERE id = ?
-        """,
-        (quality_reason, asset_id),
-    )
-    conn.execute(
-        """
-        UPDATE review_queue
-           SET status = 'done',
-               decided_at = datetime('now'),
-               decided_by = ?,
-               decision_notes = 'rejected',
-               decision_engine_version = ?,
-               decision_metadata_json = ?
-         WHERE id = ?
-        """,
-        (decided_by, engine_version, json.dumps(decision_payload), review_id),
-    )
-    emit_state_event(
-        conn, asset_id=asset_id, to_state="rejected",
-        actor="pipeline", reason=state_reason,
-        target_eurio_id=target_eurio_id, run_id=run_id,
-    )
-
-
 @dataclass
 class EnqueueResult:
     n_enqueued: int
@@ -111,91 +70,6 @@ def _compute_priority(*, target_eurio_id: str | None) -> int:
     if target_eurio_id:
         p -= _BONUS_TARGETED
     return p
-
-
-def _route_decision_for_source_image(
-    conn: sqlite3.Connection,
-    *,
-    source_image_id: str,
-    kind: str,
-    is_lot_suspected: bool,
-) -> tuple[str, str]:
-    """Agrège les statuts des crops en un verdict listing-level pour debug.
-
-    Priorité (du plus saillant au plus discret) :
-        needs_review > rejected > auto_* > manual > pending
-    """
-    rows = conn.execute(
-        "SELECT resolution_status, quality_reason "
-        "FROM image_assets WHERE source_image_id = ?",
-        (source_image_id,),
-    ).fetchall()
-    if not rows:
-        return ("pending", "no_crops_yet")
-
-    statuses = {r["resolution_status"] for r in rows}
-    n_crops = len(rows)
-
-    if "needs_review" in statuses:
-        decision = "review_lot" if kind == "lot" else "review_single"
-        if is_lot_suspected:
-            reason = "is_lot_suspected"
-        elif n_crops > 1:
-            reason = "multi_coin_photo"
-        elif kind == "lot":
-            reason = "listing_kind_lot"
-        else:
-            reason = "single_unmatched"
-        return (decision, reason)
-
-    if statuses == {"rejected"}:
-        # C7 — si TOUS les crops rejetés le sont pour face=revers commun, on le
-        # dit explicitement (bucket funnel « revers commun 2€ ») ; sinon rejet
-        # générique. Cas typique : listing single-crop montrant le revers.
-        reasons = {r["quality_reason"] for r in rows}
-        if reasons == {"face_reverse"}:
-            return ("rejected", "face_reverse")
-        if reasons == {"not_2eur"}:
-            return ("rejected", "not_2eur")
-        return ("rejected", "all_crops_rejected")
-
-    if statuses <= {"auto_phash", "auto_name", "manual", "rejected"}:
-        if "auto_phash" in statuses:
-            return ("auto_resolved", "auto_phash_match")
-        if "auto_name" in statuses:
-            return ("auto_resolved", "auto_name_match")
-        if "manual" in statuses:
-            return ("auto_resolved", "manual")
-        return ("auto_resolved", "auto")
-
-    return ("pending", "mixed_status")
-
-
-def _kind_for_source_image(
-    conn: sqlite3.Connection, *, source_image_id: str, is_lot_suspected: bool
-) -> str:
-    """D-26 — résout 'single' vs 'lot' pour cette source_image.
-
-    Niveau 1 : titre suggère lot (``is_lot_suspected``, FR/EN) → 'lot'.
-    Niveau 2 : ``listing_text_signals.listing_kind == 'lot'`` (classifieur
-        multilingue : KMS/Satz/cofre/N valores/≥2 pays/≥3 millésimes/plage
-        1 cent–2 euro). 'coffret'/'graded_slab'/'single' = 1 pièce → PAS lot.
-        Cf. docs/cohort-pipeline/coin-census-bench.md.
-    Niveau 3 : >1 crops détectés sur cette image → 'lot' (multi-coin photo).
-    """
-    if is_lot_suspected:
-        return "lot"
-    sig = conn.execute(
-        "SELECT listing_kind FROM listing_text_signals WHERE source_image_id = ?",
-        (source_image_id,),
-    ).fetchone()
-    if sig is not None and sig["listing_kind"] == "lot":
-        return "lot"
-    n_crops = conn.execute(
-        "SELECT count(*) AS n FROM image_assets WHERE source_image_id = ?",
-        (source_image_id,),
-    ).fetchone()["n"]
-    return "lot" if (n_crops or 0) > 1 else "single"
 
 
 # Called by: ml/sources/_base/orchestrator.py (step 8/8 — final step; decides single vs lot kind, sets review_queue rows)

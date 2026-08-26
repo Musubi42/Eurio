@@ -564,7 +564,10 @@ def create_manual_crop(
     from sources._base.phash import compute_phash
     from sources._base.storage import crop_key, crop_cache_path
     from sources._base.dedup import ImageAssetRow, upsert_image_asset
-    from sources._base.steps.enqueue import _compute_priority, _kind_for_source_image
+    from sources._base.steps.enqueue import _compute_priority
+    # `kind_for_source_image` vient de `store` et non d'`enqueue` : ce module
+    # tourne dans l'image LEAN, où `enqueue` est inimportable (`training`).
+    from store.review_routing import kind_for_source_image
     from review.review_lanes import compute_lane
     from shared.storage.local_cache import upload_through, local_path
     from store import emit_state_event
@@ -712,7 +715,7 @@ def create_manual_crop(
 
     # Enqueue review (réplique l'INSERT de run_enqueue, scopé au nouvel asset —
     # les frères ont déjà leur row et ne sont pas touchés).
-    kind = _kind_for_source_image(
+    kind = kind_for_source_image(
         conn, source_image_id=source_image_id,
         is_lot_suspected=bool(si["is_lot_suspected"]),
     )
