@@ -1,21 +1,21 @@
 {
   "builder": "Musubi42s-MacBook-Air-Oim",
-  "built_at": "2026-08-26T16:05:15+00:00",
+  "built_at": "2026-08-26T18:28:59+00:00",
   "classes_hors_quota": [],
-  "db_mtime": "2026-08-26T01:04:55+00:00",
+  "db_mtime": "2026-08-26T18:28:59+00:00",
   "db_path": "/Users/musubi42/Documents/Musubi42/bizz/EurioProject/Eurio/ml/state/eurio.replica.db",
   "eval_corpus": "matrice-encodeurs-2026-08",
-  "git_commit": "74635097b09972ecc6c6139aaae0198721f001c9",
-  "gold_version": "5b161e789f0d",
+  "git_commit": "22364b34d173a5ade0dba513f32ee67eecadc5db",
+  "gold_version": "9bc08e19b83c",
   "mesh": "design_group",
-  "n_classes": 60,
-  "n_crops": 300,
+  "n_classes": 52,
+  "n_crops": 260,
   "n_crops_par_classe": [
     5
   ],
   "n_non_training_eligible": 0,
-  "n_sans_decision_review": 2,
-  "n_training_eligible": 300,
-  "n_truth_eurio_ids": 67,
+  "n_sans_decision_review": 1,
+  "n_training_eligible": 260,
+  "n_truth_eurio_ids": 63,
   "selection_sql": "SELECT a.id                          AS asset_id,\n       a.eurio_id                    AS truth_eurio_id,\n       a.storage_path                AS storage_path,\n       COALESCE(rq.decided_face, a.face) AS face,\n       rq.decided_at                 AS decided_at,\n       rq.decided_by                 AS decided_by,\n       rq.kind                       AS review_kind,\n       COALESCE(a.training_eligible, 0) AS training_eligible\n  FROM image_assets a\n  LEFT JOIN review_queue rq\n         ON rq.image_asset_id = a.id\n        AND rq.status = 'done'\n        AND rq.decided_eurio_id IS NOT NULL\n WHERE a.eval_corpus = :corpus\n   AND a.eurio_id IS NOT NULL\n   AND a.storage_path IS NOT NULL\n ORDER BY a.id"
 }

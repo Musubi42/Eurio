@@ -62,6 +62,7 @@ import argparse
 import json
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 _ML_DIR = Path(__file__).resolve().parent.parent
@@ -174,21 +175,40 @@ class TeteRefusee(Exception):
     """
 
 
+#: Backoff des `head_object`, calqué sur `local_cache._DOWNLOAD_RETRY_DELAYS`.
+#: MinIO derrière le proxy du VPS rend des **403 sporadiques** sous rafale de
+#: lectures de clés distinctes — le repo le documente déjà, et l'audit du
+#: 2026-08-26 l'a revu (65 échecs au premier passage, 0 après espacement).
+#: Un 403 transitoire n'est ni « absent » ni « refusé pour de bon ».
+_HEAD_RETRY_DELAYS = (0.2, 0.5, 1.0, 2.0, 4.0)
+
+
 def _tete(client, bucket: str, key: str) -> dict | None:
     """``head_object`` : ``None`` si l'objet n'existe pas (404).
 
-    Toute AUTRE erreur lève ``TeteRefusee`` — un 403, une coupure réseau ou un
-    5xx ne disent pas que l'objet est absent, ils disent qu'on ne sait pas.
+    Un **404 est immédiat** — il n'est pas transitoire, le réessayer ne ferait
+    que ralentir. Tout le reste (403 de rafale, 5xx, coupure) est réessayé avec
+    backoff borné, puis lève ``TeteRefusee`` : ces réponses ne disent pas que
+    l'objet est absent, elles disent qu'on ne sait pas.
     """
-    try:
-        h = client.head_object(Bucket=bucket, Key=key)
-    except Exception as exc:  # noqa: BLE001
-        code = getattr(exc, "response", {}).get(
-            "ResponseMetadata", {}).get("HTTPStatusCode")
-        if code in (404,):
-            return None
-        raise TeteRefusee(f"{bucket}/{key} : {exc}") from exc
-    return {"size": h.get("ContentLength"), "etag": (h.get("ETag") or "").strip('"')}
+    dernier: BaseException | None = None
+    for delai in (0.0, *_HEAD_RETRY_DELAYS):
+        if delai:
+            time.sleep(delai)
+        try:
+            h = client.head_object(Bucket=bucket, Key=key)
+        except Exception as exc:  # noqa: BLE001
+            code = getattr(exc, "response", {}).get(
+                "ResponseMetadata", {}).get("HTTPStatusCode")
+            if code == 404:
+                return None
+            dernier = exc
+            continue
+        return {"size": h.get("ContentLength"),
+                "etag": (h.get("ETag") or "").strip('"')}
+    raise TeteRefusee(
+        f"{bucket}/{key} après {len(_HEAD_RETRY_DELAYS) + 1} tentatives : {dernier}"
+    ) from dernier
 
 
 def _liberer(args) -> int:

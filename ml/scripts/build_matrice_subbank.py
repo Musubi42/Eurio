@@ -94,6 +94,34 @@ SUBBANK_KIND = "matrice60"
 DEFAULT_GOLD = _ML_DIR / "state" / "validation_gold" / "matrice_eval_gold.jsonl"
 
 
+_TOUT_LE_POOL_SQL = """
+    SELECT a.id                                       AS asset_id,
+           a.storage_path                             AS storage_path,
+           si.seller_id                               AS seller_id,
+           COALESCE(co.design_group_id, co.eurio_id)  AS class_id
+      FROM image_assets a
+      JOIN source_images si ON si.id = a.source_image_id
+      JOIN coins co         ON co.eurio_id = a.eurio_id
+     WHERE si.source = 'ebay'
+       AND a.training_eligible = 1
+       AND a.storage_status = 'present'
+       AND (a.face IS NULL OR a.face != 'reverse')
+       AND a.eval_corpus IS NULL
+     ORDER BY a.id
+"""
+
+#: Les vendeurs représentés dans le corpus d'éval, PAR CLASSE.
+_EVAL_SELLERS_SQL = """
+    SELECT COALESCE(co.design_group_id, co.eurio_id) AS class_id,
+           si.seller_id                              AS seller_id
+      FROM image_assets a
+      JOIN source_images si ON si.id = a.source_image_id
+      JOIN coins co         ON co.eurio_id = a.eurio_id
+     WHERE a.eval_corpus IS NOT NULL
+       AND si.seller_id IS NOT NULL
+"""
+
+
 def _mesh_map(conn: sqlite3.Connection) -> dict[str, str]:
     """``{eurio_id: COALESCE(design_group_id, eurio_id)}`` — la maille produit."""
     return {
@@ -141,6 +169,85 @@ def restreindre(bank, *, classes: set[str], mesh: dict[str, str],
     }
 
 
+def _plan_tout_le_pool(db, base, classes: set[str], mesh: dict[str, str]):
+    """Le plan quand la banque prend TOUT le pool des classes visées.
+
+    🔴 **Le garde vendeur devient SYMÉTRIQUE ici, et il le faut.**
+    ``select_eval_holdout`` écarte du tirage les crops dont le vendeur porte une
+    ancre — mais ce garde était calculé contre la banque SERVIE. Si la banque
+    devient « tout le pool », les vendeurs des crops d'éval y reviennent par
+    leurs AUTRES crops, et la contamination rentre par la fenêtre (+5,0 pts,
+    ``p ≈ 0,002``, mesuré le 2026-08-26).
+
+    On retire donc du côté BANQUE tout crop partageant son vendeur avec un crop
+    d'éval de la même classe. Après ça, le recouvrement vendeur entre le jeu et
+    la banque est **nul par construction**, quel que soit l'ordre des deux
+    prélèvements.
+
+    Les avers canoniques Numista de la banque servie sont conservés : ils n'ont
+    pas de vendeur, et ce sont les seules références d'une classe que le pool
+    ne couvrirait pas.
+    """
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        vendeurs_eval: dict[str, set[str]] = {}
+        for r in conn.execute(_EVAL_SELLERS_SQL):
+            vendeurs_eval.setdefault(r["class_id"], set()).add(r["seller_id"])
+        pool = [r for r in conn.execute(_TOUT_LE_POOL_SQL)
+                if r["class_id"] in classes]
+    finally:
+        conn.close()
+
+    lignes: list[tuple[str, str]] = []   # (class_id, chemin local)
+    par_classe: collections.Counter = collections.Counter()
+    ecartes_vendeur = 0
+    chemins_absents: list[str] = []
+
+    # Les canoniques de la banque servie d'abord — repliés sur la maille.
+    for i, aid in enumerate(base.asset_ids):
+        if aid:
+            continue
+        cls = mesh.get(base.eurio_ids[i], base.eurio_ids[i])
+        if cls not in classes:
+            continue
+        sp = base.source_paths[i]
+        if not sp or not Path(sp).exists():
+            chemins_absents.append(sp or f"<vide, ligne {i}>")
+            continue
+        lignes.append((cls, sp)); par_classe[cls] += 1
+
+    from shared.storage import bucket_for_key
+    from shared.storage.local_cache import local_path
+
+    for r in pool:
+        if r["seller_id"] in vendeurs_eval.get(r["class_id"], ()):
+            ecartes_vendeur += 1
+            continue
+        try:
+            p = local_path(bucket_for_key(r["storage_path"]), r["storage_path"])
+        except Exception:  # noqa: BLE001 — objet illisible = ancre perdue
+            chemins_absents.append(r["storage_path"])
+            continue
+        lignes.append((r["class_id"], str(p))); par_classe[r["class_id"]] += 1
+
+    print(f"mode --all-crops : {len(pool)} crops du pool · "
+          f"{ecartes_vendeur} écartés (vendeur d'un crop d'éval)")
+    return ({
+        "garde": list(range(len(lignes))),
+        "par_classe": dict(par_classe),
+        "fuites": [],
+        "sans_ancre": sorted(classes - set(par_classe)),
+        "chemins_absents": chemins_absents,
+        # Compté ici : en mode --all-crops, `garde` indexe `lignes`, pas la
+        # banque source — lire `base.asset_ids[i]` y rendrait un chiffre faux.
+        "n_canoniques": len(lignes) - sum(1 for _ in pool
+                                          if _["seller_id"] not in
+                                          vendeurs_eval.get(_["class_id"], ()))
+                        + len(chemins_absents),
+    }, lignes)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--gold", type=Path, default=DEFAULT_GOLD,
@@ -150,6 +257,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kind", default=SUBBANK_KIND)
     ap.add_argument("--apply", action="store_true",
                     help="écrit l'artefact (défaut = dry-run)")
+    ap.add_argument("--all-crops", action="store_true",
+                    help="prend TOUT le pool éligible des classes comme ancres, "
+                         "au lieu du sous-ensemble FPS de la banque servie. "
+                         "Mesuré le 2026-08-26 : 97,3 %% de r@1 contre 96,3 %% "
+                         "pour 2,3x les ancres. Le FPS est un arbitrage de "
+                         "TAILLE EMBARQUÉE (chaque scan compare à toutes les "
+                         "ancres, et la banque part dans l'APK) ; pour un banc, "
+                         "il n'y a aucune raison de s'y tenir.")
     args = ap.parse_args(argv)
 
     if args.kind == SOURCE_KIND:
@@ -197,8 +312,12 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
-    plan = restreindre(base, classes=classes, mesh=mesh,
-                       eval_asset_ids=eval_asset_ids)
+    if args.all_crops:
+        plan, lignes = _plan_tout_le_pool(args.db, base, classes, mesh)
+    else:
+        plan = restreindre(base, classes=classes, mesh=mesh,
+                           eval_asset_ids=eval_asset_ids)
+        lignes = None
     garde = plan["garde"]
     n = sorted(plan["par_classe"].values())
 
@@ -210,8 +329,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"ancres gardées: {len(garde)} · classes couvertes : "
           f"{len(plan['par_classe'])}")
     if n:
-        canon = sum(1 for i in garde
-                    if not (base.asset_ids[i] if i < len(base.asset_ids) else None))
+        canon = plan.get("n_canoniques")
+        if canon is None:
+            canon = sum(1 for i in garde
+                        if not (base.asset_ids[i] if i < len(base.asset_ids) else None))
         print(f"ancres/classe : min {n[0]} · médiane {n[len(n) // 2]} · max {n[-1]}"
               f"  (canoniques {canon} · exemplaires réels {len(garde) - canon})")
 
@@ -246,6 +367,32 @@ def main(argv: list[str] | None = None) -> int:
         print("\nDRY-RUN — rien écrit. Relancer avec --apply.")
         print(json.dumps({"ancres": len(garde), "classes": len(plan["par_classe"]),
                           "dry_run": True}))
+        return 0
+
+    if lignes is not None:
+        # Mode --all-crops : les vecteurs de la banque servie ne couvrent pas
+        # ces lignes. Le banc RÉ-ENCODE de toute façon (il ne lit que les
+        # labels et les chemins) — une matrice vide serait donc sans effet sur
+        # la mesure, mais elle rendrait l'artefact illisible par tout autre
+        # lecteur. On la déclare explicitement à zéro colonne plutôt que de
+        # laisser croire à des vecteurs valides.
+        import numpy as np
+
+        sous = AnchorBank(
+            eurio_ids=[c for c, _ in lignes],
+            matrix=np.zeros((len(lignes), 0), dtype=np.float32),
+            encoder_version=base.encoder_version,
+            anchors_kind=args.kind,
+            built_at=f"tout-le-pool (gold={meta.get('gold_version')}, "
+                     f"vecteurs NON calculés — banc uniquement)",
+            source_paths=[p for _, p in lignes],
+            asset_ids=[None] * len(lignes),
+        )
+        chemin = save_anchors(sous, write_legacy=False)
+        print(f"\n→ {chemin}")
+        print(json.dumps({"ancres": sous.count,
+                          "classes": len(plan["par_classe"]),
+                          "dim": 0, "kind": args.kind}))
         return 0
 
     sous = AnchorBank(

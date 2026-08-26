@@ -24,16 +24,16 @@
 ==============================================================================
 ```
 
-- gold `5b161e789f0d` · 300 crops figés · 300 soumis (gold entier)
-- banque `matrice60` : 893 ancres · 60 classes · build `inconnu`
+- gold `9bc08e19b83c` · 260 crops figés · 260 soumis (gold entier)
+- banque `matrice60` : 1813 ancres · 52 classes · build `inconnu`
 - Recall mesuré sur crops in-scope (classe de banque présente) ; bande pays = ancres du pays de la VÉRITÉ tranchée (`truth_country`).
 - Chaque modèle utilise SA transform recommandée (résolution/normalisation) — le zero-shot est un proxy du potentiel post-fine-tune ArcFace, pas une mesure absolue.
 
 | Modèle | M params | px | dim | in-scope | non encodés | global@1 | global@5 | pays@1 | pays@5 | ms/img | provisoire |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| dinov2_vits14 | 22.1 | 224 | 384 | 300 | 0 | 94.0% | 99.3% | 89.7% | 91.3% | 14 | oui |
-| dinov2_vitl14 | 304.4 | 224 | 1024 | 300 | 0 | 95.3% | 100.0% | 89.3% | 91.7% | 139 | oui |
-| dinov2_vitb14 | 86.6 | 224 | 768 | 300 | 0 | 96.3% | 99.7% | 89.0% | 91.3% | 34 | oui |
+| dinov2_vitb14 | 86.6 | 224 | 768 | 260 | 0 | 96.9% | 99.6% | 89.2% | 90.4% | 32 | oui |
+| dinov2_vitl14 | 304.4 | 224 | 1024 | 260 | 0 | 98.1% | 99.6% | 88.5% | 90.4% | 108 | oui |
+| dinov2_vits14 | 22.1 | 224 | 384 | 260 | 0 | 94.2% | 99.2% | 88.1% | 90.4% | 13 | oui |
 
 ## Seuil d'auto-acceptation (spread)
 
@@ -43,14 +43,14 @@
 
 ## Apparié McNemar (référence : `dinov2_vits14`)
 
-- `dinov2_vitb14` : b=6 c=13 · p = 0.1671
-- `dinov2_vitl14` : b=7 c=11 · p = 0.4807
+- `dinov2_vitb14` : b=5 c=12 · p = 0.1435
+- `dinov2_vitl14` : b=4 c=14 · p = 0.03088
 
 ## Traçabilité
 
-- `20260826T165314Z-5b161e789f0d-dinov2-vits14` — provisional=1
-- `20260826T165314Z-5b161e789f0d-dinov2-vitb14` — provisional=1
-- `20260826T165314Z-5b161e789f0d-dinov2-vitl14` — provisional=1
+- `20260826T183837Z-9bc08e19b83c-dinov2-vits14` — provisional=1
+- `20260826T183837Z-9bc08e19b83c-dinov2-vitb14` — provisional=1
+- `20260826T183837Z-9bc08e19b83c-dinov2-vitl14` — provisional=1
 
 ```
 ==============================================================================
