@@ -96,6 +96,11 @@ docker exec "${CONTAINER}" mc mb --ignore-existing local/enrichment-crops
 # PRIVÉ : contrairement à numista-canonical, aucune policy anonyme n'est posée
 # dessus (cf. Step 4). Ce ne sont pas des images publiques.
 docker exec "${CONTAINER}" mc mb --ignore-existing local/model-artifacts
+# Crops réservés à un corpus d'ÉVALUATION (juge-et-banc, D9). Un bucket à part,
+# pas un préfixe dans enrichment-crops : c'est ce qui rend un crop d'éval
+# PHYSIQUEMENT inatteignable pour une collecte d'entraînement, quel que soit son
+# SQL. PRIVÉ, comme enrichment-crops — aucune policy anonyme.
+docker exec "${CONTAINER}" mc mb --ignore-existing local/eval-corpus
 # numista-canonical: anonymous read (served via eurio-images.musubi.dev)
 docker exec "${CONTAINER}" mc anonymous set download local/numista-canonical
 # Disable bucket versioning explicitly (vision §"Décisions actées" #8)
@@ -103,6 +108,7 @@ docker exec "${CONTAINER}" mc version suspend local/numista-canonical || true
 docker exec "${CONTAINER}" mc version suspend local/enrichment-raws   || true
 docker exec "${CONTAINER}" mc version suspend local/enrichment-crops  || true
 docker exec "${CONTAINER}" mc version suspend local/model-artifacts   || true
+docker exec "${CONTAINER}" mc version suspend local/eval-corpus       || true
 
 echo "==> Step 5/5: create app user 'eurio-app' with scoped policy"
 # Add user (silently no-ops if user already exists with same key).

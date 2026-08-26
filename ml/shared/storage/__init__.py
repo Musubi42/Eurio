@@ -133,11 +133,11 @@ def assert_role_matches_bucket(bucket: Bucket, storage_key: str) -> None:
     """
     if is_eval_key(storage_key) and bucket != "eval-corpus":
         raise ValueError(
-            f"cle d'eval servie depuis le mauvais bucket : {bucket}/{storage_key}. "
-            "Un crop reserve a un corpus d'evaluation vit dans `eval-corpus` ; "
-            "l'appelant derive-t-il son bucket (`bucket_for_key`) ou le "
-            "hardcode-t-il ? Si c'est une collecte d'entrainement, le hardcode "
-            "est voulu et c'est le PREDICAT `eval_corpus IS NULL` qui manque."
+            f"clé d'éval servie depuis le mauvais bucket : {bucket}/{storage_key}. "
+            "Un crop réservé à un corpus d'évaluation vit dans `eval-corpus` ; "
+            "l'appelant dérive-t-il son bucket (`bucket_for_key`) ou le "
+            "hardcode-t-il ? Si c'est une collecte d'entraînement, le hardcode "
+            "est voulu et c'est le PRÉDICAT `eval_corpus IS NULL` qui manque."
         )
     if bucket == "eval-corpus" and not is_eval_key(storage_key):
         raise ValueError(

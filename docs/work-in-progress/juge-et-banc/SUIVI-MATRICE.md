@@ -95,6 +95,32 @@ change → le cache d'entraînement ne peut plus le trouver.
   chercherait les clés `eval/…` dans `enrichment-crops`, ne les trouverait pas,
   et les marquerait `missing_in_storage`.
 
+**Vérifié après application, sur les trois surfaces** (2026-08-26) :
+
+| Quoi | Mesure |
+|---|---|
+| base | `300` marqués, `300` avec `storage_path LIKE 'eval/%'`, `300` encore `present` |
+| MinIO | `eval-corpus` : **300 objets** ; le bucket n'existait pas avant |
+| préflight | `n_ebay = 1996`, 0 block, 0 warn (process neuf) |
+| affichage, de bout en bout | URL présignée → `HTTP 200 · 81 205 octets` · `PNG image data, 224 × 224` — **exactement la taille de l'objet source avant déplacement** |
+| **mutation sur le VRAI point d'entrée** | prédicat `eval_corpus IS NULL` retiré de `_ebay_training_sources` sur disque → `ValueError: clé d'éval servie depuis le mauvais bucket : enrichment-crops/eval/…`. **La fuite est bruyante**, et elle lève avant tout accès réseau. Fichier restauré, `git status` vide |
+
+⚠️ **Deux pièges rencontrés pendant l'application, à ne pas re-payer :**
+
+1. **La clé MinIO du Mac ne peut pas créer de bucket** (`AccessDenied` sur
+   `CreateBucket`) — elle est scopée par `eurio-app-policy`. Le bucket se crée
+   **côté VPS, en ciblé** (`docker exec eurio-minio mc mb …`), jamais en
+   relançant `bootstrap.sh` (qui ferait un `docker compose up` sur le conteneur
+   qui porte `eurio-api`, `eurio-review` et le miroir de backup). Et la policy
+   doit gagner `eval-corpus` **avant** la passe, sinon elle refuse tout.
+2. **Pendant le remplacement de la policy, les 300 `head_object` ont pris un
+   403** — et le script a annoncé « source absente de MinIO ». Un message qui
+   ment est pire qu'une erreur : il désignait les octets comme coupables au lieu
+   du droit d'accès. Corrigé : `_tete` sépare le 404 (absent) de tout le reste
+   (`TeteRefusee`), et un refus **arrête la passe** au lieu de conclure 300 fois
+   de suite. Rien n'avait été écrit ni supprimé — l'ordre copier → vérifier →
+   écrire → supprimer a tenu.
+
 ❓ **Une question que ce lot ouvre et ne tranche pas** : le recadrage à distance
 écrase les pixels sous la même clé. Sur un crop d'éval, cela invalide la mesure
 déjà prise, exactement comme un changement de corpus — que `store/eval_corpus.py`

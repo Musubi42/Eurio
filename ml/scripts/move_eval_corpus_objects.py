@@ -131,12 +131,32 @@ def assurer_bucket(client, bucket: str) -> bool:
         return True
 
 
+class TeteRefusee(Exception):
+    """L'objet n'a pas pu être INTERROGÉ — ce n'est pas « il n'est pas là ».
+
+    Vécu le 2026-08-26 : pendant la fenêtre où la policy MinIO était remplacée,
+    les 300 `head_object` ont pris un 403 et le script a annoncé « source
+    absente de MinIO ». Un message faux est pire qu'une erreur : il désigne un
+    coupable (les octets ont disparu) au lieu du vrai (la clé n'a plus le
+    droit). On sépare donc les deux, et un refus ARRÊTE la passe au lieu de la
+    laisser conclure 300 fois de suite.
+    """
+
+
 def _tete(client, bucket: str, key: str) -> dict | None:
-    """``head_object`` tolérant : ``None`` si l'objet n'est pas là."""
+    """``head_object`` : ``None`` si l'objet n'existe pas (404).
+
+    Toute AUTRE erreur lève ``TeteRefusee`` — un 403, une coupure réseau ou un
+    5xx ne disent pas que l'objet est absent, ils disent qu'on ne sait pas.
+    """
     try:
         h = client.head_object(Bucket=bucket, Key=key)
-    except Exception:  # noqa: BLE001 — 404 comme 403 : « pas exploitable »
-        return None
+    except Exception as exc:  # noqa: BLE001
+        code = getattr(exc, "response", {}).get(
+            "ResponseMetadata", {}).get("HTTPStatusCode")
+        if code in (404,):
+            return None
+        raise TeteRefusee(f"{bucket}/{key} : {exc}") from exc
     return {"size": h.get("ContentLength"), "etag": (h.get("ETag") or "").strip('"')}
 
 
@@ -204,15 +224,31 @@ def main(argv: list[str] | None = None) -> int:
     prets: list[dict] = []
 
     # ── 1. copier + vérifier ────────────────────────────────────────────────
+    #
+    # Un refus d'interrogation (403, réseau, 5xx) arrête TOUT : il ne dit rien
+    # sur les octets, et le voir 300 fois d'affilée ne le rend pas plus vrai.
     for it in items:
-        src_t = _tete(client, SOURCE_BUCKET, it["src_key"])
+        try:
+            src_t = _tete(client, SOURCE_BUCKET, it["src_key"])
+        except TeteRefusee as exc:
+            print(f"\n⛔ MinIO refuse de répondre — passe ARRÊTÉE après "
+                  f"{copies} copie(s).\n   {exc}\n   Rien n'a été supprimé. "
+                  f"Vérifie la policy de la clé, puis relance : le script est "
+                  f"idempotent.", file=sys.stderr)
+            return 2
         if src_t is None:
             # L'objet n'est pas dans la source. Est-il déjà à destination ?
             # (relance après interruption entre la copie et l'écriture)
-            if _tete(client, EVAL_BUCKET, it["dst_key"]) is not None:
+            try:
+                deja_la = _tete(client, EVAL_BUCKET, it["dst_key"]) is not None
+            except TeteRefusee as exc:
+                print(f"\n⛔ MinIO refuse de répondre sur {EVAL_BUCKET} — "
+                      f"passe ARRÊTÉE.\n   {exc}", file=sys.stderr)
+                return 2
+            if deja_la:
                 prets.append(it)
                 continue
-            echecs.append({**it, "motif": "source absente de MinIO"})
+            echecs.append({**it, "motif": "source absente de MinIO (404)"})
             continue
         try:
             client.copy_object(
@@ -222,7 +258,12 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001
             echecs.append({**it, "motif": f"copie refusée : {exc}"})
             continue
-        dst_t = _tete(client, EVAL_BUCKET, it["dst_key"])
+        try:
+            dst_t = _tete(client, EVAL_BUCKET, it["dst_key"])
+        except TeteRefusee as exc:
+            print(f"\n⛔ vérification impossible — passe ARRÊTÉE.\n   {exc}",
+                  file=sys.stderr)
+            return 2
         # On vérifie AVANT de toucher la base : une copie tronquée qu'on
         # déclarerait bonne ferait perdre l'original à l'étape 3.
         if dst_t is None or dst_t["size"] != src_t["size"]:
