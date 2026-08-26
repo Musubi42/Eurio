@@ -335,6 +335,30 @@ Ce n'est pas ce qui explique l'absence d'écart entre les trois modèles.
 affichant cette table fonderait un choix d'encodeur sur `provisional`, dont le
 prédicat est encore la dette Q1..Q4. Le rapport markdown est la trace.
 
+## Le corpus d'évaluation lui-même — chantier ouvert le 2026-08-26
+
+Document : [`CORPUS-EVAL-EBAY.md`](./CORPUS-EVAL-EBAY.md). Ouvert à la demande du
+PO (« utiliser des crops eBay comme jeu d'éval »), il constate d'abord que
+**c'est déjà fait** (D1, les 300 sont eBay à 100 %), puis mesure trois choses
+que la matrice doit connaître :
+
+- 🔴 **contamination par vendeur, +5,0 pts, `p ≈ 0,002`** — 40,7 % des crops
+  d'éval partagent leur `seller_id` avec une ancre de leur classe.
+  `phase-4-subcenter-evalbench.md:40` l'exigeait depuis des mois
+  (« split par lot/seller, pas par photo individuelle ») ; `select_eval_holdout`
+  ne le fait pas ;
+- 🔴 **la règle D5/D7 n'a pas sélectionné du dur** — le jeu « le plus incliné »
+  est 3,7 pts plus FACILE que ce qu'il a laissé (94,9 % contre 91,2 % à
+  contamination contrôlée). Le tilt ne classe rien à l'intérieur du jeu non plus ;
+- 🔴 **aucun signal géométrique ne prédit la difficulté**, et le seul qui
+  s'en approche est **inversé** : `quality_score` HAUT = le plus dur (87,8 %
+  contre 93,1 %). Aucun mécanisme n'est proposé — ce serait une histoire.
+
+⚠️ **Rien de tout ça ne bloque le bras ArcFace.** Les défauts du jeu sont les
+mêmes pour les deux modèles et le McNemar est apparié : il reste utilisable
+pour les départager *entre eux*. Ce document sert à savoir ce que le chiffre
+vaudra, pas à retarder sa production.
+
 ## Reste-à-faire hors étapes
 
 - **Persister `inputs_digest` sur l'itération** (~3 lignes). Il existe déjà
