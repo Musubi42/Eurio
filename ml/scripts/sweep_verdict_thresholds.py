@@ -103,6 +103,22 @@ def _frange(lo: float, hi: float, step: float) -> list[float]:
     return [round(lo + i * step, 4) for i in range(n + 1)]
 
 
+def _bloque_par_le_seul_texte(v, *, sim_min: float, spread_min: float) -> bool:
+    """Ce crop serait-il `auto_candidate` si l'étape 5 n'exigeait pas
+    `texte == convergent` ?
+
+    Vrai quand la fonction réelle a rendu `partial` alors que les DEUX critères
+    Dino passent : à ce stade les règles 1 à 4 sont franchies, donc la seule
+    cause restante de `partial` est la porte texte. Dérivation, pas copie.
+    """
+    if v.level != "partial":
+        return False
+    return (
+        v.sim is not None and v.sim >= sim_min
+        and v.spread is not None and v.spread >= spread_min
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", type=Path, default=_ML_ROOT / "state" / "eurio.replica.db")
@@ -113,6 +129,13 @@ def main() -> None:
                     help="ne pas exclure les crops qui SONT des ancres")
     ap.add_argument("--sim-grid", default="0.0:0.75:0.05")
     ap.add_argument("--spread-grid", default="0.0:0.15:0.01")
+    ap.add_argument(
+        "--text-gate", choices=("convergent", "any"), default="convergent",
+        help="porte texte de l'étape 5. 'convergent' = la règle en vigueur. "
+             "'any' = le point A (texte ≠ contradict) — équivalent à AUCUNE "
+             "condition de texte, la règle 2 ayant déjà renvoyé les "
+             "contradictions en `divergent`.",
+    )
     ap.add_argument("--csv", type=Path, default=None)
     args = ap.parse_args()
 
@@ -130,7 +153,9 @@ def main() -> None:
     print(f"couple      : {args.anchors_kind} / {args.encoder_version}")
     print(f"gold        : {args.gold} — {len(gold)} entrées labellisées")
     print(f"ancres      : {len(bank)} assets exclus" if bank else "ancres      : incluses")
-    print(f"population  : {len(pop)} crops notés\n")
+    print(f"population  : {len(pop)} crops notés")
+    print(f"porte texte : {args.text_gate}"
+          f"{'  (règle en vigueur)' if args.text_gate == 'convergent' else '  (point A)'}\n")
 
     sim_lo, sim_hi, sim_st = (float(x) for x in args.sim_grid.split(":"))
     sp_lo, sp_hi, sp_st = (float(x) for x in args.spread_grid.split(":"))
@@ -145,10 +170,24 @@ def main() -> None:
             n_auto = n_ok = 0
             for g in pop:
                 v = compute_auto_validate_verdict_from_row(rows[g.asset_id])
-                if v.level != "auto_candidate":
+                decide = v.decided_eurio_id
+                if v.level == "auto_candidate":
+                    pass
+                elif args.text_gate == "any" and _bloque_par_le_seul_texte(
+                    v, sim_min=sim_min, spread_min=spread_min
+                ):
+                    # Point A. On ne RECOPIE pas la règle : on DÉRIVE de la
+                    # sortie de la vraie fonction. `partial` avec les deux
+                    # critères Dino passants ne peut avoir qu'une cause — le
+                    # texte n'était pas `convergent` (et il n'est pas
+                    # `contradict`, la règle 2 l'aurait renvoyé en `divergent`
+                    # avant d'arriver ici). Et `top1 == cible` est acquis par
+                    # la règle 4, donc la cible EST `v.top1_eurio_id`.
+                    decide = v.top1_eurio_id
+                else:
                     continue
                 n_auto += 1
-                if v.decided_eurio_id == g.ground_truth_eurio_id:
+                if decide == g.ground_truth_eurio_id:
                     n_ok += 1
             results.append((sim_min, spread_min, n_auto, n_ok))
 

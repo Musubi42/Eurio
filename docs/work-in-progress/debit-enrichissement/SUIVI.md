@@ -499,6 +499,7 @@ attribuer les fichiers en vrac au moment de committer.
 | # | Geste | Coût | Bloque quoi |
 |---|---|---|---|
 | ~~**R1**~~ | ✅ **sans objet** — le code était intact, B2 était un artefact de course entre vérificateurs (2026-08-27) | — | — |
+| ~~**R6**~~ | ✅ **fait le 2026-08-27** — gold rebâti (466 → 1 309 crops évaluables), balayage rejoué, `--text-gate` ajouté. Q1 est instruite | — | — |
 | ~~**R2**~~ | ✅ **fait le 2026-08-27** — `SUIVI-MATRICE.md` porte la mesure honnête (0 pick écarté sous le garde vendeur, tableau des 4 combinaisons) et la raison pour laquelle le garde reste en place | — | — |
 | **R3** | **Fermer B1** : soit un repli côté front (`review_status === undefined` ⇒ actionnable), soit un ordre de déploiement **back puis front** écrit et tenu | 0,5 j | tout déploiement du lot 0 |
 | **R4** | **Fermer M2** : `isActionable` ne doit pas exiger `kind==='lot'` — le back ne le fait pas | 0,5 j | 207 crops dans 109 listings |
@@ -515,7 +516,7 @@ attribuer les fichiers en vrac au moment de committer.
 
 | # | Question | Ce que ça coûte | Ce que ça rapporte | Recommandation |
 |---|---|---|---|---|
-| **Q1** | **Change-t-on la règle du texte** de `convergent` à `≠ contradict` (point A) ? C'est un changement de **règle**, pas de seuil : il touche l'étape 5 de `_verdict_from_signals` **et** sa copie lean, puis il faut redéployer `eurio-api` | 2 fichiers du même commit + un déploiement VPS. Borne Wilson basse : au pire ~42 faux sur 2 121, contre ~33 sur 1 656 aujourd'hui | **+465 items auto-acceptés** sur la file ouverte (1 656 → 2 121, +28 %), à précision **améliorée** (99,65 % vs 99,46 % sur le gold) | **Rebuild le gold d'abord (R6)**, puis trancher. Le point A est le seul gain de volume mesuré |
+| **Q1** ⬆️ | ⚠️ **Chiffres RÉVISÉS le 2026-08-27 sur le gold rebâti (1 309 crops)** — voir §Gold rebâti. Le « +28 % à précision améliorée » de cette ligne datait des 466 crops. Vrais chiffres : **+489 items (+26,9 %)**, précision ponctuelle **99,81 → 99,74** (elle BAISSE), borne de Wilson **98,93 → 99,04** (elle monte). Le préalable R6 est levé. **Change-t-on la règle du texte** de `convergent` à `≠ contradict` (point A) ? C'est un changement de **règle**, pas de seuil : il touche l'étape 5 de `_verdict_from_signals` **et** sa copie lean, puis il faut redéployer `eurio-api` | 2 fichiers du même commit + un déploiement VPS. Borne Wilson basse : au pire ~42 faux sur 2 121, contre ~33 sur 1 656 aujourd'hui | **+465 items auto-acceptés** sur la file ouverte (1 656 → 2 121, +28 %), à précision **améliorée** (99,65 % vs 99,46 % sur le gold) | **Rebuild le gold d'abord (R6)**, puis trancher. Le point A est le seul gain de volume mesuré |
 | **Q2** | **Feu vert sur la vague 1 du scrape** (4 groupes, ~520 appels) ? | ~520 appels sur 5 000 · ~900 items de review créés | 3 groupes où **3 classes sur 3** sont `bottleneck=scrape`, à zéro exemplaire, **sans rien en file** | **Oui**, mais avec la vérification du coût réel immédiatement après (cf. `PLAN-SCRAPE.md` §Vague 1) |
 | **Q3** | **Plafond d'appels du jour** : 1 500 (recommandé) ou 3 846 (le budget) ? | à 1,84 item/appel : 1 500 → ~2 800 items ; 3 846 → **~7 000 items** sur une file qui en a 10 440 | plus d'appels = plus de classes servies | **1 500**. Le facteur limitant n'est pas le quota, c'est la file |
 | **Q4** | **Rejoue-t-on la poche `unresolvable`** (609 annonces jamais rejouées, 1 014 images) ? | ~43 min de Mac, ~610 items de review créés | ~740 crops, **valeur incertaine** (cible à retrouver par DINO) | **Essai borné à 60 annonces**, mesurer le taux de récupération ; sous ~40 %, arrêter |
@@ -1061,6 +1062,93 @@ Le rejet reste **ré-ouvrable** par `/restore`, comme celui de l'enqueue.
 **État : 7 tests neufs, 7 mutations jouées et rouges chacune sur son test, suite
 `2491 passed`.**
 
+---
+
+## 🔁 Gold rebâti, balayage rejoué — 2026-08-27 (R6 fait)
+
+C'était le préalable qu'on s'était donné avant de trancher **Q1**. Il est levé.
+
+```bash
+cd ml && PYTHONPATH=. ./.venv/bin/python scripts/verdict_gold.py build \
+  --db state/eurio.replica.db
+```
+
+| | avant | **après** |
+|---|---:|---:|
+| entrées du gold | 1 009 | **3 383** |
+| labellisées | 811 | **2 607** |
+| **population évaluable** (hors ancres) | 466 | **1 309** |
+
+Les 1 391 ancres de la banque restent exclues : elles se reconnaissent
+elles-mêmes et gonfleraient la précision.
+
+### ✅ Ce que le gold élargi CONFIRME — les seuils sont bien inertes
+
+```bash
+PYTHONPATH=. ./.venv/bin/python -m scripts.sweep_verdict_thresholds \
+  --db state/eurio.replica.db --sim-grid 0.0:0.70:0.05 --spread-grid 0.0:0.12:0.01
+```
+
+| sim / spread | n_auto | faux | précision |
+|---|---:|---:|---:|
+| 0,55 / 0,050 — **en vigueur** | **526** | 1 | **99,81 %** |
+| 0,55 / 0,000 — désarmés | 555 | 2 | 99,64 % |
+| 0,55 / 0,110 | 420 | **0** | 100 % |
+
+Désarmer les deux seuils rapporte **+29 (+5,5 %)**. La conclusion du petit gold
+(+3,2 %) tient sur **2,8× la population** : **D4 est confirmée, on n'y touche
+pas.**
+
+### 🔴 Ce que le gold élargi CORRIGE — la précision du point A
+
+**Nouvelle option `--text-gate any`** sur le balayage. Elle ne recopie pas la
+règle : au point 5, `texte ≠ contradict` équivaut à **aucune condition de
+texte**, la règle 2 ayant déjà renvoyé les contradictions en `divergent`. La
+mesure DÉRIVE donc de la sortie de la vraie fonction — un `partial` dont les
+deux critères Dino passent ne peut avoir qu'une cause : la porte texte.
+
+| porte texte | n_auto | justes | faux | précision | **Wilson 95 %** |
+|---|---:|---:|---:|---:|---|
+| `convergent` — en vigueur | 526 | 525 | 1 | **99,81 %** | [98,93 ; 99,97] |
+| **`≠ contradict` — point A** | **755** | 753 | 2 | **99,74 %** | **[99,04 ; 99,93]** |
+
+⚠️ **Le suivi affirmait que le point A AMÉLIORAIT la précision (99,46 → 99,65).
+C'était un artefact des 466 crops.** Sur 1 309, la précision ponctuelle
+**baisse** de 0,07 point.
+
+**Mais la borne basse de Wilson MONTE** — 98,93 → **99,04**. Au pire cas, le
+point A est *au moins aussi bon*, parce que la mesure porte sur 43 % de crops
+en plus. C'est le chiffre à retenir : le point estimé bouge dans le bruit, la
+borne, elle, s'améliore.
+
+### Le volume, sur la file réelle d'aujourd'hui
+
+Mesuré sur les **10 333** crops ouverts (après le rejet des 1 044 revers) :
+
+| | auto_candidate |
+|---|---:|
+| règle en vigueur | 1 819 |
+| **point A** | **2 308** |
+| | **+489, +26,9 %** |
+
+### ⚠️ Ce que cette mesure ne dit PAS
+
+Les signaux texte en base sont encore en **`v2`** : l'extracteur `v3` est
+déployé mais **aucun backfill n'a tourné**. Les deux armes sont comparées sur
+les mêmes signaux, donc le départage est honnête — mais les valeurs absolues
+bougeront après le backfill. La simulation en lecture donnait
+`convergent` **4 999 → 5 435 (+436)** sur les crops à cible connue : les deux
+gains se cumulent et ne sont pas redondants.
+
+### 👉 Q1 est instruite, elle attend ta décision
+
+| | pour | contre |
+|---|---|---|
+| volume | **+489 items** auto-acceptables (+26,9 %) | |
+| précision | borne de Wilson **améliorée** (99,04 vs 98,93) | point estimé −0,07 pt |
+| coût | 2 fichiers du même commit + un déploiement VPS | touche l'étape 5 **et** sa copie lean |
+| réversible | oui, un commit | |
+
 ## Les pièges de ce chantier — à ne pas re-payer
 
 | Piège | Ce qu'il fait |
@@ -1131,3 +1219,8 @@ Le rejet reste **ré-ouvrable** par `/restore`, comme celui de l'enqueue.
 | 2026-08-27 | **Le geste de rejet reste à faire, et il est bloqué proprement** : les helpers (`_reject_crop_terminal`) vivent dans `enqueue`, qui importe `review_lanes`, qui importe `training` — inimportable dans l'image lean. Réécrire le rejet en SQL créerait une seconde copie de la règle. Correctif propre : sortir la moitié stdlib de `review_lanes`, comme on vient de le faire pour `face_rule`. **Attend le PO** (refactor + second déploiement). |
 | 2026-08-27 | **Refactor `store/review_routing.py`.** ⚠️ Découper `review_lanes` seul n'aurait PAS suffi : `review.validation.{consensus,experts,persist}` tirent `training` eux aussi. La bonne cible était les helpers, pas le module intermédiaire. Une seule définition, deux tests la verrouillent. Commit `60dbe004`, redéployé. |
 | 2026-08-27 | ✅ **Les 1 044 encaissés.** File ouverte **11 377 → 10 333 (−9,2 %)**, ouverts `reverse` **1 052 → 8** (exactement les sticky restaurés à la main), 853 listings re-routés, 0 asset `face_reverse` resté `training_eligible=1`. Photo avant rejet dans `/var/lib/eurio/rejet_revers_avant_2026-08-27.csv`. Suite `2491 passed`, 7 mutations rouges. |
+| 2026-08-27 | **R6 fait — gold rebâti.** 1 009 → **3 383 entrées**, 811 → **2 607 labellisées**, population évaluable **466 → 1 309** (×2,8). Les 1 391 ancres restent exclues. |
+| 2026-08-27 | ✅ **D4 confirmée sur 2,8× la population** : désarmer les deux seuils rapporte **+29 (+5,5 %)**, contre +3,2 % sur le petit gold. Les seuils sont bien inertes, on n'y touche pas. |
+| 2026-08-27 | 🔴 **Correction : le point A n'améliore PAS la précision.** Le suivi annonçait 99,46 → 99,65 — artefact des 466 crops. Sur 1 309 : **99,81 → 99,74**, elle baisse de 0,07 pt. **Mais la borne basse de Wilson MONTE** (98,93 → 99,04) : au pire cas le point A est au moins aussi bon, la mesure portant sur 43 % de crops en plus. |
+| 2026-08-27 | **Volume du point A sur la file d'aujourd'hui** (10 333 ouverts, après le rejet des revers) : 1 819 → **2 308 auto_candidate, +489 (+26,9 %)**. ⚠️ Signaux texte encore en `v2` — l'extracteur `v3` est déployé, aucun backfill n'a tourné. Les deux arbres sont comparés sur les mêmes signaux, le départage est honnête ; les valeurs absolues bougeront après. |
+| 2026-08-27 | **`--text-gate {convergent,any}` ajouté au balayage.** Il ne recopie pas la règle : au point 5, `texte ≠ contradict` équivaut à AUCUNE condition de texte (la règle 2 a déjà sorti les contradictions), et la mesure dérive de la sortie de la vraie fonction. |
