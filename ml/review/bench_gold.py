@@ -103,6 +103,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import socket
 import sqlite3
@@ -115,7 +116,25 @@ from typing import Any, Sequence
 _ML_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GOLD = _ML_ROOT / "state" / "validation_gold" / "encoder_bench_gold.jsonl"
 
-#: Bucket MinIO des crops de review — même valeur que ``bench_encoder_dino``.
+def _default_db() -> Path:
+    """La base à LIRE, ``EURIO_DB_PATH`` d'abord, la RÉPLIQUE en repli.
+
+    Même convention que ``bench_encoder_dino.default_db`` — et jamais
+    ``state/eurio.db``, base de travail pré-flip qui peut être périmée de
+    milliers de lignes. Résolu à l'appel, pas à l'import, pour qu'un test qui
+    pose ``EURIO_DB_PATH`` soit entendu.
+
+    Réimplémenté ici plutôt qu'importé de ``store`` : le contrat d'import de ce
+    module est stdlib + ``shared.bank_classes`` + ``shared.storage.local_cache``,
+    et ``store/__init__`` tire une dizaine de mixins métier.
+    """
+    env = os.environ.get("EURIO_DB_PATH")
+    return Path(env) if env else _ML_ROOT / "state" / "eurio.replica.db"
+
+
+#: Bucket MinIO par DÉFAUT des crops de review. ⚠️ Ce n'est plus le seul : un
+#: crop réservé à un corpus d'évaluation vit dans ``eval-corpus`` (juge-et-banc,
+#: D9). Le bucket se DÉRIVE de la clé (``bucket_for_key``) — ne le hardcode pas.
 CROPS_BUCKET = "enrichment-crops"
 
 #: Le texte EXACT de la sélection, recopié dans le sidecar ``.meta.json`` pour
@@ -393,8 +412,19 @@ def load_meta(path: Path = DEFAULT_GOLD) -> dict[str, Any]:
     return json.loads(meta_path(path).read_text(encoding="utf-8"))
 
 
+def current_storage_paths(conn: sqlite3.Connection) -> dict[str, str]:
+    """``{asset_id: storage_path}`` — l'emplacement des octets AUJOURD'HUI."""
+    return {
+        r[0]: r[1]
+        for r in conn.execute(
+            "SELECT id, storage_path FROM image_assets WHERE storage_path IS NOT NULL"
+        )
+    }
+
+
 def resolve_local_paths(
     rows: Sequence[GoldCrop],
+    conn: sqlite3.Connection | None = None,
 ) -> tuple[list[tuple[GoldCrop, Path]], list[str]]:
     """``(présents sur disque, asset_ids manquants)``.
 
@@ -403,14 +433,51 @@ def resolve_local_paths(
     rétrécissait à chaque cache froid, il ne serait plus figé — exactement le
     défaut qu'on corrige. C'est l'appelant (le banc) qui décide quoi faire du
     trou, et qui doit le REPORTER.
+
+    🔴 **L'emplacement vient de la BASE, pas du manifeste — et ce n'est pas un
+    dégel du gold.** Le gold fige *quels* crops sont notés ; il ne fige pas *où*
+    leurs octets sont rangés. Confondre les deux a coûté cher le 2026-08-26 :
+    le déplacement des crops d'éval vers le bucket ``eval-corpus`` (D9) a rendu
+    **208 des 1 958** ``storage_path`` du manifeste périmés d'un coup. Avec
+    l'ancienne version — ``local_path("enrichment-crops", r.storage_path)`` en
+    dur — ces 208 partaient en ``missing`` : le banc perdait 10,6 % de son gold,
+    basculait en ``provisional=1``, et ses chiffres cessaient d'être comparables
+    aux bras du 2026-08-20. Rien n'aurait été faux, seulement décalé — la pire
+    espèce d'écart.
+
+    Le ``storage_path`` du manifeste reste utile comme **provenance** (ce qu'on
+    a figé) et alimente ``diff_gold`` ; il ne sert simplement plus à ouvrir le
+    fichier. Un asset absent de la base part en ``missing`` : c'est une vraie
+    dérive, et ``diff_gold`` la nomme.
+
+    ``conn`` optionnel : par défaut on ouvre la **réplique** en lecture seule
+    (même convention que ``bench_encoder_dino.default_db`` — jamais
+    ``state/eurio.db``, base de travail pré-flip qui peut être périmée de
+    milliers de lignes).
     """
+    from shared.storage import bucket_for_key  # noqa: PLC0415
     from shared.storage.local_cache import local_path  # noqa: PLC0415
+
+    fermer = conn is None
+    if conn is None:
+        conn = sqlite3.connect(f"file:{_default_db()}?mode=ro", uri=True)
+    try:
+        actuels = current_storage_paths(conn)
+    finally:
+        if fermer:
+            conn.close()
 
     present: list[tuple[GoldCrop, Path]] = []
     missing: list[str] = []
     for r in rows:
+        cle = actuels.get(r.asset_id)
+        if cle is None:
+            # L'asset n'existe plus en base — dérive réelle, pas un cache froid.
+            missing.append(r.asset_id)
+            continue
         try:
-            p = local_path(CROPS_BUCKET, r.storage_path)
+            # Bucket DÉRIVÉ de la clé : `eval-corpus` pour un crop d'éval.
+            p = local_path(bucket_for_key(cle), cle)
         except FileNotFoundError:
             missing.append(r.asset_id)
             continue

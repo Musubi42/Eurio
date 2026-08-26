@@ -268,9 +268,82 @@ def test_resolve_local_paths_ne_retire_rien_du_gold(conn, tmp_path, monkeypatch)
         raise FileNotFoundError(key)
 
     monkeypatch.setattr("shared.storage.local_cache.local_path", fake_local_path)
-    present, missing = resolve_local_paths(rows)
+    present, missing = resolve_local_paths(rows, conn)
     assert [g.asset_id for g, _ in present] == ["a1"]
     assert missing == ["a2", "a3"]
+    assert len(rows) == 3, "le manifeste d'entrée n'est pas muté"
+
+
+# ─── 6bis. L'emplacement vient de la BASE, jamais du manifeste ───────────────
+#
+# Le gold fige QUELS crops sont notés ; il ne fige pas OÙ leurs octets sont
+# rangés. Confondre les deux a coûté cher le 2026-08-26 : le déplacement des
+# crops d'éval vers le bucket `eval-corpus` (D9) a périmé 208 des 1958
+# `storage_path` du manifeste d'un coup. L'ancienne version suivait le chemin
+# figé et hardcodait `enrichment-crops` — ces 208 partaient en `missing`, le
+# banc perdait 10,6 % de son gold, basculait en `provisional=1`, et ses
+# chiffres cessaient d'être comparables aux bras d'avant. Rien de faux,
+# seulement décalé — la pire espèce d'écart.
+
+
+def test_un_crop_deplace_reste_trouve_via_la_base(conn, tmp_path, monkeypatch):
+    """LE test de cette correction.
+
+    Le manifeste garde l'ANCIEN chemin (c'est sa provenance, elle est figée) ;
+    la base porte le NOUVEAU. Le crop doit être trouvé, et depuis le bon bucket.
+    """
+    rows = build_gold(conn)
+    # Le crop `a1` déménage : nouveau bucket, nouvelle clé. Le gold, lui, ne
+    # bouge pas — il est figé, c'est tout son intérêt.
+    nouvelle = "eval/matrice-encodeurs-2026-08/crops/a1.jpg"
+    conn.execute("UPDATE image_assets SET storage_path = ? WHERE id = 'a1'", (nouvelle,))
+    fichier = tmp_path / "a1.jpg"
+    fichier.write_bytes(b"x")
+
+    vus: list[tuple[str, str]] = []
+
+    def fake_local_path(bucket, key):
+        vus.append((bucket, key))
+        if key == nouvelle:
+            return fichier
+        raise FileNotFoundError(key)
+
+    monkeypatch.setattr("shared.storage.local_cache.local_path", fake_local_path)
+    present, missing = resolve_local_paths(rows, conn)
+
+    assert [g.asset_id for g, _ in present] == ["a1"], (
+        "le crop déplacé doit rester trouvé — sinon le banc perd 10,6 % de son gold"
+    )
+    assert ("eval-corpus", nouvelle) in vus, (
+        "le bucket doit être DÉRIVÉ de la nouvelle clé, pas hardcodé"
+    )
+    # Et le manifeste n'a pas été réécrit : sa provenance reste la vérité de ce
+    # qui a été figé, ce que `diff_gold` sait lire.
+    a1 = next(r for r in rows if r.asset_id == "a1")
+    assert a1.storage_path == "crops/a1.jpg"
+
+
+def test_un_asset_disparu_de_la_base_part_en_missing(conn, tmp_path, monkeypatch):
+    """Pas de repli sur le chemin figé : un asset supprimé est une VRAIE dérive,
+    pas un cache froid. Le taire ferait chercher des octets qui n'ont plus de
+    ligne, et `diff_gold` est là pour la nommer."""
+    rows = build_gold(conn)
+    conn.execute("DELETE FROM image_assets WHERE id = 'a1'")
+
+    vus: list[str] = []
+
+    def fake_local_path(bucket, key):
+        vus.append(key)
+        raise FileNotFoundError(key)
+
+    monkeypatch.setattr("shared.storage.local_cache.local_path", fake_local_path)
+    present, missing = resolve_local_paths(rows, conn)
+    assert present == []
+    assert "a1" in missing
+    assert "crops/a1.jpg" not in vus, (
+        "pas de repli sur le chemin figé : l'asset n'a plus de ligne, "
+        "on ne va pas chercher ses octets à l'ancienne adresse"
+    )
     assert len(rows) == 3, "le manifeste d'entrée n'est pas muté"
 
 

@@ -627,7 +627,13 @@ def main(argv: list[str] | None = None) -> int:
     gold = load_gold(args.gold)
     meta = load_meta(args.gold)
     gold_version = meta["gold_version"]
-    present, missing = resolve_local_paths(gold)
+    # L'emplacement des octets vient de la BASE, pas du manifeste : le gold
+    # fige QUELS crops sont notés, pas OÙ ils sont rangés. Depuis le
+    # déplacement des crops d'éval vers `eval-corpus` (D9), 208 des 1958
+    # `storage_path` figés sont périmés — les suivre ferait perdre 10,6 % du
+    # gold et basculerait le run en `provisional=1`.
+    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as _c:
+        present, missing = resolve_local_paths(gold, _c)
     crops = select_sample(present, args.limit)
     gold_sample_n = len(crops) if len(crops) < len(gold) else None
 

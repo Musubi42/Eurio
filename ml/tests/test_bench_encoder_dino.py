@@ -137,7 +137,9 @@ def wired(monkeypatch, gold_file):
     )
     monkeypatch.setattr(
         bench, "resolve_local_paths",
-        lambda rows: ([(r, Path(f"/tmp/{r.asset_id}.jpg")) for r in rows], []),
+        lambda rows, conn=None: (
+            [(r, Path(f"/tmp/{r.asset_id}.jpg")) for r in rows], []
+        ),
     )
     monkeypatch.setattr(
         bench, "_bench_model",

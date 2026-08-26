@@ -790,7 +790,9 @@ def main(argv: list[str] | None = None) -> int:
 
     gold = load_gold(args.gold)
     meta = load_meta(args.gold)
-    present, missing = resolve_local_paths(gold)
+    # Emplacement résolu depuis la base (cf. `resolve_local_paths`) : le gold
+    # fige quels crops, pas où sont leurs octets.
+    present, missing = resolve_local_paths(gold, conn)
     if gold_classes is not None:
         n_avant = len(present)
         present = [t for t in present if t[0].class_id in gold_classes]
