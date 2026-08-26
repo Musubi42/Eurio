@@ -276,11 +276,17 @@ class EvalCorpusRow(BaseModel):
 
     ``eval_corpus`` ``None`` = retrait ; il exige alors ``expect`` (le corpus
     courant), sinon la ligne part en ``conflict``. Rien ne s'efface par
-    omission."""
+    omission.
+
+    ``storage_path`` optionnel = le RANGEMENT qui suit le rôle (D9) : la clé du
+    crop une fois ses octets déplacés dans le bucket ``eval-corpus``. Il arrive
+    dans la MÊME transaction que le rôle, pour qu'aucun état ne dise l'un sans
+    l'autre."""
 
     asset_id: str
     eval_corpus: str | None = None
     expect: str | None = None
+    storage_path: str | None = None
 
 
 class IngestEvalCorpusPayload(BaseModel):
@@ -298,10 +304,16 @@ def ingest_eval_corpus_route(payload: IngestEvalCorpusPayload) -> dict:
     marquage n'a aucun endroit où atterrir : le même constat que
     ``/ingest/quality-scores``, ``/ingest/consensus`` et ``/ingest/faces``.
 
-    ⚠️ **Les octets ne bougent pas.** La clé S3 d'un crop est immuable et sert
-    de jointure partout ; c'est la LIGNE qui porte le rôle. « Propager côté
-    MinIO » n'a pas de sens ici, et déplacer les objets casserait chaque
-    référence sans rien apporter.
+    **Les octets bougent, eux aussi** (D9, réouverte puis tranchée le
+    2026-08-26). La réponse initiale — « la clé S3 est immuable, c'est la ligne
+    qui porte le rôle » — était un argument de COÛT déguisé en argument de
+    PRINCIPE : un crop passé en évaluation n'est plus le même objet
+    fonctionnellement, et laisser le stockage l'ignorer fait tenir la séparation
+    par un seul `WHERE`. Les octets partent donc dans le bucket ``eval-corpus``,
+    sous le préfixe ``eval/<corpus>/``, et ``storage_path`` suit dans la même
+    transaction. Le déplacement lui-même est fait AVANT l'appel par
+    ``ml/scripts/move_eval_corpus_objects.py`` : on ne réécrit jamais une clé
+    vers un objet qui n'est pas encore là.
 
     Deux gardes (cf. ``store/eval_corpus.py``) : un crop ne change jamais de
     corpus en silence (``conflict``), et ``training_eligible`` — le verdict de

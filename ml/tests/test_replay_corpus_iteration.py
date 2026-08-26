@@ -403,6 +403,12 @@ def test_label_space_compte_les_classes_hors_du_candidat(
         "n_frames_covered": 2,
         "n_frames_uncoverable": 1,
         "frame_coverage": round(2 / 3, 4),
+        # L'espace de labels est GRAVÉ dans la scorecard, pas seulement
+        # contrôlé par le garde `--baseline` : c'est ce qui rend deux runs
+        # notés séparément vérifiables après coup.
+        "mesh_basis": "eurio_id",
+        "n_mesh_classes": 2,
+        "mesh_digest": "2a4b506822b08fca",
     }
 
 
@@ -551,3 +557,152 @@ def test_cli_baseline_meme_espace_produit_le_mcnemar(
     sc = json.loads((out / "scorecard.json").read_text())
     assert sc["mcnemar"]["n_paired"] == 2
     assert sc["baseline_primary"]["r_at_1_on_covered"] == 1.0
+
+
+# ─── La faille du garde : il se contournait en ne l'appelant pas ─────────────
+#
+# `assert_same_label_space` ne s'exécute que si `--baseline` est passé. Deux
+# runs notés SÉPARÉMENT, puis comparés à la main, passaient sans un mot. Ce
+# n'est pas un oubli qu'on corrige par de la discipline : une comparaison à la
+# main N'A pas de garde, quelle que soit la bonne volonté de celui qui la fait.
+# La fermeture a deux moitiés — l'empreinte dans l'artefact, et un chemin de
+# comparaison qui, lui, passe par le garde.
+
+
+def test_lempreinte_distingue_deux_espaces_de_meme_TAILLE():
+    """LE test de ce lot.
+
+    Un COMPTE de classes déclarerait comparables deux candidats à 60 classes
+    chacun portant deux ensembles différents. C'est exactement la confusion qui
+    rend un McNemar illisible, et elle est invisible à l'œil.
+    """
+    from scripts.replay_corpus import mesh_digest
+
+    a = {f"c{i}" for i in range(60)}
+    b = {f"c{i}" for i in range(1, 61)}
+    assert len(a) == len(b) == 60
+    assert mesh_digest(a) != mesh_digest(b)
+    # Stable, et insensible à l'ordre d'insertion.
+    assert mesh_digest(a) == mesh_digest(set(sorted(a, reverse=True)))
+
+
+def test_lempreinte_suit_la_maille_pas_lorthographe():
+    """Deux orthographes du même jeu ont la MÊME empreinte — sinon le garde
+    refuserait la comparaison la plus légitime du chantier."""
+    from training.eval.equivalence import EquivalenceMap
+
+    from scripts.replay_corpus import label_mesh, mesh_digest
+
+    eq = EquivalenceMap({"be-2007": "grp-1"})
+    assert mesh_digest(label_mesh({"be-2007"}, eq)) == mesh_digest(
+        label_mesh({"grp-1"}, eq)
+    )
+    # …et sans la maille, ils sont bien différents : la ligne ci-dessus mesure
+    # l'effet de l'équivalence, pas une tautologie.
+    assert mesh_digest(label_mesh({"be-2007"}, None)) != mesh_digest(
+        label_mesh({"grp-1"}, None)
+    )
+
+
+def _card(digest, *, version="v1", filtre=None, n=60):
+    return {
+        "candidate": f"cand-{digest}",
+        "corpus_version": version,
+        "filter": filtre if filtre is not None else {"cohort_id": None},
+        "label_space": {"mesh_digest": digest, "n_mesh_classes": n,
+                        "mesh_basis": "eurio_id"},
+        "primary": {"r_at_1_eq": 0.5},
+    }
+
+
+def test_deux_runs_notes_separement_sont_refuses_si_les_espaces_different():
+    """Le cas que le garde laissait passer : aucun `--baseline` n'a été
+    utilisé, donc `assert_same_label_space` n'a jamais tourné."""
+    from scripts.replay_corpus import assert_comparable_runs
+
+    with pytest.raises(SystemExit) as exc:
+        assert_comparable_runs(_card("aaaa"), _card("bbbb"), a_nom="A", b_nom="B")
+    msg = str(exc.value)
+    assert "espaces de labels DIFFÉRENTS" in msg
+    assert "aaaa" in msg and "bbbb" in msg
+
+
+def test_un_corpus_ou_un_filtre_different_est_refuse_aussi():
+    """Même modèle, deux jeux : le delta ne dit rien. `include_rejected` et les
+    conditions sont les réglages qui CHANGENT le jeu noté."""
+    from scripts.replay_corpus import assert_comparable_runs
+
+    with pytest.raises(SystemExit, match="corpus DIFFÉRENTS"):
+        assert_comparable_runs(_card("aaaa"), _card("aaaa", version="v2"),
+                               a_nom="A", b_nom="B")
+    with pytest.raises(SystemExit, match="filtres DIFFÉRENTS"):
+        assert_comparable_runs(
+            _card("aaaa"),
+            _card("aaaa", filtre={"cohort_id": None, "include_rejected": True}),
+            a_nom="A", b_nom="B")
+
+
+def test_une_scorecard_sans_empreinte_est_refusee_pas_presumee_compatible():
+    """Non vérifiable n'est pas compatible.
+
+    Sans ce refus, la seule scorecard qu'on ne peut PAS contrôler — celle notée
+    avant que le garde n'existe — serait la seule à passer.
+    """
+    from scripts.replay_corpus import assert_comparable_runs
+
+    vieille = _card("aaaa")
+    vieille["label_space"].pop("mesh_digest")
+    with pytest.raises(SystemExit, match="ABSENTE"):
+        assert_comparable_runs(vieille, _card("aaaa"), a_nom="vieille", b_nom="B")
+
+
+def test_deux_runs_comparables_passent_et_rendent_le_mcnemar(tmp_path: Path):
+    """Le pendant positif : le chemin gardé DOIT exister, sinon interdire la
+    comparaison à la main revient à interdire la comparaison."""
+    import json
+
+    from scripts.replay_corpus import compare_runs
+
+    def _run(nom, verdicts):
+        d = tmp_path / nom
+        d.mkdir()
+        (d / "scorecard.json").write_text(json.dumps(_card("aaaa") | {
+            "candidate": nom}), encoding="utf-8")
+        with (d / "predictions.jsonl").open("w", encoding="utf-8") as fh:
+            for i, ok in enumerate(verdicts):
+                fh.write(json.dumps({
+                    "capture_id": f"f{i}", "eurio_id": "x", "condition": "bright",
+                    "top5": [["x", 0.9]], "abstained": False,
+                    "correct_strict_top1": ok, "correct_eq_top1": ok,
+                    "correct_eq_top5": ok, "error": None, "coverable": True,
+                }) + "\n")
+        return d
+
+    a = _run("base", [True, True, False, False])
+    b = _run("cand", [True, False, True, True])
+    res = compare_runs(a, b)
+    mc = res["mcnemar"]
+    assert mc["n_paired"] == 4
+    assert mc["contingency"] == {
+        "both_correct": 1, "baseline_only": 1,
+        "candidate_only": 2, "both_incorrect": 0,
+    }
+    assert (b / "comparison.json").exists(), "la comparaison doit laisser une trace"
+
+
+def test_la_scorecard_grave_lempreinte_de_son_espace(tmp_path: Path):
+    """Sans elle, l'écart n'est vérifiable qu'en relançant les deux runs — donc
+    jamais, six mois plus tard."""
+    from scripts.replay_corpus import FramePrediction, build_scorecard, load_candidate
+
+    cand = load_candidate(_candidate_dir(tmp_path / "a", {"x": [1.0, 0.0, 0.0]}))
+    preds = [FramePrediction(
+        capture_id="f0", eurio_id="x", condition="bright", top5=[("x", 0.9)],
+        abstained=False, correct_strict_top1=True, correct_eq_top1=True,
+        correct_eq_top5=True,
+    )]
+    card = build_scorecard(cand, preds, None, {"cohort_id": None}, "v1", {"x"})
+    ls = card["label_space"]
+    assert ls["mesh_digest"] is not None
+    assert ls["n_mesh_classes"] == 1
+    assert ls["mesh_basis"] == "eurio_id"

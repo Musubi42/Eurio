@@ -2024,9 +2024,10 @@ def get_asset_file(source_id: str, asset_id: str):
     ).fetchone()
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=404, detail="Asset not found.")
+    from shared.storage import bucket_for_key as _bucket_for_key
     from shared.storage.local_cache import local_path as _local_path
     try:
-        p = _local_path("enrichment-crops", row["storage_path"])
+        p = _local_path(_bucket_for_key(row["storage_path"]), row["storage_path"])
     except FileNotFoundError as exc:
         raise HTTPException(status_code=410,
                             detail=f"Asset missing in MinIO: {exc}") from exc
@@ -2058,6 +2059,7 @@ def get_raw_file(source_id: str, source_image_id: str):
     ).fetchone()
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=404, detail="Raw image not found.")
+    from shared.storage import bucket_for_key as _bucket_for_key
     from shared.storage.local_cache import local_path as _local_path
     try:
         p = _local_path("enrichment-raws", row["storage_path"])

@@ -2738,8 +2738,11 @@ def _lazy_compute_dino(store, conn, asset_id: str, anchors_kind: str):
     if row is None or not row["storage_path"]:
         return None
     try:
+        from shared.storage import bucket_for_key
         from shared.storage.local_cache import local_path
-        crop_path = local_path("enrichment-crops", row["storage_path"])
+        crop_path = local_path(
+            bucket_for_key(row["storage_path"]), row["storage_path"]
+        )
     except FileNotFoundError:
         return None
     target_eid = row["target_eurio_id"]
@@ -2971,6 +2974,7 @@ def rank_candidates_for_review(
     crop de la review. Pas d'abstention : l'appelant a restreint l'espace.
     Encode le crop une fois et compare aux seules ancres demandées."""
     from sources._base.steps.auto_validate import rank_eurio_ids_for_crop
+    from shared.storage import bucket_for_key
     from shared.storage.local_cache import local_path
 
     asset_id = _asset_id_for_review(review_id)
@@ -2981,7 +2985,9 @@ def rank_candidates_for_review(
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=410, detail="Crop unavailable.")
     try:
-        crop_path = local_path("enrichment-crops", row["storage_path"])
+        crop_path = local_path(
+            bucket_for_key(row["storage_path"]), row["storage_path"]
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=410, detail=f"Crop missing: {exc}") from exc
     result = rank_eurio_ids_for_crop(

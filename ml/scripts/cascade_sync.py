@@ -26,7 +26,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from shared.storage import Bucket
+from shared.storage import Bucket, is_eval_key
 from shared.storage.cascade import (
     STATUS_MISSING,
     STATUS_PRESENT,
@@ -36,7 +36,11 @@ from shared.storage.cascade import (
 )
 
 _BUCKETS_FOR_TABLE = {
-    "image_assets": ("numista-canonical", "enrichment-crops"),
+    # `eval-corpus` : les crops réservés à un jeu d'évaluation (D9). Sans lui,
+    # l'audit chercherait leurs clés `eval/…` dans `enrichment-crops`, ne les
+    # y trouverait pas, et les marquerait `missing_in_storage` — il « répare »
+    # alors la base à l'envers, sur des objets parfaitement présents.
+    "image_assets": ("numista-canonical", "enrichment-crops", "eval-corpus"),
     "source_images": ("enrichment-raws",),
 }
 
@@ -95,9 +99,13 @@ def cmd_migrate_schema(args: argparse.Namespace) -> int:
 # ─── audit ──────────────────────────────────────────────────────────────────
 
 
-def _bucket_for_row(table: str, source: str | None) -> Bucket:
+def _bucket_for_row(table: str, source: str | None,
+                    storage_key: str | None = None) -> Bucket:
     if table == "source_images":
         return "enrichment-raws"
+    # Le RÔLE inscrit dans la clé l'emporte sur la source (D9).
+    if storage_key and is_eval_key(storage_key):
+        return "eval-corpus"
     if (source or "").lower() == "numista":
         return "numista-canonical"
     return "enrichment-crops"
@@ -113,7 +121,7 @@ def _list_db_keys(conn: sqlite3.Connection) -> dict[tuple[str, str], list[tuple[
             WHERE a.storage_status = 'present' AND a.storage_path IS NOT NULL"""
     ).fetchall()
     for r in rows:
-        b = _bucket_for_row("image_assets", r["source"])
+        b = _bucket_for_row("image_assets", r["source"], r["storage_path"])
         out.setdefault((b, r["storage_path"]), []).append(("image_assets", r["row_id"]))
 
     rows = conn.execute(
@@ -164,7 +172,8 @@ def _audit(client, conn: sqlite3.Connection, *, check_cache: bool):
     minio_missing_in_db: dict[str, list[str]] = {}                # bucket -> [keys]
     cache_stale: list[Path] = []
 
-    for bucket in ("numista-canonical", "enrichment-raws", "enrichment-crops"):
+    for bucket in ("numista-canonical", "enrichment-raws", "enrichment-crops",
+                   "eval-corpus"):
         minio_keys = _list_minio_keys(client, bucket)
         db_keys_for_bucket = db_by_bucket.get(bucket, set())
 

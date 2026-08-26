@@ -59,6 +59,7 @@ def recrop_zero_for_coin(
     )
     from sources._base.phash import compute_phash
     from sources._base.storage import crop_cache_path, crop_key
+    from shared.storage import bucket_for_key
     from shared.storage.local_cache import local_path, upload_through
 
     # Model B (C6b) : stub source_runs pour CE run_id (recrop hors pipeline → run_id
@@ -115,7 +116,8 @@ def recrop_zero_for_coin(
             cache_p.parent.mkdir(parents=True, exist_ok=True)
             if not cv2.imwrite(str(cache_p), res.image):
                 continue
-            upload_through("enrichment-crops", storage_key, cache_p.read_bytes())
+            upload_through(bucket_for_key(storage_key), storage_key,
+                           cache_p.read_bytes())
             phash_value = compute_phash(res.image)
             match = conn.execute(
                 """

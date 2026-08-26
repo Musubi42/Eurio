@@ -26,6 +26,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from serving.crop_edit import CropEditContextData, ManualCropData
+from shared.storage import bucket_for_key
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def crop_edit_context_response(ctx: CropEditContextData) -> CropEditContext:
             f"/sources/{ctx.source}/raws/{ctx.source_image_id}/file",
         ),
         crop_url=_signed(
-            "enrichment-crops", ctx.crop_storage_path,
+            bucket_for_key(ctx.crop_storage_path), ctx.crop_storage_path,
             f"/sources/{ctx.source}/assets/{ctx.asset_id}/file",
         ),
         raw_width=ctx.raw_width,

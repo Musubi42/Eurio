@@ -73,6 +73,7 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -397,6 +398,7 @@ def build_scorecard(
     version: str,
     candidate_class_ids: set[str] | None = None,
     excluded: dict | None = None,
+    equivalence=None,
 ) -> dict:
     n = len(preds)
     answered = [p for p in preds if not p.abstained and p.error is None]
@@ -418,10 +420,23 @@ def build_scorecard(
     gt_classes = {p.eurio_id for p in preds}
     covered_classes = {p.eurio_id for p in covered}
     uncoverable_classes = sorted(gt_classes - covered_classes)
+    # ── L'espace de labels s'inscrit dans l'ARTEFACT, pas seulement dans le
+    # garde. Le garde `assert_same_label_space` ne s'exécute que sous
+    # `--baseline` : deux runs notés SÉPARÉMENT puis comparés à la main
+    # passaient sans un mot — le garde se contournait en ne l'appelant pas.
+    # Une empreinte gravée dans chaque scorecard rend l'espace vérifiable
+    # après coup, par `assert_comparable_runs` (et par l'œil).
+    cand_mesh = (
+        label_mesh(candidate_class_ids, equivalence)
+        if candidate_class_ids is not None else None
+    )
     label_space = {
         "n_candidate_classes": (
             len(candidate_class_ids) if candidate_class_ids is not None else None
         ),
+        "mesh_basis": "design_group" if equivalence is not None else "eurio_id",
+        "n_mesh_classes": len(cand_mesh) if cand_mesh is not None else None,
+        "mesh_digest": mesh_digest(cand_mesh) if cand_mesh is not None else None,
         "n_ground_truth_classes": len(gt_classes),
         "n_covered_classes": len(covered_classes),
         "n_uncoverable_classes": len(uncoverable_classes),
@@ -531,6 +546,30 @@ def _flip(cid: str, bp: FramePrediction, cp: FramePrediction) -> dict:
     }
 
 
+def label_mesh(class_ids: set[str], equivalence) -> set[str]:
+    """Les ``class_id`` ramenés à la maille où la correction est jugée.
+
+    ``COALESCE(design_group, eurio_id)`` : deux candidats entraînés l'un en
+    ``eurio_id`` et l'autre en ``design_group`` ne sont pas différents pour
+    autant. Sans équivalence chargée, la maille EST ``eurio_id``.
+    """
+    if equivalence is None:
+        return set(class_ids)
+    return {equivalence.coalesce(i) or i for i in class_ids}
+
+
+def mesh_digest(mesh: set[str]) -> str:
+    """Empreinte stable d'un espace de labels — 16 hex de SHA-256.
+
+    Pourquoi une empreinte et pas un compte : deux candidats à 60 classes
+    CHACUN peuvent porter deux ensembles de 60 classes différents. Un compte
+    les déclarerait comparables. C'est précisément la confusion qui rend un
+    McNemar illisible, et elle est invisible à l'œil.
+    """
+    joint = "\n".join(sorted(mesh)).encode("utf-8")
+    return hashlib.sha256(joint).hexdigest()[:16]
+
+
 def assert_same_label_space(
     candidate: Candidate, baseline: Candidate, equivalence
 ) -> None:
@@ -548,10 +587,7 @@ def assert_same_label_space(
     autant.
     """
     def mesh(cand: Candidate) -> set[str]:
-        ids = centroid_class_ids(cand.centroids_path)
-        if equivalence is None:
-            return ids
-        return {equivalence.coalesce(i) or i for i in ids}
+        return label_mesh(centroid_class_ids(cand.centroids_path), equivalence)
 
     cand_mesh, base_mesh = mesh(candidate), mesh(baseline)
     if cand_mesh == base_mesh:
@@ -575,6 +611,146 @@ def assert_same_label_space(
     )
 
 
+# ─── Comparer DEUX runs déjà notés — le trou du garde, et sa fermeture ──────
+#
+# `assert_same_label_space` ne s'exécute que si `--baseline` est passé. Deux
+# runs notés séparément, puis comparés à la main, passaient donc sans un mot :
+# le garde se contournait en ne l'appelant pas. Ce n'est pas un oubli qu'on
+# corrige par de la discipline — une comparaison à la main N'A PAS de garde,
+# quelle que soit la bonne volonté de celui qui la fait.
+#
+# La fermeture a deux moitiés, et il faut les deux :
+#
+#   1. chaque scorecard porte désormais l'EMPREINTE de son espace de labels
+#      (`label_space.mesh_digest`) — l'écart devient visible dans l'artefact,
+#      même six mois plus tard, même sans relancer quoi que ce soit ;
+#   2. `--compare A B` donne un chemin de comparaison qui, lui, PASSE par le
+#      garde, et rend le McNemar apparié. Tant qu'il n'existait pas, la
+#      comparaison à la main était la seule option — donc la contourner
+#      n'était pas une négligence, c'était le seul geste disponible.
+
+
+def load_predictions(path: Path) -> list[FramePrediction]:
+    """Relit un ``predictions.jsonl`` écrit par un run précédent."""
+    preds: list[FramePrediction] = []
+    with Path(path).open(encoding="utf-8") as fh:
+        for ligne in fh:
+            ligne = ligne.strip()
+            if not ligne:
+                continue
+            d = json.loads(ligne)
+            preds.append(FramePrediction(
+                capture_id=d["capture_id"],
+                eurio_id=d["eurio_id"],
+                condition=d["condition"],
+                top5=[(c, s) for c, s in d.get("top5", [])],
+                abstained=bool(d["abstained"]),
+                correct_strict_top1=bool(d["correct_strict_top1"]),
+                correct_eq_top1=bool(d["correct_eq_top1"]),
+                correct_eq_top5=bool(d["correct_eq_top5"]),
+                error=d.get("error"),
+                coverable=bool(d.get("coverable", True)),
+            ))
+    return preds
+
+
+def assert_comparable_runs(a: dict, b: dict, *, a_nom: str, b_nom: str) -> None:
+    """Refuse de croiser deux scorecards qui ne notent pas la même chose.
+
+    Trois refus, et chacun a coûté une mesure illisible quelque part :
+
+    * **espace de labels différent** — un McNemar apparié croise des verdicts
+      frame par frame ; une classe présente chez l'un seulement rend chaque
+      frame de cette classe perdue d'avance pour un seul des deux. Le test
+      reste « valide » et mesure l'écart des COHORTES ;
+    * **corpus différent** — même modèle, deux jeux : le delta ne dit rien ;
+    * **filtre différent** — `include_rejected`, les conditions, la cohorte…
+      ce sont les réglages qui CHANGENT le jeu noté.
+
+    Et un quatrième, moins évident : une scorecard **sans empreinte** (notée
+    avant que le garde n'existe) n'est pas « probablement compatible », elle
+    est **non vérifiable**. On refuse aussi — sinon la seule scorecard qu'on
+    ne peut pas contrôler serait la seule à passer.
+    """
+    ecarts: list[str] = []
+
+    da = (a.get("label_space") or {}).get("mesh_digest")
+    db = (b.get("label_space") or {}).get("mesh_digest")
+    if da is None or db is None:
+        manquants = [n for n, d in ((a_nom, da), (b_nom, db)) if d is None]
+        ecarts.append(
+            "empreinte d'espace de labels ABSENTE de "
+            f"{', '.join(manquants)} — scorecard notée avant le garde. "
+            "Non vérifiable n'est pas compatible : rejoue le run."
+        )
+    elif da != db:
+        la = a.get("label_space") or {}
+        lb = b.get("label_space") or {}
+        ecarts.append(
+            f"espaces de labels DIFFÉRENTS : {a_nom} {da} "
+            f"({la.get('n_mesh_classes')} classes, maille "
+            f"{la.get('mesh_basis')}) ≠ {b_nom} {db} "
+            f"({lb.get('n_mesh_classes')} classes, maille "
+            f"{lb.get('mesh_basis')})"
+        )
+
+    if a.get("corpus_version") != b.get("corpus_version"):
+        ecarts.append(
+            f"corpus DIFFÉRENTS : {a_nom} version "
+            f"{a.get('corpus_version')} ≠ {b_nom} version "
+            f"{b.get('corpus_version')}"
+        )
+
+    if a.get("filter") != b.get("filter"):
+        ecarts.append(
+            f"filtres DIFFÉRENTS :\n      {a_nom} : {a.get('filter')}\n"
+            f"      {b_nom} : {b.get('filter')}"
+        )
+
+    if not ecarts:
+        return
+    raise SystemExit(
+        "Comparaison REFUSÉE — ces deux runs ne notent pas la même chose.\n"
+        + "".join(f"  · {e}\n" for e in ecarts)
+        + "Un McNemar croiserait alors l'écart des CONDITIONS, pas celui des "
+          "modèles. Rejoue les deux runs sur le même corpus, le même filtre et "
+          "le même ensemble de classes."
+    )
+
+
+def compare_runs(dir_a: Path, dir_b: Path) -> dict:
+    """Croise deux runs déjà notés — APRÈS le garde, jamais avant.
+
+    ``dir_a`` est la baseline, ``dir_b`` le candidat (même orientation que
+    ``crossed_stats``). Rend le bloc McNemar, et le grave à côté.
+    """
+    card_a = json.loads((dir_a / "scorecard.json").read_text(encoding="utf-8"))
+    card_b = json.loads((dir_b / "scorecard.json").read_text(encoding="utf-8"))
+    assert_comparable_runs(
+        card_a, card_b,
+        a_nom=card_a.get("candidate") or dir_a.name,
+        b_nom=card_b.get("candidate") or dir_b.name,
+    )
+    preds_a = load_predictions(dir_a / "predictions.jsonl")
+    preds_b = load_predictions(dir_b / "predictions.jsonl")
+    stats = crossed_stats(preds_a, preds_b)
+    res = {
+        "baseline": card_a.get("candidate"),
+        "candidate": card_b.get("candidate"),
+        "corpus_version": card_a.get("corpus_version"),
+        "label_space": (card_a.get("label_space") or {}).get("mesh_digest"),
+        "baseline_primary": card_a.get("primary"),
+        "candidate_primary": card_b.get("primary"),
+        "mcnemar": stats,
+    }
+    # La trace appartient à l'OPÉRATION, pas à la CLI : une comparaison faite
+    # depuis un notebook doit laisser le même artefact qu'une comparaison faite
+    # au terminal, sinon elle n'est relisible que par celui qui l'a lancée.
+    (dir_b / "comparison.json").write_text(
+        json.dumps(res, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return res
+
+
 # ─── Main ───────────────────────────────────────────────────────────────────
 
 
@@ -589,6 +765,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--candidate", type=Path, default=None, help="dossier candidat")
+    source.add_argument(
+        "--compare",
+        type=Path,
+        nargs=2,
+        metavar=("RUN_BASELINE", "RUN_CANDIDAT"),
+        default=None,
+        help=(
+            "croise DEUX runs déjà notés (deux dossiers de sortie), en passant "
+            "par le garde d'espace de labels. C'est le chemin à prendre quand "
+            "les deux runs ont été notés séparément : sans lui, la comparaison "
+            "se fait à la main et AUCUN garde ne s'exécute."
+        ),
+    )
     source.add_argument(
         "--iteration",
         default=None,
@@ -658,6 +847,25 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+
+    if args.compare:
+        # Chemin de comparaison PURE : aucune inférence, aucun modèle chargé.
+        # Le garde s'exécute en premier — refuser après coup laisserait sur
+        # l'écran des chiffres qu'on serait tenté de lire quand même.
+        dir_a, dir_b = args.compare
+        res = compare_runs(dir_a, dir_b)
+        mc = res["mcnemar"]
+        print(f"baseline  : {res['baseline']}")
+        print(f"candidat  : {res['candidate']}")
+        print(f"corpus    : version {res['corpus_version']} · "
+              f"espace de labels {res['label_space']}")
+        print(f"r@1 (eq)  : {res['baseline_primary'].get('r_at_1_eq')} → "
+              f"{res['candidate_primary'].get('r_at_1_eq')}")
+        print(f"McNemar   : n_paired={mc['n_paired']} "
+              f"discordants={mc['n_discordant']} p={mc['p_value']}")
+        print(f"            {mc['contingency']}")
+        print(f"écrit     : {dir_b / 'comparison.json'}")
+        return
 
     store = ScanCorpusStore(db_path=args.db)
     conditions = args.conditions.split(",") if args.conditions else None
@@ -761,7 +969,7 @@ def main() -> None:
         _write_predictions(out_dir / "predictions.baseline.jsonl", base_preds)
         scorecard = build_scorecard(
             candidate, cand_preds, baseline_label, filter_desc, version,
-            cand_class_ids, excluded,
+            cand_class_ids, excluded, equivalence=equivalence,
         )
         baseline_scorecard = build_scorecard(
             baseline,
@@ -771,6 +979,7 @@ def main() -> None:
             version,
             centroid_class_ids(baseline.centroids_path),
             excluded,
+            equivalence=equivalence,
         )
         scorecard["size"]["delta_vs_baseline_mb"] = round(
             scorecard["size"]["model_mb"] - baseline_scorecard["size"]["model_mb"], 2
@@ -781,7 +990,7 @@ def main() -> None:
     else:
         scorecard = build_scorecard(
             candidate, cand_preds, None, filter_desc, version, cand_class_ids,
-            excluded,
+            excluded, equivalence=equivalence,
         )
 
     (out_dir / "scorecard.json").write_text(

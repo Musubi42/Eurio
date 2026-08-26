@@ -6,9 +6,13 @@ handles read-through caching transparently.
 
 Public surface:
 
-- `Bucket`           : Literal type for the 3 bucket names.
+- `Bucket`           : Literal type for the bucket names.
 - `bucket_for_asset` : derives the bucket of an `image_assets` row from
-                       its `source_images.source` value.
+                       its `source_images.source` value AND its storage key.
+- `bucket_for_key`   : derives the bucket of a CROP from its key alone —
+                       le seul point d'appel des couches d'affichage.
+- `is_eval_key` / `eval_storage_key` : le rôle « jeu d'évaluation », inscrit
+                       dans la clé (cf. §Le rôle d'éval est un rangement).
 - `bucket_for_source_image` : always `enrichment-raws`.
 - `public_url`       : URL for a `numista-canonical` object (CDN, no signature).
 - `signed_url`       : presigned GET URL for a private bucket object.
@@ -30,6 +34,9 @@ Bucket = Literal[
     # Versionné par la CLÉ d'objet — le versioning S3 est banni côté MinIO
     # (cf. infra/minio/README.md §Anti-patterns).
     "model-artifacts",
+    # Crops réservés à un corpus d'ÉVALUATION (juge-et-banc, D9). Un bucket
+    # à part, pas un préfixe dans `enrichment-crops` : cf. §Le rôle d'éval.
+    "eval-corpus",
 ]
 
 PUBLIC_HOST = "https://eurio-images.musubi.dev"
@@ -39,8 +46,115 @@ S3_ENDPOINT = "https://eurio-s3.musubi.dev"
 DEFAULT_SIGNED_URL_TTL_SECONDS = 6 * 3600
 
 
-def bucket_for_asset(source: str) -> Bucket:
-    """Bucket for an `image_assets` row, given its `source_images.source`."""
+# ─── Le rôle d'éval est un rangement, pas seulement une colonne ──────────────
+#
+# Décision **D9** du chantier `juge-et-banc` (2026-08-26). Un crop prélevé pour
+# le jeu d'évaluation n'est plus le même objet FONCTIONNELLEMENT : il sort du
+# pool d'entraînement. Tant que le stockage l'ignore, la séparation ne tient
+# que par un `WHERE`, et un prédicat oublié la fait fuir en silence — le même
+# raisonnement qui avait déjà fait mettre le corpus de jugement dans une base
+# isolée (`scan_corpus.db`) : *l'entraînement ne la lit pas, donc il ne PEUT
+# pas la prendre, même par bug*. On l'applique ici aux octets.
+#
+# Deux marques, et il en faut DEUX :
+#
+#   1. un **bucket** dédié (`eval-corpus`) — c'est la garantie physique : un
+#      process qui ne connaît que `enrichment-crops` ne peut plus atteindre
+#      l'octet, quel que soit son SQL ;
+#   2. un **préfixe** dans la clé (`eval/<corpus>/…`) — c'est ce qui rend le
+#      bucket dérivable de la clé SEULE. Sans lui, il faudrait faire descendre
+#      `image_assets.eval_corpus` dans chaque requête qui alimente une
+#      vignette, et un oubli donnerait une image cassée sans un mot.
+#
+# Le préfixe ferme en plus un trou que le bucket seul laisse ouvert : à clé
+# INCHANGÉE, le cache local `~/.cache/eurio/enrichment-crops/<clé>` reste un
+# HIT, et l'entraînement lirait le crop d'éval malgré le déplacement. La clé
+# change → le cache d'entraînement ne peut plus le trouver.
+
+#: Préfixe de clé porté par tout objet réservé à un corpus d'évaluation.
+EVAL_KEY_PREFIX = "eval/"
+
+
+def is_eval_key(storage_key: str) -> bool:
+    """Cette clé désigne-t-elle un objet réservé à un corpus d'évaluation ?"""
+    return bool(storage_key) and storage_key.startswith(EVAL_KEY_PREFIX)
+
+
+def eval_storage_key(storage_key: str, corpus: str) -> str:
+    """La clé d'éval correspondant à `storage_key`, pour `corpus`.
+
+    Idempotent : une clé déjà préfixée est rendue telle quelle, pour qu'une
+    migration relancée ne fabrique pas `eval/<c>/eval/<c>/…`.
+    """
+    if not corpus or "/" in corpus:
+        raise ValueError(f"nom de corpus inutilisable comme segment de clé : {corpus!r}")
+    if is_eval_key(storage_key):
+        return storage_key
+    return f"{EVAL_KEY_PREFIX}{corpus}/{storage_key.lstrip('/')}"
+
+
+def corpus_of_eval_key(storage_key: str) -> str | None:
+    """Le corpus nommé par une clé d'éval, ou `None` si ce n'en est pas une."""
+    if not is_eval_key(storage_key):
+        return None
+    reste = storage_key[len(EVAL_KEY_PREFIX):]
+    corpus, sep, _ = reste.partition("/")
+    return corpus if sep and corpus else None
+
+
+def bucket_for_key(storage_key: str, *, default: Bucket = "enrichment-crops") -> Bucket:
+    """Bucket d'un objet CROP, dérivé de sa clé seule.
+
+    C'est le point d'appel des couches d'AFFICHAGE (`signed_url`, vignettes de
+    review, arbitrage, galerie) : elles n'ont que `storage_path` en main, et
+    doivent continuer à montrer les crops d'éval — `eval_corpus` porte un rôle,
+    pas une exclusion de la review (D8).
+
+    ⚠️ Les collectes d'ENTRAÎNEMENT n'appellent PAS ceci, et c'est délibéré :
+    elles gardent `"enrichment-crops"` en dur, pour qu'un crop d'éval leur soit
+    physiquement inatteignable (cf. `local_cache.local_path`, qui refuse le
+    couplage bucket/rôle incohérent au lieu de partir chercher un 404).
+    """
+    return "eval-corpus" if is_eval_key(storage_key) else default
+
+
+def assert_role_matches_bucket(bucket: Bucket, storage_key: str) -> None:
+    """Refuse un couple (bucket, clé) qui contredit le RÔLE porté par la clé.
+
+    C'est le garde qui rend la séparation d'éval *loud*. Une collecte
+    d'entraînement qui perdrait son prédicat `eval_corpus IS NULL` demanderait
+    `enrichment-crops/eval/<corpus>/…` — sans ce garde, elle partirait chercher
+    l'objet, prendrait un 404, et `local_path` déclencherait
+    `cascade.mark_missing_in_storage()` : le crop d'éval serait marqué
+    `missing_in_storage` alors qu'il est parfaitement là. Une fuite corrigerait
+    donc la base dans le mauvais sens, en silence.
+
+    On échoue AVANT le réseau, avec un nom.
+    """
+    if is_eval_key(storage_key) and bucket != "eval-corpus":
+        raise ValueError(
+            f"cle d'eval servie depuis le mauvais bucket : {bucket}/{storage_key}. "
+            "Un crop reserve a un corpus d'evaluation vit dans `eval-corpus` ; "
+            "l'appelant derive-t-il son bucket (`bucket_for_key`) ou le "
+            "hardcode-t-il ? Si c'est une collecte d'entrainement, le hardcode "
+            "est voulu et c'est le PREDICAT `eval_corpus IS NULL` qui manque."
+        )
+    if bucket == "eval-corpus" and not is_eval_key(storage_key):
+        raise ValueError(
+            f"clé sans rôle d'éval rangée dans `eval-corpus` : {storage_key}. "
+            f"Le bucket et le préfixe `{EVAL_KEY_PREFIX}` vont ensemble."
+        )
+
+
+def bucket_for_asset(source: str, storage_key: str | None = None) -> Bucket:
+    """Bucket for an `image_assets` row, given its `source_images.source`.
+
+    `storage_key` optionnel : quand il est fourni, le RÔLE inscrit dans la clé
+    l'emporte sur la source (un crop d'éval vit dans `eval-corpus`). Par
+    construction (D1) les crops d'éval viennent d'eBay, jamais de Numista.
+    """
+    if storage_key and is_eval_key(storage_key):
+        return "eval-corpus"
     if source == "numista":
         return "numista-canonical"
     return "enrichment-crops"
@@ -155,7 +269,13 @@ def signed_url(
     storage_key: str,
     expires_seconds: int = DEFAULT_SIGNED_URL_TTL_SECONDS,
 ) -> str:
-    """Presigned GET URL for a private bucket. Raises for `numista-canonical`."""
+    """Presigned GET URL for a private bucket. Raises for `numista-canonical`.
+
+    Garde de rôle (D9) : signer `enrichment-crops/eval/…` rendrait une URL
+    parfaitement formée qui 404 dans le navigateur — la panne muette classique.
+    L'appelant d'affichage dérive son bucket avec `bucket_for_key`.
+    """
+    assert_role_matches_bucket(bucket, storage_key)
     if bucket == "numista-canonical":
         raise ValueError(
             "Use public_url() for numista-canonical (it's anonymous-readable)."

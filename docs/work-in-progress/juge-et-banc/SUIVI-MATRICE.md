@@ -25,9 +25,9 @@ et le même ensemble de classes — pour savoir lequel part dans l'APK.
 | D6 | L'entraînement ArcFace se fait **sur le PC** (1080 Ti), pas sur le Mac | 2026-08-26 |
 | D7 | Le critère géométrique de D5 est **`tilt_deg`**, pas `quality_score` : après backfill il couvre **99,9 %** du pool éligible contre 65,4 % — aucune imputation, donc aucune règle qui choisirait en fait l'imputation | 2026-08-26 |
 | D8 | Le marquage vit dans **`image_assets.eval_corpus` (TEXTE)**, pas dans `training_eligible=0` : `training_eligible` porte le verdict de la REVIEW, `eval_corpus` porte un RÔLE. Les confondre ferait disparaître les 300 crops des compteurs de review | 2026-08-26 |
-| ~~D9~~ | ~~« Propager côté MinIO » n'a pas de sens technique~~ — **RÉOUVERTE le 2026-08-26, voir ci-dessous. Décidée trop vite, et sur un argument de COÛT présenté comme un argument de PRINCIPE** | 2026-08-26 |
+| D9 | **Le rangement suit le rôle.** Les crops d'éval partent dans un bucket dédié `eval-corpus`, sous le préfixe de clé `eval/<corpus>/`. Décidée après réouverture — la première réponse était un argument de COÛT déguisé en argument de PRINCIPE | 2026-08-26 |
 
-### 🔴 D9 réouverte — le PO a raison, et l'argument était mal posé
+### ✅ D9 tranchée — bucket dédié **et** préfixe de clé, appliqué le 2026-08-26
 
 Réponse initiale : « la clé S3 est immuable, c'est la ligne qui porte le rôle,
 un déplacement d'objets serait décoratif ». **Objection du PO, et elle porte :**
@@ -54,10 +54,52 @@ C'est un **lot**, pas une ligne — mais c'est la bonne cible. ⚠️ À noter :
 fichier ne « disparaît » pas de MinIO, il change de rôle ; ce que le PO demande
 est que le **rangement** reflète ce rôle, comme la base le fait désormais.
 
-**Statut : à trancher.** Options : (a) préfixe ou bucket dédié aux crops
-d'éval, `bucket_for_asset` devenant conscient du rôle — la séparation devient
-physique ; (b) statu quo, le rôle en base seul, et on assume que deux prédicats
-la portent. Ne pas reconduire (b) par défaut faute d'avoir tranché.
+**Tranché : option (a), et les DEUX marques — pas l'une ou l'autre.**
+
+| Marque | Ce qu'elle apporte |
+|---|---|
+| bucket `eval-corpus` | la garantie **physique** : un process qui ne connaît que `enrichment-crops` ne peut plus atteindre l'octet, quel que soit son SQL |
+| préfixe `eval/<corpus>/` dans la clé | rend le bucket **dérivable de la clé seule** (`bucket_for_key`) — sinon il faudrait faire descendre `eval_corpus` dans chaque requête qui alimente une vignette, et un oubli donnerait une image cassée sans un mot |
+
+⚠️ **Le préfixe ferme un trou que le bucket seul laissait ouvert.** À clé
+INCHANGÉE, le cache local `~/.cache/eurio/enrichment-crops/<clé>` reste un
+**HIT** : l'entraînement aurait lu le crop d'éval malgré le déplacement. La clé
+change → le cache d'entraînement ne peut plus le trouver.
+
+**Ce qui a été écrit** (suite : 2392 passed) :
+
+- `shared/storage/__init__.py` — `eval-corpus` dans `Bucket`, `EVAL_KEY_PREFIX`,
+  `is_eval_key` / `eval_storage_key` / `corpus_of_eval_key` / `bucket_for_key`,
+  `bucket_for_asset(source, storage_key=None)` où le **rôle l'emporte sur la
+  source** ;
+- **`assert_role_matches_bucket`**, appelé par `local_path`, `cache_path_for` et
+  `signed_url`. C'est lui qui rend une fuite *bruyante* : sans lui, une collecte
+  d'entraînement ayant perdu son prédicat `eval_corpus IS NULL` irait chercher
+  `enrichment-crops/eval/…`, prendrait un 404, et `local_path` déclencherait
+  `cascade.mark_missing_in_storage()` — le crop d'éval serait marqué
+  `missing_in_storage` alors qu'il est parfaitement là. **La fuite aurait
+  « réparé » la base à l'envers.** Le garde lève AVANT le réseau et AVANT la
+  cascade ;
+- `store/eval_corpus.py` + `POST /ingest/eval-corpus` acceptent `storage_path` :
+  rôle et rangement atterrissent dans la **même transaction** ;
+- `ml/scripts/move_eval_corpus_objects.py` — **copier → vérifier → écrire la
+  base → supprimer la source**, dans cet ordre et pas un autre. Idempotent ;
+- les couches d'**affichage** dérivent leur bucket (galerie, review, arbitrage,
+  ami, recadrage, suppression) — un crop d'éval garde son `training_eligible` et
+  reste donc dans les compteurs et les planches de review (D8) ;
+- les collectes d'**entraînement** gardent `"enrichment-crops"` **en dur**, et
+  c'est délibéré. Un test le verrouille dans ce sens : si quelqu'un les
+  « corrige » en les faisant dériver leur bucket, la garantie de D9 tombe sans
+  qu'aucun autre test ne rougisse ;
+- `scripts/cascade_sync.py` connaît `eval-corpus` — sans quoi l'audit
+  chercherait les clés `eval/…` dans `enrichment-crops`, ne les trouverait pas,
+  et les marquerait `missing_in_storage`.
+
+❓ **Une question que ce lot ouvre et ne tranche pas** : le recadrage à distance
+écrase les pixels sous la même clé. Sur un crop d'éval, cela invalide la mesure
+déjà prise, exactement comme un changement de corpus — que `store/eval_corpus.py`
+refuse, lui. Faut-il refuser le recadrage d'un crop d'éval ? C'est un choix
+produit, pas technique : laissé au PO.
 
 ### Sur D5 — pourquoi pas « les plus éloignées de la canonique selon DINO »
 
@@ -110,8 +152,8 @@ Répartition des 68 classes riches : 8 à `10-14`, 9 à `15-19`, 23 à `20-29`,
 | # | Étape | Machine | État |
 |---|---|---|---|
 | **1** | Backfill `quality_score` + tilt sur le parc | Mac | ✅ **fait** 2026-08-26 — `{"updated": 17658, "skipped": 20, "missing": 0}`, couverture `quality` 5,6 % → **61,6 %**, `tilt` → **99,5 %**. Détail : [`ETAPE1-2.md`](./ETAPE1-2.md) |
-| **2** | Prélever 5 crops d'éval × 60 classes, les marquer, les exclure de l'entraînement, propager MinIO + API | Mac | 🟡 **prêt, PAS appliqué** — règle écrite et testée, plan à **60 classes / 300 crops**, migration `0014` + route `/ingest/eval-corpus` + les 2 prédicats écrits et **mutés**. ✅ **`0014` appliquée au canonique le 2026-08-26**, `/ingest/eval-corpus` servie (vérifiée dans l'OpenAPI), réplique à jour. ⛔ Reste : régénérer le plan (le pool a bougé), `select_eval_holdout --apply` → `{"updated": 300, "missing": 0}`, re-vérifier `training-readiness` |
-| **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — bloqué par l'application de l'étape 2 |
+| **2** | Prélever 5 crops d'éval × 60 classes, les marquer, les exclure de l'entraînement, propager MinIO + API | Mac | ✅ **fait** 2026-08-26 — plan régénéré (**60 classes / 300 crops**), `select_eval_holdout --apply` → `{"updated": 300, "skipped": 0, "conflict": 0, "missing": 0}`. Préflight recalculé : `n_ebay` **2296 → 1996** (−300 exactement), `ready=true`, 0 block, 0 warn. Rangement MinIO (D9) propagé. Plan appliqué : [`eval-holdout-plan.json`](./eval-holdout-plan.json) |
+| **3** | **Entraîner ArcFace sur les 60 classes** | **PC** | 🔜 le PO — **débloqué** (l'étape 2 est appliquée). Lire d'abord [`REVUE-ETAPE3.md`](./REVUE-ETAPE3.md) |
 | **4** | Sous-banque DINO restreinte aux 60 classes | Mac | 🔜 |
 | **5** | La matrice — ~8 bras sur les mêmes 300 frames | Mac | 🔜 |
 
@@ -189,6 +231,16 @@ Préparée ici, jouée là-bas. La revue de préparation dira si elle est prête
   sans mémoriser la taille totale : 1,35 s × 62 583 fichiers, payé même quand le cache
   est très en dessous de son plafond (donc pour rien). Contourné à la main en étape 1
   (`EURIO_CACHE_MAX_GB=0`) ; **non corrigé**. Toute passe massive future repaiera la taxe.
+- ⚠️ **`:8042` sert un `training-readiness` PÉRIMÉ quand il a été lancé avant
+  l'écriture.** Mesuré le 2026-08-26 : après le marquage des 300 crops, le
+  serveur en place répondait encore `n_ebay=2296` tandis qu'un process neuf
+  lisant *le même fichier* rendait 1996. `Store._connection()` garde une
+  connexion `mode=ro` **thread-local** ouverte pour la vie du process ; les
+  pages réécrites par `sqlite3_rsync` ne lui parviennent pas. Rien ne le dit —
+  la réponse est bien formée et plausible.
+  **Contournement immédiat** : recalculer dans un process neuf, ou redémarrer
+  `:8042`. **Correctif de fond non fait.** Ne jamais conclure d'un
+  `training-readiness` lu sur un serveur plus vieux que la dernière écriture.
 - **`encoder_bench_runs`** manque deux colonnes pour porter la matrice :
   `quantization` et `eval_corpus` (cf. [`MATRICE.md`](./MATRICE.md) §4).
 - **`provisional`** est gardé à l'écriture mais son prédicat croit quatre champs
@@ -236,9 +288,38 @@ calculée. Ce ne sont pas des réglages.
 | **A — noter des crops eBay** | `replay_corpus` ne lit qu'une table, `scan_corpus` (`replay_corpus.py:662`). 7 points à changer, dont la double identité `truth_eurio_id`/`class_id` du gold, `by_condition` qui dégénère, et `normalize_device_path` ≠ `normalize_listing_path` | `REVUE-ETAPE3.md` §B2 |
 | **B — un adaptateur DINO** | `load_embedder` n'accepte que `.pth/.pt/.tflite` ; la banque est un `.npz` (2 062 ancres, 671 classes, dim 1024). Restreindre la banque à 60 classes est **nécessaire mais insuffisant** | `REVUE-ETAPE3.md` §B3 |
 
-⚠️ Et une **faille du garde d'espace de labels** : il ne se déclenche que si
-`--baseline` est passé (`replay_corpus.py:739-741`). Deux runs notés séparément
-passent sans un mot — le garde se contourne en ne l'appelant pas.
+### ✅ La faille du garde d'espace de labels est fermée — 2026-08-26
+
+Le constat était : `assert_same_label_space` ne se déclenche que si
+`--baseline` est passé. Deux runs notés séparément puis comparés à la main
+passaient sans un mot — **le garde se contournait en ne l'appelant pas.**
+
+Ce n'est pas un oubli qu'on corrige par de la discipline : une comparaison à la
+main **n'a pas** de garde, quelle que soit la bonne volonté de celui qui la
+fait. Tant que le chemin gardé n'existait pas, le contourner n'était même pas
+une négligence — c'était le seul geste disponible. La fermeture a donc deux
+moitiés, et il faut les deux :
+
+1. **l'empreinte entre dans l'artefact.** Chaque scorecard porte désormais
+   `label_space.mesh_digest` (16 hex de SHA-256 de la maille triée), plus
+   `n_mesh_classes` et `mesh_basis`. ⚠️ Un **compte** n'aurait rien dit : deux
+   candidats à 60 classes **chacun** peuvent porter deux ensembles de 60
+   classes différents, et un compte les déclarerait comparables. L'écart est
+   maintenant lisible dans le fichier, six mois plus tard, sans rien relancer ;
+2. **`--compare RUN_A RUN_B`** croise deux runs déjà notés en passant par
+   `assert_comparable_runs` — aucune inférence, aucun modèle chargé, et le
+   McNemar apparié est calculé depuis les deux `predictions.jsonl`. Le résultat
+   est gravé dans `comparison.json` par l'**opération**, pas par la CLI : une
+   comparaison faite depuis un notebook laisse le même artefact.
+
+`assert_comparable_runs` refuse sur **quatre** motifs, et le quatrième est le
+moins évident : une scorecard **sans empreinte** (notée avant ce lot) n'est pas
+« probablement compatible », elle est **non vérifiable** — sans ce refus, la
+seule scorecard qu'on ne peut pas contrôler serait la seule à passer. Les trois
+autres : espace de labels, `corpus_version`, et le bloc `filter` (dont
+`include_rejected`, LE réglage qui change le jeu noté).
+
+Verrouillé par 7 tests dans `tests/test_replay_corpus_iteration.py`.
 
 ## Journal
 
@@ -253,4 +334,8 @@ passent sans un mot — le garde se contourne en ne l'appelant pas.
 | 2026-08-26 | **Étape 1 jouée.** `EURIO_CACHE_MAX_GB=0` pour la passe — tranché sur mesure : le cache (15 Go) est **sous** son plafond (20 Go), l'éviction n'aurait rien évincé, et son `rglob` coûtait 1,35 s × 1 579 téléchargements ≈ **35 min** pour ~7,4 min de CPU utile. `{"updated": 17658, "skipped": 20, "missing": 0}`. |
 | 2026-08-26 | **Étape 2 préparée, non appliquée.** Règle de sélection déterministe (quantiles de la moitié la plus inclinée, `tilt_deg` desc + `id` en bris d'égalité, **aucun aléatoire donc aucune graine**), ancres `2eur_all` exclues (751 écartées). Plan : **60 classes × 5 = 300**, tilt moyen **16,43°** contre 12,75° pour le pool restant. Migration `0014` (`image_assets.eval_corpus`), route `POST /ingest/eval-corpus`, prédicat dans les DEUX collectes. Préflight **`ready=True` avant ET après**, `n_ebay` 2 208 → 1 908 (−300 exactement), aucune classe ne tombe. |
 | 2026-08-26 | **Trois mutations jouées, trois tests rouges** (ArcFace, ancres DINO, `_ensure_column` pre-bootstrap) ; sur le **vrai** point d'entrée, la mutation ArcFace fait remonter `n_ebay` à 2 208 — le hold-out fuit. Suite complète : **2373 passed, exit=0** (2358 + 15 neufs). |
+| 2026-08-26 | **Étape 2 APPLIQUÉE.** `{"updated": 300, "skipped": 0, "conflict": 0, "missing": 0}`. Préflight recalculé dans un process neuf : `n_ebay` 2296 → 1996 (−300 exactement), `ready=true`. |
+| 2026-08-26 | **D9 tranchée et appliquée** : bucket `eval-corpus` + préfixe de clé `eval/<corpus>/`, `assert_role_matches_bucket` en garde, affichage dérivé / entraînement volontairement aveugle. Suite : 2392 passed. |
+| 2026-08-26 | **Faille du garde d'espace de labels fermée** : empreinte `mesh_digest` dans chaque scorecard + `--compare A B` qui passe par le garde. |
+| 2026-08-26 | ⚠️ **Panne muette trouvée en vérifiant l'étape 2** : l'API `:8042` déjà lancée répondait encore `n_ebay=2296` sur `training-readiness` alors que le fichier réplique qu'elle lit disait 1996. Sa connexion read-only thread-local ne voit pas les pages neuves écrites par `sqlite3_rsync`. **Un `training-readiness` lu sur un serveur lancé avant une écriture ment.** Cf. §Reste-à-faire. |
 | 2026-08-26 | ⚠️ **Deux pièges rencontrés, à ne pas re-payer.** (a) `_ensure_column` posé **après** `executescript` est trop tard : `schema.sql` crée l'index PARTIEL sur la colonne et échoue en `no such column` avant le rattrapage — il va en **pre-bootstrap**. (b) **`:8042` ré-écrase la réplique toutes les 120 s** (`client/replica.py::start_autopull`) : un `ALTER` posé à la main dessus disparaît en moins de deux minutes, **sans un mot**. |

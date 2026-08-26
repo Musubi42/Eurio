@@ -29,7 +29,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from shared.storage import signed_url
+from shared.storage import bucket_for_key, signed_url
 from store import (
     Store,
     clear_reference_override,
@@ -166,7 +166,12 @@ def _asset_file_url(row: sqlite3.Row) -> str:
     """
     if row["storage_path"]:
         try:
-            return signed_url("enrichment-crops", row["storage_path"])
+            # Bucket DÉRIVÉ de la clé (D9) : un crop passé en corpus d'éval
+            # vit dans `eval-corpus`, et la galerie doit continuer à le montrer
+            # — `eval_corpus` porte un rôle, pas une exclusion de la review.
+            return signed_url(
+                bucket_for_key(row["storage_path"]), row["storage_path"]
+            )
         except Exception:  # noqa: BLE001 — creds absentes, MinIO injoignable…
             logger.warning("signature d'URL impossible pour l'asset %s", row["id"])
     return f"/sources/{row['source']}/assets/{row['id']}/file"

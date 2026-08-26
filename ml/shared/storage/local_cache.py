@@ -21,7 +21,7 @@ import os
 import time
 from pathlib import Path
 
-from . import Bucket, _client
+from . import Bucket, _client, assert_role_matches_bucket
 
 
 def _cache_root() -> Path:
@@ -83,7 +83,16 @@ def local_path(bucket: Bucket, storage_key: str) -> Path:
     DB row pointing at this key is marked `storage_status='missing_in_storage'`
     via `cascade.mark_missing_in_storage()`. Transient errors do NOT trigger
     the mark — only an explicit "key not found" response does.
+
+    Garde de rôle (juge-et-banc, D9) : un couple (bucket, clé) qui contredit le
+    rôle inscrit dans la clé lève AVANT le cache et AVANT le réseau. C'est
+    précisément à cause de la cascade ci-dessus : sans le garde, une collecte
+    d'entraînement qui aurait perdu son prédicat `eval_corpus IS NULL` irait
+    chercher un crop d'éval dans `enrichment-crops`, prendrait un 404, et le
+    ferait marquer `missing_in_storage` — une fuite qui « répare » la base à
+    l'envers, sans un mot.
     """
+    assert_role_matches_bucket(bucket, storage_key)
     target = _cache_root() / bucket / storage_key
     if target.exists():
         # Touch atime for LRU eviction; keep mtime byte-identical (use the
@@ -149,7 +158,13 @@ def cache_path_for(bucket: Bucket, storage_key: str) -> Path:
 
     Useful when you're about to write through (upload_through) and want
     to know where the file will live locally first.
+
+    Même garde de rôle que `local_path` : le chemin de cache est le chemin
+    qu'`upload_through` écrira, donc un couple incohérent doit échouer ici
+    aussi — sinon on rangerait un crop d'éval sous `enrichment-crops/` en
+    local, et le prochain `local_path` y verrait un HIT.
     """
+    assert_role_matches_bucket(bucket, storage_key)
     return _cache_root() / bucket / storage_key
 
 

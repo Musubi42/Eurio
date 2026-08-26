@@ -304,6 +304,7 @@ def apply_manual_crop(
     pointait sur le mauvais cadrage)."""
     from vision.normalize_snap import _crop_mask_resize_float
     from sources._base.phash import compute_phash
+    from shared.storage import bucket_for_key
     from shared.storage.local_cache import cache_path_for, local_path, upload_through
 
     conn = store._connection()  # noqa: SLF001
@@ -356,11 +357,15 @@ def apply_manual_crop(
     # 3. Écriture (calque recrop_ebay_refine) : cache local OVERWRITE direct
     #    (upload_through skip le cache si le fichier existe), puis MinIO.
     crop_sp = row["crop_storage_path"]
-    cache_p = cache_path_for("enrichment-crops", crop_sp)
+    # Bucket DÉRIVÉ de la clé (D9) : un crop déjà passé en corpus d'éval vit
+    # dans `eval-corpus`. Le hardcoder ferait lever le garde de rôle en plein
+    # recadrage, et l'opérateur verrait une 500 sans cause lisible.
+    crop_bucket = bucket_for_key(crop_sp)
+    cache_p = cache_path_for(crop_bucket, crop_sp)
     cache_p.parent.mkdir(parents=True, exist_ok=True)
     cache_p.write_bytes(png_bytes)
     try:
-        upload_through("enrichment-crops", crop_sp, png_bytes)
+        upload_through(crop_bucket, crop_sp, png_bytes)
     except Exception as exc:  # noqa: BLE001
         # ÉCHEC DUR, et volontairement : on n'écrit PAS la géométrie.
         #
@@ -800,9 +805,10 @@ def delete_crop(store: Store, asset_id: str) -> None:
         # Fichier d'abord (la cascade DB suit). Best-effort : un orphelin MinIO
         # est rattrapé par la sync périodique, on ne bloque pas la suppression.
         try:
+            from shared.storage import bucket_for_key
             from shared.storage.cascade import delete_asset_cascade, STATUS_REMOVED
             delete_asset_cascade(
-                "enrichment-crops", storage_key, "image_assets", asset_id,
+                bucket_for_key(storage_key), storage_key, "image_assets", asset_id,
                 reason=STATUS_REMOVED,
             )
         except Exception as exc:  # noqa: BLE001

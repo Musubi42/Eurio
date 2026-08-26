@@ -112,7 +112,10 @@ def push_quality_scores(scores: list[dict[str, Any]]) -> dict | None:
 def push_eval_corpus(rows: list[dict[str, Any]]) -> dict | None:
     """POST ``/ingest/eval-corpus`` si la sync est activée, sinon no-op (``None``).
 
-    ``rows`` = ``{asset_id, eval_corpus, expect?}``. La SÉLECTION reste ici —
+    ``rows`` = ``{asset_id, eval_corpus, expect?, storage_path?}``.
+    ``storage_path`` = la clé du crop une fois déplacé dans ``eval-corpus``
+    (D9) ; elle voyage avec le rôle pour que les deux atterrissent ensemble.
+    La SÉLECTION reste ici —
     c'est elle qui a besoin de lire les mesures géométriques du parc et de
     tirer un rang déterministe par classe — seules les lignes voyagent. Même
     doctrine que ``push_quality_scores``.

@@ -137,9 +137,10 @@ def crop(asset_id: str):
     row = next((r for r in _gold_rows() if r["asset_id"] == asset_id), None)
     if row is None:
         raise HTTPException(status_code=404, detail=f"asset {asset_id} absent du gold denom")
+    from shared.storage import bucket_for_key
     from shared.storage.local_cache import local_path
     try:
-        p = local_path("enrichment-crops", row["sp"])
+        p = local_path(bucket_for_key(row["sp"]), row["sp"])
     except FileNotFoundError as exc:
         raise HTTPException(status_code=410, detail=f"crop absent de MinIO: {exc}") from exc
     return FileResponse(p, media_type="image/png", headers={"Cache-Control": "no-cache"})

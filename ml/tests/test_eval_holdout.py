@@ -309,3 +309,238 @@ def test_seuls_les_crops_ebay_sont_preleves(tmp_path, source):
     conn.execute("UPDATE source_images SET source = ?", (source,))
     conn.commit()
     assert selectionner(conn, quota=5, min_real=10)["picks"] == []
+
+
+# ─── 5. Le RANGEMENT suit le rôle — décision D9 ──────────────────────────────
+#
+# D9 avait d'abord été fermée sur « la clé S3 est immuable, c'est la ligne qui
+# porte le rôle ». Le PO l'a rouverte, et il avait raison : un crop passé en
+# évaluation n'est plus le même objet fonctionnellement. Tant que le stockage
+# l'ignore, la séparation ne tient que par un `WHERE` — et un prédicat oublié
+# la fait fuir en silence. Ces tests verrouillent les deux marques (bucket +
+# préfixe de clé) et, surtout, le GARDE qui rend une fuite bruyante.
+
+
+def test_la_cle_deval_porte_le_corpus_et_la_derivation_est_idempotente():
+    from shared.storage import corpus_of_eval_key, eval_storage_key, is_eval_key
+
+    k = eval_storage_key("ebay/run-1/a.png", "matrice-2026-08")
+    assert k == "eval/matrice-2026-08/ebay/run-1/a.png"
+    assert is_eval_key(k) and not is_eval_key("ebay/run-1/a.png")
+    assert corpus_of_eval_key(k) == "matrice-2026-08"
+    assert corpus_of_eval_key("ebay/run-1/a.png") is None
+    # Idempotence : une migration relancée ne fabrique pas `eval/c/eval/c/…`.
+    assert eval_storage_key(k, "matrice-2026-08") == k
+
+
+def test_un_nom_de_corpus_avec_un_slash_est_refuse():
+    """Sinon il fabriquerait un niveau de préfixe fantôme, et
+    `corpus_of_eval_key` ne saurait plus lire son propre rangement."""
+    from shared.storage import eval_storage_key
+
+    with pytest.raises(ValueError):
+        eval_storage_key("ebay/a.png", "matrice/2026")
+    with pytest.raises(ValueError):
+        eval_storage_key("ebay/a.png", "")
+
+
+def test_le_bucket_se_derive_de_la_cle_seule():
+    """C'est ce qui permet aux couches d'AFFICHAGE de continuer à montrer les
+    crops d'éval sans faire descendre `eval_corpus` dans chaque requête — un
+    oubli y donnerait une vignette cassée sans un mot (D8 : le rôle n'est pas
+    une exclusion de la review)."""
+    from shared.storage import bucket_for_asset, bucket_for_key
+
+    assert bucket_for_key("ebay/run-1/a.png") == "enrichment-crops"
+    assert bucket_for_key("eval/c/ebay/run-1/a.png") == "eval-corpus"
+    assert bucket_for_asset("ebay") == "enrichment-crops"
+    assert bucket_for_asset("numista") == "numista-canonical"
+    assert bucket_for_asset("ebay", "eval/c/ebay/a.png") == "eval-corpus"
+    # Le rôle l'emporte sur la source.
+    assert bucket_for_asset("numista", "eval/c/x.png") == "eval-corpus"
+
+
+def test_le_garde_refuse_un_couple_bucket_role_incoherent():
+    from shared.storage import assert_role_matches_bucket
+
+    assert_role_matches_bucket("enrichment-crops", "ebay/a.png")
+    assert_role_matches_bucket("eval-corpus", "eval/c/ebay/a.png")
+    with pytest.raises(ValueError, match="mauvais bucket"):
+        assert_role_matches_bucket("enrichment-crops", "eval/c/ebay/a.png")
+    with pytest.raises(ValueError, match="sans rôle d'éval"):
+        assert_role_matches_bucket("eval-corpus", "ebay/a.png")
+
+
+def test_local_path_echoue_avant_le_reseau_et_avant_la_cascade(tmp_path, monkeypatch):
+    """LE test de ce lot.
+
+    Sans ce garde, une collecte d'entraînement qui aurait perdu son prédicat
+    `eval_corpus IS NULL` demanderait `enrichment-crops/eval/…`, prendrait un
+    404, et `local_path` déclencherait `cascade.mark_missing_in_storage()` : le
+    crop d'éval serait marqué `missing_in_storage` alors qu'il est parfaitement
+    là. La fuite « réparerait » donc la base à l'envers, en silence.
+
+    On vérifie les deux moitiés : ça lève, et ni MinIO ni la cascade n'ont été
+    touchés.
+    """
+    import shared.storage.cascade as cascade
+    import shared.storage.local_cache as lc
+
+    monkeypatch.setenv("EURIO_CACHE_ROOT", str(tmp_path))
+    appels: list = []
+    monkeypatch.setattr(lc, "_client", lambda: appels.append("minio"))
+    monkeypatch.setattr(cascade, "mark_missing_in_storage",
+                        lambda *a, **k: appels.append("cascade"))
+
+    with pytest.raises(ValueError, match="mauvais bucket"):
+        lc.local_path("enrichment-crops", "eval/c/ebay/a.png")
+    assert appels == [], "le garde doit lever AVANT le réseau et AVANT la cascade"
+
+    # Et le chemin de cache, qui est celui qu'`upload_through` écrirait : sans
+    # ce second garde on rangerait un crop d'éval sous `enrichment-crops/` en
+    # local, et le prochain `local_path` y verrait un HIT.
+    with pytest.raises(ValueError, match="mauvais bucket"):
+        lc.cache_path_for("enrichment-crops", "eval/c/ebay/a.png")
+
+
+def test_le_rangement_voyage_avec_le_role_dans_la_meme_transaction(tmp_path):
+    """Un état qui dirait le corpus sans la clé (ou l'inverse) ne serait
+    rattrapé par rien — ils partent ensemble."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()  # noqa: SLF001
+    _monte_crops(conn, n=3)
+
+    r = apply_ingest_eval_corpus(conn, [{
+        "asset_id": "a0", "eval_corpus": "X",
+        "storage_path": "eval/X/ebay/si1/a0.png",
+    }])
+    assert r["updated"] == 1
+    ligne = conn.execute(
+        "SELECT eval_corpus, storage_path FROM image_assets WHERE id='a0'"
+    ).fetchone()
+    assert tuple(ligne) == ("X", "eval/X/ebay/si1/a0.png")
+
+
+def test_un_deplacement_apres_marquage_nest_pas_compte_skipped(tmp_path):
+    """La migration se joue en DEUX temps : marquer, puis déplacer les octets
+    et dire où ils sont. Si le second temps était `skipped` parce que le corpus
+    est déjà posé, un déplacement passerait pour un no-op — et la base
+    continuerait de pointer une clé qui n'existe plus."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()  # noqa: SLF001
+    _monte_crops(conn, n=2)
+
+    apply_ingest_eval_corpus(conn, [{"asset_id": "a0", "eval_corpus": "X"}])
+    r = apply_ingest_eval_corpus(conn, [{
+        "asset_id": "a0", "eval_corpus": "X",
+        "storage_path": "eval/X/ebay/si1/a0.png",
+    }])
+    assert (r["updated"], r["skipped"]) == (1, 0)
+    assert conn.execute(
+        "SELECT storage_path FROM image_assets WHERE id='a0'"
+    ).fetchone()[0] == "eval/X/ebay/si1/a0.png"
+
+    # Rejouer à l'identique redevient un no-op.
+    r2 = apply_ingest_eval_corpus(conn, [{
+        "asset_id": "a0", "eval_corpus": "X",
+        "storage_path": "eval/X/ebay/si1/a0.png",
+    }])
+    assert (r2["updated"], r2["skipped"]) == (0, 1)
+
+
+def test_une_cle_deval_sur_une_ligne_quon_retire_est_refusee(tmp_path):
+    """Elle laisserait un crop d'entraînement pointant un bucket qu'aucune
+    collecte de train ne regarde — invisible, et impossible à distinguer d'une
+    perte."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()  # noqa: SLF001
+    _monte_crops(conn, n=1)
+    apply_ingest_eval_corpus(conn, [{"asset_id": "a0", "eval_corpus": "X"}])
+
+    r = apply_ingest_eval_corpus(conn, [{
+        "asset_id": "a0", "eval_corpus": None, "expect": "X",
+        "storage_path": "eval/X/ebay/si1/a0.png",
+    }])
+    assert r["conflict"] == ["a0"] and r["updated"] == 0
+    assert conn.execute(
+        "SELECT eval_corpus FROM image_assets WHERE id='a0'").fetchone()[0] == "X"
+
+
+def test_la_route_ingest_transporte_bien_storage_path():
+    """Le champ doit exister sur le MODÈLE de la route, pas seulement dans le
+    helper : pydantic ignore silencieusement un champ non déclaré, et la clé
+    n'atterrirait jamais — pendant que les octets, eux, auraient bougé."""
+    from serving.ingest_routes import EvalCorpusRow
+
+    assert "storage_path" in EvalCorpusRow.model_fields
+    r = EvalCorpusRow(asset_id="a", eval_corpus="X", storage_path="eval/X/a.png")
+    assert r.model_dump()["storage_path"] == "eval/X/a.png"
+
+
+def test_le_plan_de_deplacement_est_idempotent(tmp_path):
+    """Un crop déjà rangé est compté `deja_range` et n'est pas retouché — une
+    relance du script ne re-copie rien."""
+    from scripts.move_eval_corpus_objects import plan_deplacement
+
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()  # noqa: SLF001
+    _monte_crops(conn, n=3)
+    conn.execute("UPDATE image_assets SET eval_corpus='X' WHERE id IN ('a0','a1')")
+    conn.commit()
+    conn.row_factory = sqlite3.Row
+
+    plan = plan_deplacement(conn)
+    assert plan["deja_range"] == 0
+    assert {i["asset_id"] for i in plan["a_deplacer"]} == {"a0", "a1"}
+    assert plan["a_deplacer"][0]["dst_key"] == "eval/X/ebay/si1/a0.png"
+
+    conn.execute(
+        "UPDATE image_assets SET storage_path='eval/X/ebay/si1/a0.png' "
+        "WHERE id='a0'")
+    conn.commit()
+    plan2 = plan_deplacement(conn)
+    assert plan2["deja_range"] == 1
+    assert {i["asset_id"] for i in plan2["a_deplacer"]} == {"a1"}
+
+
+def test_laffichage_derive_son_bucket_et_ne_le_hardcode_pas():
+    """Les couches d'affichage ne doivent PAS nommer `enrichment-crops` en dur :
+    avec une clé d'éval, `signed_url` lèverait — et leurs `except` avalent
+    l'exception, donc la vignette casserait sans un mot.
+
+    On lit le SOURCE plutôt que d'appeler : ces helpers ont besoin de creds
+    MinIO, et le point à verrouiller est justement l'absence du littéral.
+    """
+    import inspect
+
+    from review.peer_arbitration_routes import _crop_url as arb
+    from review_service.routes_reviewer import _crop_url as friend
+    from serving.review_queue.repository import _crop_url as queue
+    from serving.review_routes import _crop_url as review
+
+    for fn in (queue, review, friend, arb):
+        src = inspect.getsource(fn)
+        assert "bucket_for_key" in src, f"{fn.__qualname__} dérive-t-il son bucket ?"
+        assert '"enrichment-crops"' not in src, (
+            f"{fn.__qualname__} hardcode encore le bucket des crops"
+        )
+
+
+def test_les_collectes_dentrainement_hardcodent_le_bucket_et_cest_voulu():
+    """Le pendant du test précédent, et il n'est pas symétrique.
+
+    Les deux collectes de TRAIN gardent `enrichment-crops` en dur : c'est ce
+    qui rend un crop d'éval physiquement inatteignable pour elles. Si un jour
+    quelqu'un les « corrige » en les faisant dériver leur bucket, la garantie
+    de D9 tombe sans qu'aucun test ne rougisse — sauf celui-ci.
+    """
+    import inspect
+
+    from training.foundation.anchors import _candidate_crops_for_class
+    from training.iteration_augmentations import _ebay_training_sources
+
+    src = inspect.getsource(_ebay_training_sources)
+    assert '"enrichment-crops"' in src and "bucket_for_key" not in src, (
+        "la collecte ArcFace doit rester aveugle au bucket d'éval"
+    )
+    assert "eval_corpus IS NULL" in inspect.getsource(_candidate_crops_for_class)

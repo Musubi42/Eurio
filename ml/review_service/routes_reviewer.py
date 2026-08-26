@@ -44,9 +44,10 @@ def _crop_url(storage_path: str | None) -> str:
     if not storage_path:
         return ""
     try:
-        from shared.storage import signed_url
+        from shared.storage import bucket_for_key, signed_url
 
-        return signed_url("enrichment-crops", storage_path)
+        # Bucket dérivé de la clé (D9) — un crop d'éval reste affichable.
+        return signed_url(bucket_for_key(storage_path), storage_path)
     except Exception:  # noqa: BLE001 — creds MinIO absents en dev pur : pas bloquant
         return ""
 

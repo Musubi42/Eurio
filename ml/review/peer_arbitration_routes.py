@@ -83,9 +83,10 @@ def _crop_url(source: str | None, asset_id: str, storage_path: str | None) -> st
     """
     if storage_path:
         try:
-            from shared.storage import signed_url
+            from shared.storage import bucket_for_key, signed_url
 
-            return signed_url("enrichment-crops", storage_path)
+            # Bucket dérivé de la clé (D9) — un crop d'éval reste arbitrable.
+            return signed_url(bucket_for_key(storage_path), storage_path)
         except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
             logger.warning("[peer-arbitration] signature MinIO échouée pour %s — "
                            "repli relatif, qui ne mène nulle part sur l'image lean",

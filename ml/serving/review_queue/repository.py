@@ -241,9 +241,14 @@ def _crop_url(source: str | None, asset_id: str, storage_path: str | None) -> st
     """
     if storage_path:
         try:
-            from shared.storage import signed_url
+            from shared.storage import bucket_for_key, signed_url
 
-            return signed_url("enrichment-crops", storage_path)
+            # Bucket DÉRIVÉ de la clé (D9). Les crops passés en corpus d'éval
+            # gardent leur `training_eligible` et restent donc dans les
+            # compteurs et les planches de review (D8) : s'ils cessaient de
+            # s'afficher, la review deviendrait aveugle sur 300 items sans
+            # qu'aucune erreur ne le dise.
+            return signed_url(bucket_for_key(storage_path), storage_path)
         except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
             pass
     return f"/sources/{source}/assets/{asset_id}/file"
