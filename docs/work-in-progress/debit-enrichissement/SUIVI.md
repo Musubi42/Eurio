@@ -895,6 +895,107 @@ read-only, Direction A) et l'autopull l'écraserait en deux minutes.
 **État : 9 tests neufs + 2 réécrits, 8 mutations jouées et rouges chacune sur le
 bon test, suite `2483 passed`.**
 
+---
+
+## 🚀 Déployé au canonique — 2026-08-27
+
+**Commit `edd708c4`, poussé sur `github/repo-cleanup`, `eurio-api` rebâti et
+redémarré.** Le front n'est **pas** déployé : il porte le lot 0 avec 5 défauts
+majeurs non corrigés (B1, M1–M5). Ordre respecté : back seul.
+
+### Les trois migrations sont passées ensemble
+
+Le canonique était à `0014` ; elles s'appliquent au démarrage, donc **0015, 0016
+et 0017 sont parties d'un bloc** — `schema.sql` porte d'ailleurs les trois DDL
+dans le même fichier. C'est le **Q5** du suivi, tranché de fait par ce
+déploiement.
+
+```
+db_migrate: applied 3 migration(s):
+  ['0015_encoder_bench_quantization_eval_corpus.sql',
+   '0016_iteration_inputs_digest.sql',
+   '0017_image_assets_face_source.sql']
+```
+
+Backfill de provenance, vérifié **sur le canonique** :
+
+| `face_source` | `face` | n |
+|---|---|---:|
+| `human` | obverse | **3 122** — protégés |
+| `pipeline` | obverse | 13 489 |
+| `pipeline` | reverse | 3 764 |
+
+Trois invariants relus dans un process neuf, tous à **0** : verdicts humains
+altérés · face posée sans provenance · désaccord restant entre la marge et
+l'étiquette.
+
+### La passe corrective — appliquée
+
+`recompute_faces.py --apply`, joué **dans le conteneur** contre
+`/var/lib/eurio/eurio.db`. C'est `shared/face_rule.py` (stdlib pur) qui l'a rendu
+possible : `ml/scripts/` n'est pas copié dans l'image lean et
+`steps/auto_validate` y est inimportable (`cv2`, `torch`).
+
+**4 298 faces réécrites** — exactement le dry-run, au crop près :
+
+| transition | n |
+|---|---:|
+| `obverse` → `reverse` | 1 380 |
+| `(NULL)` → `obverse` | 2 252 |
+| `(NULL)` → `reverse` | 560 |
+| `unknown` → `obverse` | 55 |
+| `reverse` → `obverse` | 51 |
+
+**Réversible** : photo des 4 298 lignes AVANT la passe (id, face, face_source,
+marge) dans `/var/lib/eurio/face_avant_2026-08-27.csv` (265 Ko) — sans elle les
+transitions `NULL → X` étaient irréversibles.
+
+### ⛔ Ce que la passe NE fait PAS — et ma phrase d'avant était prématurée
+
+J'ai annoncé « 1 051 crops sortent de la file ». **Ils n'en sortent pas.** La
+passe corrige l'ÉTIQUETTE ; le routage « revers → rejeté » se fait à l'enqueue,
+jamais rétroactivement (`auto_validate.py`, en toutes lettres). Et `list_queue`
+n'a **aucun** prédicat sur `face` : les revers restent servis à l'humain.
+
+Mesuré après la passe : crops ouverts étiquetés `reverse` **1 → 1 052**, file
+ouverte totale **11 377, inchangée**.
+
+| | n |
+|---|---:|
+| ouverts étiquetés `reverse` | 1 052 |
+| encore `needs_review` | 1 052 |
+| restaurés à la main (sticky, à épargner) | 8 |
+| **rejetables** | **1 044** |
+
+### Le geste qui reste, et pourquoi il n'a pas été fait
+
+Le mécanisme EXISTE — `_reject_crop_terminal` + recalcul de `route_reason`,
+utilisés par `scripts/backfill_face.py`. Deux obstacles :
+
+1. `backfill_face.py` ne traite que les crops à `face IS NULL` **et** ré-encode
+   avec DINO. Après la passe il n'y a plus de `face IS NULL` : il ne trouverait
+   rien à faire ;
+2. les helpers de rejet vivent dans `sources/_base/steps/enqueue`, qui importe
+   `review.review_lanes`, qui importe `training.foundation.auto_validate` —
+   **inimportable dans l'image lean** (`No module named 'training'`).
+
+⛔ **Réécrire le rejet en SQL serait une seconde copie de la règle**, libre de
+diverger : exactement ce que `shared/face_rule.py` vient d'éliminer. On ne le
+fait pas.
+
+**Le correctif propre est le même geste que pour la face** : sortir la moitié
+stdlib de `review_lanes` (`DEFAULT_LANE`, `VERDICT_TO_LANE`, `verdict_to_lane`)
+dans un module léger, laisser `compute_lane` (qui a besoin de `training`) où il
+est. `enqueue` devient alors importable dans le lean, et la passe de rejet peut
+tourner au canonique sans dupliquer une ligne. **Décision du PO** — c'est un
+refactor plus un second déploiement.
+
+⚠️ **Note de doc** : la skill `eurio-vps-deploy` annonce `review_queue (cv2)`
+comme skip attendu. Mesuré aujourd'hui : c'est `review_queue
+(ModuleNotFoundError: No module named 'training')`, et `referential` n'est plus
+skippé du tout. Pré-existant, vérifié identique avant/après ce commit — la skill
+est périmée sur la raison, pas sur le nombre.
+
 ## Les pièges de ce chantier — à ne pas re-payer
 
 | Piège | Ce qu'il fait |
@@ -959,3 +1060,7 @@ bon test, suite `2483 passed`.**
 | 2026-08-27 | **Simulé sur une copie de la réplique** : 4 298 faces changent, dont 1 380 `obverse → reverse` et 51 `reverse → obverse` (crops rendus au training). **1 051 crops sortent de la file ouverte.** Rien d'appliqué : migration non jouée au canonique, passe en dry-run. |
 | 2026-08-27 | ❌ **Trois de mes soupçons écartés par la mesure** : la banque d'ancres n'est PAS empoisonnée (0 ancre au-dessus de τ), les deux banques ne sont PAS désynchronisées d'encodeur, et le détecteur n'est PAS inefficace (1 875 revers attrapés, 0 attribué). Le défaut est la dérive et l'écriture unique. |
 | 2026-08-27 | ⚠️ **Piège fermé** : `_ensure_column` seul aurait posé `face_source` à NULL sur une base antérieure, rendant **tous les verdicts humains écrasables** — l'ALTER sans son backfill installe le défaut au lieu de le corriger. `_ensure_column` retourne désormais un booléen et le bootstrap rejoue le backfill à la création seule. Mutation jouée. |
+| 2026-08-27 | **DÉPLOYÉ.** Commit `edd708c4` poussé, `eurio-api` rebâti. Les migrations **0015, 0016 et 0017** appliquées ensemble (le canonique était à 0014) — Q5 tranché de fait. Backfill vérifié sur le canonique : **3 122 verdicts humains protégés**, 0 face sans provenance. Le FRONT n'est pas déployé (lot 0, 5 majeurs ouverts). |
+| 2026-08-27 | **Passe corrective appliquée au canonique** : **4 298 faces réécrites**, identique au dry-run. Photo de l'état AVANT dans `/var/lib/eurio/face_avant_2026-08-27.csv` — la passe est réversible. Trois invariants relus dans un process neuf, tous à 0. |
+| 2026-08-27 | ⚠️ **Ma phrase « 1 051 crops sortent de la file » était prématurée.** La passe corrige l'étiquette, pas le routage : `list_queue` n'a aucun prédicat sur `face`, et le rejet `face_reverse` se fait à l'enqueue, jamais rétroactivement. Mesuré après : ouverts `reverse` 1 → **1 052**, file totale **11 377 inchangée**. **1 044 sont rejetables** (8 restaurés à la main à épargner). |
+| 2026-08-27 | **Le geste de rejet reste à faire, et il est bloqué proprement** : les helpers (`_reject_crop_terminal`) vivent dans `enqueue`, qui importe `review_lanes`, qui importe `training` — inimportable dans l'image lean. Réécrire le rejet en SQL créerait une seconde copie de la règle. Correctif propre : sortir la moitié stdlib de `review_lanes`, comme on vient de le faire pour `face_rule`. **Attend le PO** (refactor + second déploiement). |
