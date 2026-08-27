@@ -369,7 +369,10 @@ def main() -> int:
     from store import resolve_db_readonly  # noqa: PLC0415
 
     push = False
-    if not args.dry:
+    # `--reject` n'a AUCUNE destination à résoudre : il écrit la base qu'il
+    # lit, sur le VPS. Le faire passer par la résolution de push le faisait
+    # mourir en "EURIO_API_URL absent" sur le canonique — mesuré le 2026-08-27.
+    if not args.dry and not args.reject:
         if args.no_push:
             if resolve_db_readonly():
                 print(

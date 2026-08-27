@@ -240,3 +240,19 @@ def test_le_reject_s_importe_vraiment_SANS_training():
     assert r.returncode == 0, (
         "le script ne s'importe pas dans l'image lean — `--reject` mourra en prod :"
         f"\n{r.stderr[-2000:]}")
+
+
+@pytest.mark.parametrize("script", ["backfill_denom", "backfill_face"])
+def test_reject_ne_resout_aucune_destination(script, monkeypatch, capsys):
+    """`--reject` écrit la base qu'il LIT, sur le VPS. Il n'a pas de push à
+    résoudre — et le lui faire faire le tuait sur le canonique, où
+    `EURIO_API_URL` n'existe pas :
+
+        EURIO_API_URL absent : impossible de pousser au canonique.
+
+    Mesuré en prod le 2026-08-27, après le déploiement. Le contrôle est
+    statique : c'est la CONDITION qui doit exclure `--reject`.
+    """
+    src = (ML_DIR / f"scripts/{script}.py").read_text()
+    assert "if not args.dry and not args.reject:" in src, (
+        f"{script} : la résolution de destination doit exclure --reject")
