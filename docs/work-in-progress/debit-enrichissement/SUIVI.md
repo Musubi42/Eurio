@@ -1236,6 +1236,77 @@ pas.
 
 Signaux texte : **23 032 en `v3`**, 24 `manual` épargnés.
 
+---
+
+## 🤖 L'auto-accept remis en marche — 2026-08-27
+
+**Il ne fonctionnait nulle part, et ce n'était pas un choix.** Deux causes, et
+il fallait les deux pour expliquer le zéro depuis le 2026-07-08 :
+
+1. **la route n'existait pas en production.** Elle vivait dans le module lourd
+   que l'image du VPS ne charge pas. Vérifié sur l'OpenAPI live :
+   `/review-queue/auto-accept/run` en était **absente**. Le VPS étant le seul
+   writer, elle n'était exécutable ni en prod (absente) ni en local (réplique
+   en lecture seule) ;
+2. **elle filtrait sur la LANE**, une étiquette écrite une fois à l'enqueue,
+   là où le verdict se recalcule. Mesuré : lane **960** contre verdict
+   **2 308**. 1 396 crops bons, invisibles — dont les +489 de Q1.
+
+### Ce qui a été fait
+
+Module **lean dédié** `serving/review_queue/auto_accept.py`, monté par les deux
+serveurs, retiré du module lourd (une seule définition). La sélection ne parle
+plus de lane ; le verdict recalculé tranche crop par crop. **L'écran ne peut
+plus être périmé, et il n'y a plus de passe de rafraîchissement à oublier.**
+
+La lane garde **un** rôle, humain : `manual` + `lane_source='human'` = « un
+humain a tiré ce crop hors de l'auto », et c'est sticky.
+
+Trois durcissements :
+
+| | |
+|---|---|
+| `dry_run` **défaut TRUE** | une passe qui écrit 2 000 décisions ne doit pas être ce qu'on obtient en oubliant un paramètre |
+| `limit` borne l'**action**, pas l'examen | + `n_eligible_total` : un lot de 100 ne peut plus faire croire le gisement épuisé |
+| `decided_by='auto_dino'` conservé | seul compteur qui distingue la machine de l'humain. La route `decide` estampille l'appelant — elle ne peut donc pas servir de raccourci sans détruire la mesure |
+
+### 🐛 Un bug attrapé par les tests, et il perdait du geste humain
+
+**La démotion d'un item décoché n'était jamais committée.** `db_connection`
+rend une connexion fraîche sans autocommit, et le seul `commit()` était sur le
+chemin d'acceptation : la démotion ne survivait que si une acceptation la
+suivait dans la boucle. **Jamais pour le dernier item décoché, jamais du tout
+si l'admin décoche tout.** Le « j'ai décoché » se perdait en silence.
+
+### Le premier lot, joué en production
+
+```
+POST /review-queue/auto-accept/run?dry_run=false&limit=100
+```
+
+| | |
+|---|---:|
+| examinés | 10 217 |
+| **éligibles au total** | **2 294** |
+| **acceptés** | **100** |
+| concurrents sautés | 0 |
+| assets passés `training_eligible=1` | **100 / 100** |
+| événements tracés | 100 |
+
+Moteur estampillé `auto_dino@s0.55-d0.05`. Photo avant dans
+`/var/lib/eurio/auto_accept_avant_2026-08-27.csv`. Chaque acceptation est
+ré-ouvrable par `/restore`.
+
+⚠️ Des acceptations portent `texte=partial` : c'est **Q1 en service**, elles
+auraient été bloquées hier.
+
+### ⛔ Ce qui reste : la mesure
+
+Le lot de 100 est écrit, **sa précision n'est pas mesurée**. Le gold dit
+99,74 %, mais un gold n'est pas la file. Seul un humain peut trancher — les 100
+se retrouvent par `decided_by='auto_dino' AND decided_at >= '2026-08-27'`.
+**Ne pas ouvrir les 2 194 restants avant d'avoir regardé ces 100.**
+
 ## Les pièges de ce chantier — à ne pas re-payer
 
 | Piège | Ce qu'il fait |
@@ -1315,3 +1386,7 @@ Signaux texte : **23 032 en `v3`**, 24 `manual` épargnés.
 | 2026-08-27 | **Backfill v3 joué au canonique** : 22 838 extraits, 24 `manual` épargnés, 0 erreur, 27,6 s. **3 001 annonces gagnent un pays**, 38 une année, 3 485 verdicts changent. Crops ouverts en `contradict` : 665 → **537**. Photo avant dans `text_signals_avant_v3_2026-08-27.csv`. |
 | 2026-08-27 | 🔴 **Ma prédiction est démentie : les deux gains ne se cumulent PAS.** `auto_candidate` reste à **2 308** après le backfill. Q1 ayant retiré la condition de texte de l'étape 5, la distinction `convergent`/`partial` — celle que les 3 001 pays améliorent — n'entre plus dans l'auto-acceptation. **Leçon : j'ai additionné deux gains sans vérifier qu'ils passaient par le même goulot.** C'est pour ça qu'on a joué les deux étapes séparément avec une mesure entre — sans quoi le +489 aurait été attribué aux deux. |
 | 2026-08-27 | **Ce que le backfill apporte quand même** : 128 crops ouverts ne sont plus faussement contredits, le veto redevient fiable, et les signaux servent ailleurs — `listing_kind`, le funnel, et le routage pays du plan pêche qui lit `countries_json`. |
+| 2026-08-27 | **L'auto-accept ne fonctionnait NULLE PART, et ce n'était pas un choix.** La route était absente de l'OpenAPI de production (module lourd non chargeable), et le VPS est le seul writer. Elle filtrait en plus sur la LANE figée : 960 contre 2 308 qualifiés. |
+| 2026-08-27 | **Module lean `serving/review_queue/auto_accept.py`**, monté par les deux serveurs, retiré du lourd. Le verdict recalculé remplace la lane ; la lane ne garde que le sticky humain. `dry_run` passe à TRUE par défaut, `limit` borne l'action et non l'examen, `decided_by='auto_dino'` conservé. Suite `2513 passed`, 10 mutations rouges. |
+| 2026-08-27 | 🐛 **Bug attrapé par les tests** : la démotion d'un item décoché n'était jamais committée (connexion fraîche sans autocommit, seul commit sur le chemin d'acceptation). Le « j'ai décoché » se perdait en silence dès qu'aucune acceptation ne suivait. |
+| 2026-08-27 | ✅ **Premier lot joué en production : 100 acceptés**, 0 concurrent, 100/100 passés `training_eligible=1`, 100 événements tracés, moteur `auto_dino@s0.55-d0.05`. **2 294 éligibles au total.** ⛔ La précision de ce lot n'est PAS mesurée — ne pas ouvrir les 2 194 restants avant de l'avoir regardé. |
