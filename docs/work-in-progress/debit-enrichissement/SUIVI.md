@@ -1434,18 +1434,40 @@ ré-ouvrables par `/restore`.
 
 ## Le fait central, mesuré trois fois
 
-**Quand un humain cadre un crop, il en rejette 1,4 %. Quand la machine cadre,
-92 %.**
+> ⚠️ **Ce bloc portait un chiffre faux, corrigé le 2026-08-27 au matin.** J'avais
+> écrit « 1,4 % contre 92 % ». Les deux moitiés étaient fausses, et la
+> conclusion qu'on en tirait — « le goulot est le cadrage » — ne tient pas.
 
-| méthode de détection | tranchés | rejetés | taux |
-|---|---:|---:|---:|
-| `manual` | 2 745 | 38 | **1,4 %** |
-| `yolo+hough+polish+rimrefine` | 1 482 | 1 364 | 92,0 % |
-| `yolo+hough+rimrefine` | 3 861 | 3 564 | 92,3 % |
-| **`score_recover`** | 1 307 | 1 276 | **97,6 %** |
+**Le 92 % mélangeait deux populations.** Il comptait les rejets **automatiques**
+(`face_reverse`, `not_2eur`, posés par des backfills pipeline) avec les rejets
+**humains**. Or les rejets automatiques portent sur des crops *géométriquement
+corrects* — ils rejettent le SUJET, pas le cadrage.
 
-*(Canonique, 2026-08-27 : `review_queue.status='done'` hors `decided_by='auto_dino'`,
-groupé par `image_assets.detection_method`.)*
+| méthode | toutes décisions | **humains seulement** |
+|---|---:|---:|
+| `yolo+hough+rimrefine` | 87,9 % | **70,4 %** |
+| `yolo+hough+polish+rimrefine` | 87,9 % | **70,7 %** |
+| `score_recover` | 95,3 % | **93,1 %** |
+| `manual` | 1,4 % | 1,1 % |
+
+**Et le 1,4 % de `manual` n'est pas un bras comparable.** `crop_edit.py:406` fait
+un `UPDATE image_assets SET detection_method='manual'` **en place** : sur 2 913
+`manual`, **13 seulement** (`manual_add`) sont des crops neufs. Les 2 900 autres
+sont d'anciens crops auto qu'un humain a choisi de réparer, puis acceptés. C'est
+un taux de **survie**, pas un taux de méthode.
+
+**Le vrai classement des motifs de rejet** (crops auto eBay tranchés) :
+
+| motif | n | nature |
+|---|---:|---|
+| `face_reverse` | 2 636 | crop correct, **mauvaise face** |
+| `not_2eur` | 2 033 | crop correct, **mauvaise dénomination** |
+| `rejected_in_review` | 1 430 | verdict humain, motif **non enregistré** |
+
+**4 669 rejets de SUJET contre 1 430 rejets humains.** Le premier goulot n'est
+pas « le crop est mal cadré », c'est **« on fabrique des crops qu'on savait
+d'avance ne pas vouloir »** : `detect_circles_multi` ne lit jamais
+`source_images.target_eurio_id`, il crope tout ce qui est rond.
 
 ## Le signal de qualité de crop existe déjà — et ce n'est PAS `quality_score`
 
