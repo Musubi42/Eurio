@@ -204,6 +204,13 @@ app.include_router(sources_routes.router)
 # Wire /review-queue — single-item review flow over the queue populated
 # by the orchestrator's `enqueue` step.
 app.include_router(review_queue_routes.router)
+# Auto-acceptation — module LEAN dédié (2026-08-27). Monté par les DEUX
+# serveurs : il porte un seul chemin, donc aucun doublon avec le module
+# lourd, d'où la route a été retirée.
+from serving.review_queue.auto_accept import (  # noqa: E402
+    router as auto_accept_router,
+)
+app.include_router(auto_accept_router)
 
 # Wire /peer-arbitration — arbitrage admin des décisions des amis reviewers
 # (staging peer_review_decisions, réconcilié depuis le service review VPS).

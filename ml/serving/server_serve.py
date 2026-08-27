@@ -146,6 +146,13 @@ app.include_router(sources_router)
 # Endpoints heavy (manual-crop, dino-suggestions, auto-crop) restent dans le
 # legacy `review.review_queue_routes` (skipped sur lean image via cv2).
 app.include_router(review_queue_router)
+# Auto-acceptation — module LEAN dédié (2026-08-27). Monté par les DEUX
+# serveurs : il porte un seul chemin, donc aucun doublon avec le module
+# lourd, d'où la route a été retirée.
+from serving.review_queue.auto_accept import (  # noqa: E402
+    router as auto_accept_router,
+)
+app.include_router(auto_accept_router)
 # TC2 (Model B) : écritures review (decide/skip/reject/restore) SQL-pures, cv2-free
 # → servies sur l'image lean (scope review:write). Le full app `server.py` garde le
 # legacy `review.review_queue_routes` (mêmes paths + crops cv2) → ne PAS monter ici-bas

@@ -17,6 +17,7 @@ sur l'image full workstation.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Final, Literal
 
@@ -147,6 +148,43 @@ def auto_validate_view(row: sqlite3.Row) -> tuple[
         return ("auto_candidate",
                 "Dino concorde avec la cible, texte non contredisant", criteria)
     return "partial", "Concordance partielle", criteria
+
+
+@dataclass(frozen=True)
+class AutoValidateDecision:
+    """Ce que l'auto-acceptation a besoin de savoir, en plus du niveau.
+
+    DÉRIVÉ de ``auto_validate_view`` — la règle n'est pas recopiée. Deux champs
+    s'y ajoutent, et ils ne sortent d'aucune décision nouvelle :
+
+    · ``decided_eurio_id`` — au niveau ``auto_candidate``, la règle 4 a déjà
+      exigé ``top1 == cible``. Ce qu'on écrirait EST donc la cible du listing ;
+    · ``face`` — lu tel quel sur la ligne, jamais deviné. ``None`` devient
+      ``'unknown'`` à l'écriture plutôt qu'un ``obverse`` par défaut : masquer
+      l'incertitude derrière une valeur plausible est ce qui rend une panne
+      muette (G7).
+    """
+
+    level: VerdictLevel
+    reason: str
+    decided_eurio_id: str | None
+    face: str | None
+
+
+def auto_validate_decision(row: sqlite3.Row) -> AutoValidateDecision:
+    """Port lean de ce que l'auto-accept consommait via
+    ``training.foundation.auto_validate`` — indisponible sur l'image du VPS.
+
+    Le VPS est le seul writer (Direction A) : sans ce port, l'auto-acceptation
+    ne pouvait s'exécuter nulle part. Cf. ``serving/review_queue/auto_accept.py``.
+    """
+    level, reason, _criteria = auto_validate_view(row)
+    target, _top1, _sim, _spread, _text = _resolve_signals(row)
+    decided = target if level == "auto_candidate" else None
+    face = row["face"] if "face" in row.keys() else None
+    return AutoValidateDecision(
+        level=level, reason=reason, decided_eurio_id=decided, face=face,
+    )
 
 
 def compute_auto_validate_verdict(row: sqlite3.Row) -> VerdictLevel:
