@@ -196,9 +196,46 @@ def test_verdict_et_abstention_accompagnent_la_reponse(rig):
     assert [c["key"] for c in v["criteria"]] == [
         "top1_target", "top1_country_sim", "country_spread"]
     assert [c["state"] for c in v["criteria"]] == ["pass", "pass", "pass"]
-    # Sans signal texte convergent, la règle s'arrête à `partial` — pas
-    # `auto_candidate`. C'est l'échelle du legacy, à l'identique.
-    assert v["level"] == "partial"
+    # Q1 (2026-08-27) : l'ABSENCE de signal texte ne bloque plus. Ce test
+    # affirmait l'inverse jusque-là (`partial`), et c'était le défaut — on
+    # exigeait du vendeur qu'il soit EXHAUSTIF (pays + année + dénomination au
+    # titre), pas qu'il soit exact. Mesuré sur 1 309 crops : `absent` et
+    # `partial` sont aussi justes que `convergent`. C'est l'échelle du legacy,
+    # à l'identique.
+    assert v["level"] == "auto_candidate"
+
+
+def test_le_veto_texte_tient_dans_le_port_lean(rig):
+    """Le texte n'est plus une CONDITION (Q1) mais il reste un VETO, et le port
+    lean doit le rendre comme le legacy.
+
+    Ce trou n'était couvert par rien : aucun test lean ne posait de
+    `listing_text_signals`. Retirer la règle 2 du port aurait donc laissé la
+    prod auto-accepter des crops dont le titre CONTREDIT la cible, sans qu'un
+    seul test rougisse.
+    """
+    conn, client = rig
+    sid, [aid], _ = _seed_listing(conn, item_id="Q1")
+    _seed_coin(conn, "fr-2015-2eur-paix")
+    _seed_prediction(
+        conn, aid, kind=VERDICT_ANCHORS_KIND, encoder=VERDICT_ENCODER_VERSION,
+        top_k=[{"eurio_id": "fr-2015-2eur-paix", "sim": 0.9}], spread=0.30,
+        top1_country_eurio_id="fr-2015-2eur-paix",
+        top1_country_sim=0.80, country_spread=0.20,
+    )
+    conn.execute(
+        "INSERT INTO listing_text_signals (source_image_id, coverage, "
+        " vs_target_verdict) VALUES (?, 'rich', 'contradict')",
+        (sid,),
+    )
+    conn.commit()
+
+    v = client.get(
+        f"/review-queue/asset/{aid}/dino-suggestions"
+    ).json()["auto_validate_verdict"]
+    assert v["level"] == "divergent", (
+        "un titre qui contredit la cible doit rester un veto, même avec Dino "
+        "au-dessus des deux seuils")
 
 
 def test_abstention_thresholds_est_toujours_servi(rig):

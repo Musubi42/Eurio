@@ -185,7 +185,7 @@ def compute_auto_validate_verdict(
       2. text == contradict              → ``divergent``
       3. target absent                   → ``unknown``
       4. top1 != target                  → ``divergent``
-      5. Tous Dino pass + text=convergent → ``auto_candidate``
+      5. Tous Dino pass (le texte est un VETO rendu en 2) → ``auto_candidate``
       6. Sinon                           → ``partial``
     """
     row = _fetch_signals(conn, asset_id, encoder_version, anchors_kind)
@@ -265,23 +265,49 @@ def _verdict_from_signals(
             **signals,
         )
 
-    # 5. Critères Dino + texte.
+    # 5. Critères Dino. Le TEXTE n'est plus une condition ici — il est un VETO,
+    # et son veto a déjà été rendu à l'étape 2 (`contradict` → `divergent`).
+    #
+    # ⚠️ Q1, tranchée le 2026-08-27. L'étape exigeait `text_verdict ==
+    # "convergent"`, c'est-à-dire les TROIS axes du titre présents ET d'accord
+    # (`sources/text_signals/comparator.py`). Un vendeur qui ne nomme pas le
+    # pays — cas très courant — rendait `partial`, et son crop partait en review
+    # humaine. On demandait au vendeur d'être EXHAUSTIF, pas d'être exact.
+    #
+    # Mesuré sur le gold rebâti du 2026-08-27 (1 309 crops évaluables, contre
+    # 466 auparavant — `scripts/sweep_verdict_thresholds.py --text-gate any`) :
+    #
+    #   porte texte      n_auto  faux  précision   Wilson 95 %
+    #   convergent          526     1    99,81 %   [98,93 ; 99,97]
+    #   ≠ contradict        755     2    99,74 %   [99,04 ; 99,93]   ← retenu
+    #
+    # ⚠️ La précision PONCTUELLE baisse de 0,07 point — un suivi a d'abord
+    # annoncé l'inverse sur le petit gold, c'était un artefact. Ce qui décide,
+    # c'est que la borne BASSE de Wilson MONTE (98,93 → 99,04) : au pire cas la
+    # règle neuve est au moins aussi bonne, la mesure portant sur 43 % de crops
+    # en plus. Volume sur la file du jour : 1 819 → 2 308 auto_candidate (+489).
+    #
+    # ⛔ Ne « resserre » pas ceci en réintroduisant une condition de texte sans
+    # rejouer le balayage : `absent` et `partial` sont mesurés aussi justes que
+    # `convergent`, et c'est tout l'objet du changement.
     sim_min = DINO_VERDICT_THRESHOLDS["top1_country_sim_min"]
     spread_min = DINO_VERDICT_THRESHOLDS["country_spread_min"]
     sim_pass = sim is not None and sim >= sim_min
     spread_pass = spread is not None and spread >= spread_min
     dino_all_pass = sim_pass and spread_pass
 
-    if dino_all_pass and text_verdict == "convergent":
+    if dino_all_pass:
         return AutoValidateVerdict(
             level="auto_candidate",
-            reason="Dino + texte convergent",
+            reason="Dino concorde avec la cible, texte non contredisant",
             decided_eurio_id=target,
             face_detected=face,
             **signals,
         )
 
     # 6. Reste → partial avec raisons détaillées.
+    # Le texte n'apparaît PLUS dans les raisons : il ne bloque plus rien ici, et
+    # l'y laisser ferait passer une observation pour une cause.
     reasons: list[str] = []
     if not sim_pass:
         reasons.append(
@@ -293,10 +319,6 @@ def _verdict_from_signals(
             if spread is not None
             else "spread absent"
         )
-    if text_verdict and text_verdict != "convergent":
-        reasons.append(f"texte {text_verdict}")
-    elif text_verdict is None:
-        reasons.append("texte non comparé")
 
     return AutoValidateVerdict(
         level="partial",

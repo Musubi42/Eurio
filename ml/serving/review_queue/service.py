@@ -112,7 +112,7 @@ def auto_validate_view(row: sqlite3.Row) -> tuple[
       2. text == contradict               → divergent
       3. target absent                    → unknown
       4. top1 != target                   → divergent
-      5. Tous Dino pass + text=convergent → auto_candidate
+      5. Tous Dino pass (le texte est un VETO rendu en 2) → auto_candidate
       6. Sinon                            → partial
     """
     target, top1, sim, spread, text_verdict = _resolve_signals(row)
@@ -139,8 +139,13 @@ def auto_validate_view(row: sqlite3.Row) -> tuple[
 
     sim_pass = sim is not None and sim >= sim_min
     spread_pass = spread is not None and spread >= spread_min
-    if sim_pass and spread_pass and text_verdict == "convergent":
-        return "auto_candidate", "Dino et texte concordent avec la cible", criteria
+    # Q1 (2026-08-27) : le texte n'est plus une CONDITION ici, seulement un VETO
+    # rendu à l'étape 2. Miroir exact du legacy — cf. le commentaire long dans
+    # `training/foundation/auto_validate._verdict_from_signals`, qui porte la
+    # mesure. `tests/test_dino_suggestions_lean.py` verrouille l'égalité.
+    if sim_pass and spread_pass:
+        return ("auto_candidate",
+                "Dino concorde avec la cible, texte non contredisant", criteria)
     return "partial", "Concordance partielle", criteria
 
 
