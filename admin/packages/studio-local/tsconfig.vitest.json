@@ -1,0 +1,13 @@
+{
+  "// pourquoi": [
+    "Les tests ont leur propre tsconfig parce que le build de production ne peut",
+    "pas les voir : l'image du VPS n'installe pas les devDependencies. Cf. le bloc",
+    "`// exclude` de tsconfig.json. `pnpm typecheck` lance les DEUX."
+  ],
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*.ts", "src/**/*.vue",
+    "src/**/*.spec.ts", "src/**/__tests__/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

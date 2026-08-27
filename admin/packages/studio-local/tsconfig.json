@@ -19,5 +19,15 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "// exclude": [
+    "Les tests sont HORS de ce tsconfig, et c'est structurel : `build` lance",
+    "`vue-tsc --noEmit` avant `vite build`, et l'image du VPS (infra/eurio-admin)",
+    "n'installe que les dépendances de PRODUCTION. Typechecker les specs y échoue",
+    "en TS2307 sur `vitest` et `@vue/test-utils` — build cassé, front figé sur",
+    "l'ancienne version. Mesuré le 2026-08-27, au premier fichier de test committé",
+    "(les précédents ne l'étaient pas, d'où l'invisibilité du défaut).",
+    "Les specs sont typecheckées par `tsconfig.vitest.json`, que `typecheck` lance",
+    "en second : la couverture locale reste entière."
+  ],
+  "exclude": ["node_modules", "dist", "src/**/*.spec.ts", "src/**/__tests__/**"]
 }
