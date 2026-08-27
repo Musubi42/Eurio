@@ -516,7 +516,7 @@ attribuer les fichiers en vrac au moment de committer.
 
 | # | Question | Ce que ça coûte | Ce que ça rapporte | Recommandation |
 |---|---|---|---|---|
-| **Q1** ⬆️ | ⚠️ **Chiffres RÉVISÉS le 2026-08-27 sur le gold rebâti (1 309 crops)** — voir §Gold rebâti. Le « +28 % à précision améliorée » de cette ligne datait des 466 crops. Vrais chiffres : **+489 items (+26,9 %)**, précision ponctuelle **99,81 → 99,74** (elle BAISSE), borne de Wilson **98,93 → 99,04** (elle monte). Le préalable R6 est levé. **Change-t-on la règle du texte** de `convergent` à `≠ contradict` (point A) ? C'est un changement de **règle**, pas de seuil : il touche l'étape 5 de `_verdict_from_signals` **et** sa copie lean, puis il faut redéployer `eurio-api` | 2 fichiers du même commit + un déploiement VPS. Borne Wilson basse : au pire ~42 faux sur 2 121, contre ~33 sur 1 656 aujourd'hui | **+465 items auto-acceptés** sur la file ouverte (1 656 → 2 121, +28 %), à précision **améliorée** (99,65 % vs 99,46 % sur le gold) | **Rebuild le gold d'abord (R6)**, puis trancher. Le point A est le seul gain de volume mesuré |
+| ~~**Q1**~~ ✅ | ⚠️ **Chiffres RÉVISÉS le 2026-08-27 sur le gold rebâti (1 309 crops)** — voir §Gold rebâti. Le « +28 % à précision améliorée » de cette ligne datait des 466 crops. Vrais chiffres : **+489 items (+26,9 %)**, précision ponctuelle **99,81 → 99,74** (elle BAISSE), borne de Wilson **98,93 → 99,04** (elle monte). Le préalable R6 est levé. **Change-t-on la règle du texte** de `convergent` à `≠ contradict` (point A) ? C'est un changement de **règle**, pas de seuil : il touche l'étape 5 de `_verdict_from_signals` **et** sa copie lean, puis il faut redéployer `eurio-api` | 2 fichiers du même commit + un déploiement VPS. Borne Wilson basse : au pire ~42 faux sur 2 121, contre ~33 sur 1 656 aujourd'hui | **+465 items auto-acceptés** sur la file ouverte (1 656 → 2 121, +28 %), à précision **améliorée** (99,65 % vs 99,46 % sur le gold) | **Rebuild le gold d'abord (R6)**, puis trancher. Le point A est le seul gain de volume mesuré |
 | **Q2** | **Feu vert sur la vague 1 du scrape** (4 groupes, ~520 appels) ? | ~520 appels sur 5 000 · ~900 items de review créés | 3 groupes où **3 classes sur 3** sont `bottleneck=scrape`, à zéro exemplaire, **sans rien en file** | **Oui**, mais avec la vérification du coût réel immédiatement après (cf. `PLAN-SCRAPE.md` §Vague 1) |
 | **Q3** | **Plafond d'appels du jour** : 1 500 (recommandé) ou 3 846 (le budget) ? | à 1,84 item/appel : 1 500 → ~2 800 items ; 3 846 → **~7 000 items** sur une file qui en a 10 440 | plus d'appels = plus de classes servies | **1 500**. Le facteur limitant n'est pas le quota, c'est la file |
 | **Q4** | **Rejoue-t-on la poche `unresolvable`** (609 annonces jamais rejouées, 1 014 images) ? | ~43 min de Mac, ~610 items de review créés | ~740 crops, **valeur incertaine** (cible à retrouver par DINO) | **Essai borné à 60 annonces**, mesurer le taux de récupération ; sous ~40 %, arrêter |
@@ -1149,6 +1149,93 @@ gains se cumulent et ne sont pas redondants.
 | coût | 2 fichiers du même commit + un déploiement VPS | touche l'étape 5 **et** sa copie lean |
 | réversible | oui, un commit | |
 
+---
+
+## 🎬 Q1 en code + backfill v3 — 2026-08-27, et une prédiction démentie
+
+Joués **séparément, avec une mesure entre les deux** — sinon l'écart n'aurait
+été attribuable ni à l'un ni à l'autre.
+
+### Étape 1 · Q1 déployée
+
+`text_verdict == "convergent"` retiré de l'étape 5, dans **les deux copies** (le
+legacy et le port lean). Le veto de l'étape 2 ne bouge pas.
+
+Corollaire qui simplifie : au point 5, `texte ≠ contradict` équivaut à **aucune
+condition de texte**, la règle 2 ayant déjà sorti les contradictions.
+
+| file ouverte (10 333) | avant Q1 | **après Q1** |
+|---|---:|---:|
+| **`auto_candidate`** | 1 819 | **2 308** |
+| | | **+489, +26,9 %** |
+
+**Exactement la prédiction**, au crop près.
+
+Deux trous de test comblés au passage : un test du lean affirmait l'ancien
+contrat, et **aucun test lean ne posait de `listing_text_signals`** — retirer le
+VETO du port n'aurait donc fait rougir personne.
+
+### Étape 2 · Backfill v3
+
+`backfill_text_signals.py`, joué dans le conteneur : **22 838 extraits, 24
+sautés** (les `manual`, garde tenu), **0 erreur**, 27,6 s. Photo avant dans
+`/var/lib/eurio/text_signals_avant_v3_2026-08-27.csv`.
+
+Ce que les correctifs d'extraction rapportent, mesuré par différence :
+
+| | |
+|---|---:|
+| annonces gagnant un **pays** | **3 001** |
+| annonces gagnant une **année** | 38 |
+| verdicts texte changés | **3 485** sur 22 505 |
+| crops ouverts en `contradict` | 665 → **537** |
+
+Transitions principales : `partial → convergent` **1 770**, `∅ → convergent`
+496, `convergent → partial` 433.
+
+### 🔴 Ma prédiction était fausse : les deux gains ne se cumulent PAS
+
+J'avais écrit *« les deux gains se cumulent et ne sont pas redondants »* et
+recommandé le backfill « dans la foulée, les deux s'additionnent ».
+
+**Mesuré : `auto_candidate` reste à 2 308. Le backfill n'en ajoute aucun.**
+
+Et c'est logique, une fois dit : **Q1 a retiré la condition de texte de
+l'étape 5**, donc la distinction `convergent` / `partial` / `absent` — celle que
+les 3 001 pays gagnés viennent améliorer — **n'entre plus dans la décision
+d'auto-acceptation**. Q1 a subsumé la contribution de l'extracteur à ce
+compteur-là. Les +436 `convergent` prédits sont bien arrivés (1 770 + 496
+transitions), ils ne servent simplement plus à ça.
+
+⚠️ **La leçon de méthode** : j'ai additionné deux gains mesurés séparément sans
+vérifier qu'ils passaient par le même goulot. Ils y passaient. C'est précisément
+pour ça qu'on a joué les deux étapes séparément avec une mesure entre — sans ça,
+on aurait attribué le +489 aux deux, et cru le backfill utile là où il ne l'est
+pas.
+
+### Ce que le backfill apporte quand même, et ce n'est pas rien
+
+- **128 crops ouverts ne sont plus faussement contredits** (665 → 537). Ils ne
+  deviennent pas auto-acceptables — ils échouent ailleurs — mais ils ne portent
+  plus une accusation fausse, et le veto redevient un signal fiable ;
+- les signaux texte alimentent **autre chose que l'auto-acceptation** :
+  `listing_kind` (donc la détection de lot), le funnel du banc, et le routage
+  pays du [`PLAN-PECHE-PAYS.md`](./PLAN-PECHE-PAYS.md) — qui, lui, lit
+  explicitement `countries_json`. Les 3 001 pays gagnés y comptent ;
+- l'extracteur est en `v3` partout : la prochaine évolution de règle repartira
+  d'une base saine, pas d'un parc à moitié périmé.
+
+### État servi au canonique après les deux étapes
+
+| verdict, file ouverte 10 333 | n |
+|---|---:|
+| `auto_candidate` | **2 308** |
+| `partial` | 843 |
+| `divergent` | 3 313 |
+| `unknown` | 3 869 |
+
+Signaux texte : **23 032 en `v3`**, 24 `manual` épargnés.
+
 ## Les pièges de ce chantier — à ne pas re-payer
 
 | Piège | Ce qu'il fait |
@@ -1224,3 +1311,7 @@ gains se cumulent et ne sont pas redondants.
 | 2026-08-27 | 🔴 **Correction : le point A n'améliore PAS la précision.** Le suivi annonçait 99,46 → 99,65 — artefact des 466 crops. Sur 1 309 : **99,81 → 99,74**, elle baisse de 0,07 pt. **Mais la borne basse de Wilson MONTE** (98,93 → 99,04) : au pire cas le point A est au moins aussi bon, la mesure portant sur 43 % de crops en plus. |
 | 2026-08-27 | **Volume du point A sur la file d'aujourd'hui** (10 333 ouverts, après le rejet des revers) : 1 819 → **2 308 auto_candidate, +489 (+26,9 %)**. ⚠️ Signaux texte encore en `v2` — l'extracteur `v3` est déployé, aucun backfill n'a tourné. Les deux arbres sont comparés sur les mêmes signaux, le départage est honnête ; les valeurs absolues bougeront après. |
 | 2026-08-27 | **`--text-gate {convergent,any}` ajouté au balayage.** Il ne recopie pas la règle : au point 5, `texte ≠ contradict` équivaut à AUCUNE condition de texte (la règle 2 a déjà sorti les contradictions), et la mesure dérive de la sortie de la vraie fonction. |
+| 2026-08-27 | **Q1 passée en code et déployée.** Le texte devient un VETO, il n'est plus une condition. Les deux copies changent (legacy + port lean) ; une mutation qui n'en change qu'une rougit. `auto_candidate` sur la file : 1 819 → **2 308 (+489)**, exactement la prédiction. Deux trous de test comblés — aucun test lean ne posait de `listing_text_signals`, donc retirer le veto du port n'aurait fait rougir personne. Suite `2503 passed`, 7 mutations rouges. |
+| 2026-08-27 | **Backfill v3 joué au canonique** : 22 838 extraits, 24 `manual` épargnés, 0 erreur, 27,6 s. **3 001 annonces gagnent un pays**, 38 une année, 3 485 verdicts changent. Crops ouverts en `contradict` : 665 → **537**. Photo avant dans `text_signals_avant_v3_2026-08-27.csv`. |
+| 2026-08-27 | 🔴 **Ma prédiction est démentie : les deux gains ne se cumulent PAS.** `auto_candidate` reste à **2 308** après le backfill. Q1 ayant retiré la condition de texte de l'étape 5, la distinction `convergent`/`partial` — celle que les 3 001 pays améliorent — n'entre plus dans l'auto-acceptation. **Leçon : j'ai additionné deux gains sans vérifier qu'ils passaient par le même goulot.** C'est pour ça qu'on a joué les deux étapes séparément avec une mesure entre — sans quoi le +489 aurait été attribué aux deux. |
+| 2026-08-27 | **Ce que le backfill apporte quand même** : 128 crops ouverts ne sont plus faussement contredits, le veto redevient fiable, et les signaux servent ailleurs — `listing_kind`, le funnel, et le routage pays du plan pêche qui lit `countries_json`. |
