@@ -6,13 +6,21 @@
 
 ## ⏱️ Où on en est — 2026-08-27, ouverture
 
-**Rien n'est implémenté. Tout est spécifié.** Aucune migration appliquée, aucune
-ligne de code écrite, aucun crop réécrit.
+**L1 est en production. La collecte a commencé.** Chaque recadrage — et chaque
+NON-recadrage — du PO produit désormais une ligne de vérité terrain, sans qu'il
+change quoi que ce soit à sa façon de travailler.
+
+| en prod | |
+|---|---|
+| migration `0018` | appliquée au boot (`db_migrate: applying 0018_… (11 180 bytes)`) |
+| `POST /review-queue/{id}/crop-edit-abandon` | servie, vérifiée à l'OpenAPI, 204 sur une vraie review |
+| front hébergé | redéployé |
+| lignes collectées | 0 au 27/08 au soir (la ligne de test a été supprimée) |
 
 | lot | état |
 |---|---|
 | **L0** — `PROBLEME` + `JUGE` + `JEU-D-OR` + seuils signés | 🟡 docs écrits, **seuils non signés** (D4) |
-| **L1** — instrumentation du recadrage manuel | 🔴 spécifiée, non écrite |
+| **L1** — instrumentation du recadrage manuel | ✅ **livrée et déployée le 2026-08-27** — la collecte tourne |
 | **L2** — outil d'annotation + séance PO | 🔴 |
 | **L3** — juge implémenté + **RE-4** | 🔴 ⛔ point d'arrêt |
 | **L4** — bornes | 🔴 |
@@ -60,3 +68,6 @@ ligne de code écrite, aucun crop réécrit.
 | 2026-08-27 | ✅ **`tilt_deg` élucidé** : `_TILT_TRIVIAL = 0.97` et `acos(0,97) = 14,0699°`. Effet de sélection par construction, pas biais d'estimateur. La garde est juste ; la colonne est inutilisable pour chercher « de face ». |
 | 2026-08-27 | ✅ **L'idée du PO mesurée** : le disque intérieur bimétallique porte toute l'information de dessin (aucun McNemar significatif contre la pièce entière). **Ma crainte était fausse** — le nom du pays est dans le disque, sur son bord, pas dans l'anneau aux étoiles. L'idée n'achète pas de justesse ; elle achète le **droit** de changer de cible de détection sans rien coûter. |
 | 2026-08-27 | ⚠️ **Défaut connexe** : `_R_OUTER_FRAC = 0.47` sous-estime le rayon réel (mesuré 0,975 du demi-côté). Les anneaux du `bimetal_score` sont dessinés trop loin. À corriger ailleurs. |
+| 2026-08-27 | ✅ **L1 livré et déployé.** Migration `0018` + `crop_edit_observations` + `store/crop_observations.py` + `POST /crop-edit-abandon` + instrumentation du front. Vérifié bout en bout en prod : `before_*` est **relu en base** (r=102,6) alors que le client envoyait `start_r=200` — le serveur ne croit pas le client sur parole. Tests 2542 → 2563 (Python), 14 → 19 (front). **12 mutations jouées, 12 rouges**, dont celle qui compte : faire repartir le delta de `before_*`. |
+| 2026-08-27 | 🔴 **Le front est resté figé une heure sans qu'aucune alerte ne le dise.** `build` = `vue-tsc --noEmit && vite build`, et l'image du VPS n'installe que les deps de PRODUCTION : le premier fichier de test **committé** l'a cassé en `TS2307` sur `vitest`. Invisible jusque-là parce que les specs existantes n'étaient pas committées. Le conteneur garde alors son image précédente **et le site répond 200** — panne muette de plus. Corrigé : `tsconfig.json` exclut les specs, `tsconfig.vitest.json` les prend, `typecheck` lance les deux. |
+| 2026-08-27 | 🔴 **Puis `--frozen-lockfile` a échoué** : j'avais commité un `package.json` portant des devDependencies **sans son lockfile**. Deuxième déploiement raté d'affilée, même geste — committer un sous-ensemble incohérent de l'arbre de travail. |
