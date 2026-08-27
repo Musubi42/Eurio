@@ -542,6 +542,28 @@ export async function fetchCropSuggestion(
   )
 }
 
+/** Le contexte d'un geste de recadrage — ce que le serveur ne peut pas savoir.
+ *
+ *  L'AVANT n'y figure PAS, exprès : le serveur le relit en base. Un client peut
+ *  se tromper ou mentir. `start_*` est le cercle EFFECTIVEMENT à l'écran quand
+ *  l'humain a posé la main — il diffère du crop stocké dès que la suggestion
+ *  Hough s'est appliquée, et c'est LUI la référence du delta.
+ *
+ *  Chantier `juge-du-crop` / ADR-017 : le delta entre le crop proposé et le
+ *  crop final EST l'étiquette. */
+export interface CropObservationFields {
+  start_origin: 'hint' | 'suggestion' | 'default'
+  start_cx: number | null
+  start_cy: number | null
+  start_r: number | null
+  suggestion_cx: number | null
+  suggestion_cy: number | null
+  suggestion_r: number | null
+  suggestion_reason: string | null
+  touched: boolean
+  editor_version: string
+}
+
 /** Re-croppe l'asset depuis un cercle (cx,cy,r) en px natifs du raw. Écrase le
  *  crop (cache + MinIO + DB) au format prod ; eurio_id préservé, review inchangée.
  *
@@ -549,10 +571,33 @@ export async function fetchCropSuggestion(
 export async function manualCrop(
   reviewId: string,
   circle: { cx: number; cy: number; r: number },
+  obs?: CropObservationFields,
 ): Promise<ManualCropResult> {
   return fetchEurioWrite<ManualCropResult>(
     `/review-queue/${encodeURIComponent(reviewId)}/manual-crop`,
-    circle,
+    { ...circle, ...(obs ?? {}) },
+  )
+}
+
+/** L'éditeur a été fermé SANS sauvegarder — on enregistre quand même le geste.
+ *
+ *  `touched: false` produit l'étiquette POSITIVE « ce cadrage était bon », la
+ *  seule trace d'un accord humain sur un crop que le dispositif sache garder.
+ *
+ *  `keepalive` parce que la modale se ferme dans la foulée : sans lui, le
+ *  navigateur annule la requête et l'observation est perdue à chaque fois.
+ *  L'appelant ignore le rejet — retenir une fermeture pour une mesure serait
+ *  le mauvais arbitrage. */
+export async function cropEditAbandon(
+  reviewId: string,
+  body: CropObservationFields & {
+    last_cx: number | null; last_cy: number | null; last_r: number | null
+  },
+): Promise<void> {
+  await fetchEurioWrite<void>(
+    `/review-queue/${encodeURIComponent(reviewId)}/crop-edit-abandon`,
+    body,
+    { keepalive: true },
   )
 }
 
@@ -594,10 +639,11 @@ export async function fetchAssetCropSuggestion(
 export async function manualCropAsset(
   assetId: string,
   circle: { cx: number; cy: number; r: number },
+  obs?: CropObservationFields,
 ): Promise<ManualCropResult> {
   return fetchEurioWrite<ManualCropResult>(
     `/coins/assets/${encodeURIComponent(assetId)}/manual-crop`,
-    circle,
+    { ...circle, ...(obs ?? {}) },
   )
 }
 

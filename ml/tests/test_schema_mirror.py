@@ -58,6 +58,11 @@ MIROIR_ATTENDU = [
     # Rejouable seule pour la même raison que 0010 : elle commence par un
     # `CREATE TABLE IF NOT EXISTS` à la forme d'arrivée.
     "0011_dino_thresholds_min_exemplars.sql",
+    # 0018 crée une table NEUVE (`crop_edit_observations`) : elle est rejouable
+    # telle quelle sur une base vide, donc directement comparable au miroir.
+    # C'est ce qui la distingue de 0017, exclue parce qu'elle fait un ALTER +
+    # backfill sur une table que `schema.sql` crée déjà.
+    "0018_crop_edit_observations.sql",
 ]
 
 #: Les objets qu'une migration a DÉCLARÉS puis qu'une suivante a remplacés.

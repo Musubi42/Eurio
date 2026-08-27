@@ -35,7 +35,7 @@ import logging
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from serving.auth_principal import Principal, require_scope
 from serving.deps import db_connection
@@ -54,6 +54,7 @@ try:
     from serving.crop_edit import apply_manual_crop, load_crop_edit_context
     from serving.crop_edit import compute_crop_suggestion
     from serving.crop_edit_api import (
+        CropEditAbandonPayload,
         CropEditContext,
         CropSuggestion,
         ManualCropPayload,
@@ -133,6 +134,96 @@ if CROP_EDIT_AVAILABLE:
         circle, reason = compute_crop_suggestion(_store(), asset_id)
         return CropSuggestion(asset_id=asset_id, circle=circle, reason=reason)
 
+    def _observe(conn, *, asset_id, review_id, actor, payload,
+                 after=(None, None, None)) -> None:
+        """Enregistre l'observation du geste. BEST-EFFORT, jamais bloquant.
+
+        Une observation perdue coûte une ligne de jeu d'or ; une observation
+        qui fait échouer un recadrage coûte le travail du reviewer. L'ordre de
+        priorité n'est pas discutable — d'où le `except` large et le WARNING.
+
+        ⚠️ Direction A : sous le flip (Mac/PC en réplique read-only), l'écriture
+        locale lèverait `readonly database`. On suit la MÊME garde que
+        `apply_manual_crop`, et le canonique reçoit l'observation par sa propre
+        exécution de cette route — c'est le VPS qui sert le front hébergé.
+        """
+        from dataclasses import dataclass, field  # noqa: PLC0415
+
+        from store import resolve_db_readonly  # noqa: PLC0415
+
+        if resolve_db_readonly():
+            return
+        try:
+            from store.crop_observations import apply_crop_observation  # noqa: PLC0415
+
+            @dataclass
+            class _Obs:
+                asset_id: str
+                actor: str
+                start_origin: str
+                review_id: str | None
+                start_cx: float | None
+                start_cy: float | None
+                start_r: float | None
+                after_cx: float | None
+                after_cy: float | None
+                after_r: float | None
+                suggestion_cx: float | None
+                suggestion_cy: float | None
+                suggestion_r: float | None
+                suggestion_reason: str | None
+                touched: bool
+                saved: bool
+                editor_version: str
+
+            obs = _Obs(
+                asset_id=asset_id, actor=actor,
+                start_origin=payload.start_origin or "hint",
+                review_id=review_id,
+                start_cx=payload.start_cx, start_cy=payload.start_cy,
+                start_r=payload.start_r,
+                after_cx=after[0], after_cy=after[1], after_r=after[2],
+                suggestion_cx=payload.suggestion_cx,
+                suggestion_cy=payload.suggestion_cy,
+                suggestion_r=payload.suggestion_r,
+                suggestion_reason=payload.suggestion_reason,
+                touched=bool(payload.touched),
+                saved=after[0] is not None,
+                editor_version=payload.editor_version or "v1",
+            )
+            conn.execute("BEGIN")
+            try:
+                apply_crop_observation(conn, obs)
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        except Exception as exc:  # noqa: BLE001 — best-effort, cf. docstring
+            logger.warning("[crop-obs] observation perdue asset=%s: %s",
+                           asset_id, exc)
+
+    @router.post(
+        "/review-queue/{review_id}/crop-edit-abandon",
+        status_code=204,
+    )
+    def crop_edit_abandon(
+        review_id: str,
+        payload: CropEditAbandonPayload,
+        principal: PrincipalDep,
+        conn: ConnDep,
+    ) -> Response:
+        """L'éditeur a été fermé sans sauvegarder. Produit l'étiquette POSITIVE.
+
+        `touched=false` veut dire « j'ai regardé ce cadrage et je l'ai laissé » —
+        c'est le seul endroit du dispositif où un accord humain sur un crop est
+        enregistré. Répond 204 et n'échoue jamais du fait de l'observation : le
+        navigateur l'appelle en `keepalive` au moment où la modale se ferme.
+        """
+        asset_id = _asset_id(conn, review_id)
+        _observe(conn, asset_id=asset_id, review_id=review_id,
+                 actor=principal.user_id, payload=payload)
+        return Response(status_code=204)
+
     @router.post(
         "/review-queue/{review_id}/manual-crop",
         response_model=ManualCropResponse,
@@ -153,6 +244,9 @@ if CROP_EDIT_AVAILABLE:
         data = apply_manual_crop(
             _store(), asset_id, payload.cx, payload.cy, payload.r,
         )
+        _observe(conn, asset_id=asset_id, review_id=review_id,
+                 actor=principal.user_id, payload=payload,
+                 after=(payload.cx, payload.cy, payload.r))
         logger.info(
             "[review-crop] asset=%s recadré par %s (dino_recalculé=%s)",
             asset_id, principal.user_id, data.dino_recomputed,

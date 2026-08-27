@@ -20,6 +20,7 @@ import {
   fetchAssetCropSuggestion,
   fetchCropEditContext,
   fetchCropSuggestion,
+  cropEditAbandon,
   manualCrop,
   manualCropAsset,
   type CropEditContext,
@@ -70,6 +71,22 @@ const suggestion = ref<CropSuggestion | null>(null)
 const suggesting = ref(false)
 /** Vrai dès que l'humain a bougé le cadre : la suggestion ne l'écrase plus. */
 const circleTouched = ref(false)
+
+/** Le cercle EFFECTIVEMENT présenté à l'écran, et d'où il venait.
+ *
+ *  C'est la référence du delta enregistré côté serveur — PAS la bbox stockée.
+ *  L'éditeur démarre sur `hint` puis la suggestion Hough le remplace en différé
+ *  si rien n'a été touché : mesurer depuis la bbox attribuerait à l'humain un
+ *  déplacement fait par la machine. Cf. `store/crop_observations.py`. */
+const startOrigin = ref<'hint' | 'suggestion' | 'default'>('hint')
+const startCircle = ref<{ cx: number; cy: number; r: number } | null>(null)
+
+/** Une sauvegarde a réussi : la fermeture qui suit n'est pas un abandon.
+ *  Sans ce drapeau, `onBeforeUnmount` compterait une seconde observation à
+ *  chaque enregistrement. */
+let savedOk = false
+/** L'observation de fermeture est déjà partie (un seul chemin doit gagner). */
+let observed = false
 
 /** Requête en vol, annulable. Un `E` / `Esc` / `E` rapide, ou le crop suivant,
  *  ne doit pas laisser deux chargements se courir après — le dernier arrivé
@@ -170,6 +187,12 @@ const uiScale = computed(() => {
 })
 const handleR = computed(() => 10 * uiScale.value)
 
+/** Fige le cercle actuel comme point de départ du geste. Appelé chaque fois
+ *  que la MACHINE pose le cadre — jamais quand l'humain le bouge. */
+function markStart() {
+  startCircle.value = { cx: cx.value, cy: cy.value, r: r.value }
+}
+
 async function load() {
   inflight?.abort()
   inflight = new AbortController()
@@ -178,6 +201,10 @@ async function load() {
   suggestion.value = null
   suggesting.value = false
   circleTouched.value = false
+  startOrigin.value = 'hint'
+  startCircle.value = null
+  savedOk = false
+  observed = false
   try {
     // Add-crop : pas de fetch, on construit le contexte depuis le raw du lot
     // (déjà connu côté front) — l'asset n'existe pas encore.
@@ -200,6 +227,8 @@ async function load() {
         cy.value = (c.raw_height ?? 0) / 2
         r.value = Math.min(c.raw_width ?? 0, c.raw_height ?? 0) * 0.3
       }
+      startOrigin.value = c.hint ? 'hint' : 'default'
+      markStart()
       return
     }
     const signal = inflight!.signal
@@ -220,6 +249,8 @@ async function load() {
       cy.value = (c.raw_height ?? 0) / 2
       r.value = Math.min(c.raw_width ?? 0, c.raw_height ?? 0) * 0.3
     }
+    startOrigin.value = start ? 'hint' : 'default'
+    markStart()
     void loadSuggestion(signal)
   } catch (err) {
     if (signalAborted(err)) return   // modale refermée / crop suivant : rien à dire
@@ -253,6 +284,11 @@ async function loadSuggestion(signal: AbortSignal) {
       cx.value = s.circle.cx
       cy.value = s.circle.cy
       r.value = s.circle.r
+      // La MACHINE vient de reposer le cadre : c'est LUI le point de départ du
+      // geste humain. Sans cette ligne, le delta enregistré attribuerait à
+      // l'humain le déplacement que le Hough vient de faire.
+      startOrigin.value = 'suggestion'
+      markStart()
     }
   } catch (err) {
     if (signalAborted(err)) return
@@ -273,6 +309,11 @@ onMounted(() => {
   window.addEventListener('keydown', onKey, true)
 })
 onBeforeUnmount(() => {
+  // Filet pour le chemin qui n'émet RIEN : `SingleReviewView.resetForCurrent`
+  // fait tomber le `v-if` au changement d'item. `observeClose` est idempotent
+  // (`observed`) et se tait après une sauvegarde (`savedOk`) — il ne peut donc
+  // pas compter deux fois.
+  observeClose()
   inflight?.abort()   // la modale se referme : plus personne n'attend ces réponses
   window.removeEventListener('resize', syncOverlay)
   window.removeEventListener('keydown', onKey, true)
@@ -417,6 +458,61 @@ function onImgError() {
 
 watch([cx, cy, r, imgLoaded], drawPreview)
 
+// ─── L'observation du geste ──────────────────────────────────────────────
+//
+// Le delta entre le crop PROPOSÉ et le crop FINAL est l'étiquette : on ne
+// demande à personne de qualifier « mal cadré » ou « sur-croppé ». Une
+// taxonomie manuelle serait mal remplie au bout de trois jours et
+// enregistrerait une interprétation, là où la géométrie enregistre le fait.
+// Chantier `juge-du-crop`, ADR-017.
+
+/** Le contexte que le serveur ne peut pas deviner. L'AVANT, lui, est relu en
+ *  base — un client peut se tromper ou mentir. */
+function observationFields() {
+  return {
+    start_origin: startOrigin.value,
+    start_cx: startCircle.value?.cx ?? null,
+    start_cy: startCircle.value?.cy ?? null,
+    start_r: startCircle.value?.r ?? null,
+    suggestion_cx: suggestion.value?.circle?.cx ?? null,
+    suggestion_cy: suggestion.value?.circle?.cy ?? null,
+    suggestion_r: suggestion.value?.circle?.r ?? null,
+    suggestion_reason: suggestion.value?.reason ?? null,
+    touched: circleTouched.value,
+    editor_version: 'v1',
+  }
+}
+
+/** L'éditeur se ferme sans sauvegarde : on enregistre l'observation.
+ *
+ *  `touched === false` produit l'étiquette POSITIVE « ce cadrage était bon » —
+ *  c'est la moitié du signal, et elle n'existe nulle part aujourd'hui. Sans
+ *  elle, le jeu de vérité terrain n'aurait que des négatifs, et un modèle
+ *  entraîné dessus apprendrait que tout cadrage est mauvais.
+ *
+ *  BEST-EFFORT, et l'ordre de priorité n'est pas discutable : une observation
+ *  perdue coûte une ligne de jeu d'or, une observation bloquante coûte le
+ *  travail du reviewer. D'où le `void`, le `catch` muet et le `keepalive` —
+ *  la modale se ferme dans la foulée, la requête doit survivre.
+ */
+function observeClose() {
+  if (observed || savedOk || !props.reviewId || isAddMode.value) return
+  observed = true
+  void cropEditAbandon(props.reviewId, {
+    ...observationFields(),
+    last_cx: cx.value, last_cy: cy.value, last_r: r.value,
+  }).catch(() => { /* best-effort : ne jamais retenir une fermeture */ })
+}
+
+/** LE chemin de fermeture. Il n'y en avait aucun : quatre sites appelaient
+ *  `emit('close')` en ordre dispersé, et un cinquième
+ *  (`SingleReviewView.resetForCurrent`) faisait tomber le `v-if` sans rien
+ *  émettre du tout. */
+function requestClose() {
+  observeClose()
+  emit('close')
+}
+
 // ─── Sauvegarde ──────────────────────────────────────────────────────────
 
 async function save() {
@@ -428,11 +524,14 @@ async function save() {
       const crop = await addLotCrop(
         props.addContext.listingKey, props.addContext.sourceImageId, circle)
       emit('created', crop)
+      savedOk = true
       emit('close')
       return
     }
-    if (props.assetId) await manualCropAsset(props.assetId, circle)
-    else await manualCrop(props.reviewId!, circle)
+    const obs = observationFields()
+    if (props.assetId) await manualCropAsset(props.assetId, circle, obs)
+    else await manualCrop(props.reviewId!, circle, obs)
+    savedOk = true          // la fermeture qui suit n'est PAS un abandon
     emit('saved')
     emit('close')
   } catch (err) {
@@ -445,7 +544,7 @@ async function save() {
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.stopPropagation()
-    emit('close')
+    requestClose()
     return
   }
   if (e.key === 'Enter') {
@@ -521,7 +620,7 @@ function onKey(e: KeyboardEvent) {
         type="button"
         class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider"
         style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface-1);"
-        @click="emit('close')"
+        @click="requestClose()"
       >
         <X class="h-3 w-3" /> Esc
       </button>
@@ -680,7 +779,7 @@ function onKey(e: KeyboardEvent) {
             type="button"
             class="inline-flex items-center justify-center gap-1.5 rounded-md border px-4 py-2 text-[12px]"
             style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface-1);"
-            @click="emit('close')"
+            @click="requestClose()"
           >
             Annuler
           </button>

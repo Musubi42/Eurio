@@ -69,10 +69,54 @@ class CropSuggestion(BaseModel):
     reason: str | None = None
 
 
-class ManualCropPayload(BaseModel):
+class CropObservationFields(BaseModel):
+    """Le CONTEXTE du geste — ce que le serveur ne peut pas savoir.
+
+    Tous optionnels : les appelants existants ne changent pas de comportement,
+    et l'OpenAPI reste compatible.
+
+    ⚠️ Ce qui n'est PAS ici est délibéré. L'AVANT (`before_*`,
+    `detection_method`) est **relu en base** par `store.crop_observations` —
+    `apply_manual_crop` le charge déjà avant d'écrire. Un client peut se
+    tromper ou mentir ; la base, non.
+
+    `start_*` est le cercle EFFECTIVEMENT présenté à l'écran quand l'humain a
+    posé la main. Il diffère de l'avant dès que la suggestion Hough s'est
+    appliquée (elle arrive en différé et n'écrase que si rien n'a été touché) —
+    et c'est LUI la référence du delta, sans quoi on attribue à l'humain un
+    déplacement fait par la machine.
+    """
+
+    start_origin: str | None = None      # 'hint' | 'suggestion' | 'default'
+    start_cx: float | None = None
+    start_cy: float | None = None
+    start_r: float | None = None
+    suggestion_cx: float | None = None
+    suggestion_cy: float | None = None
+    suggestion_r: float | None = None
+    suggestion_reason: str | None = None
+    touched: bool | None = None
+    editor_version: str | None = None
+
+
+class ManualCropPayload(CropObservationFields):
     cx: float = Field(ge=0)
     cy: float = Field(ge=0)
     r: float = Field(gt=0)
+
+
+class CropEditAbandonPayload(CropObservationFields):
+    """L'éditeur a été ouvert puis refermé SANS sauvegarder.
+
+    C'est l'observation qui n'existe nulle part aujourd'hui, et c'est la moitié
+    du signal : `touched=false` produit l'étiquette POSITIVE « ce cadrage était
+    bon ». Sans elle, le jeu de vérité terrain n'a que des négatifs — et un
+    modèle entraîné sur des négatifs seuls apprend que tout cadrage est mauvais.
+    """
+
+    last_cx: float | None = None
+    last_cy: float | None = None
+    last_r: float | None = None
 
 
 class ManualCropResponse(BaseModel):
