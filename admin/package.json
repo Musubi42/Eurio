@@ -4,6 +4,7 @@
   "scripts": {
     "studio:dev": "pnpm -C packages/studio-local dev",
     "studio:build": "pnpm -C packages/studio-local build",
-    "studio:typecheck": "pnpm -C packages/studio-local typecheck"
+    "studio:typecheck": "pnpm -C packages/studio-local typecheck",
+    "studio:test": "pnpm -C packages/studio-local test"
   }
 }
