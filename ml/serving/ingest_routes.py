@@ -23,6 +23,7 @@ from store.crops import (
     apply_ingest_crops,
     apply_ingest_detections,
 )
+from store.denoms import apply_ingest_denoms
 from store.dino import apply_ingest_dino
 from store.eval_corpus import apply_ingest_eval_corpus
 from store.faces import apply_ingest_faces
@@ -188,6 +189,12 @@ def ingest_delete_asset_route(asset_id: str) -> dict:
 class FaceVerdict(BaseModel):
     asset_id: str
     face: str
+    #: Sims d'AUDIT — le canonique ne les recalcule pas (pas d'encodeur).
+    #: Elles voyagent avec le verdict pour que la dérive du seuil reste
+    #: mesurable ; cf. `store/faces.py`.
+    reverse_sim: float | None = None
+    face_margin: float | None = None
+    anchors_kind: str = "2eur_all"
 
 
 class IngestFacesPayload(BaseModel):
@@ -205,6 +212,55 @@ def ingest_faces_route(payload: IngestFacesPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_faces(conn, payload.faces)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class DenomRow(BaseModel):
+    """Un verdict de dénomination DÉJÀ calculé. Le canonique ne le recalcule
+    pas : la probe a besoin de torch et de l'encodeur DINOv2, absents de son
+    image par décision explicite (``infra/eurio-api/Dockerfile:7``)."""
+
+    asset_id: str
+    denom: str
+    denom_2eur_score: float | None = None
+    anchors_kind: str = "2eur_all"
+
+
+class IngestDenomsPayload(BaseModel):
+    denoms: list[DenomRow] = []
+
+
+@router.post("/denoms", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_denoms_route(payload: IngestDenomsPayload) -> dict:
+    """Écrit les verdicts « 2€ vs junk » calculés client-side (probe DINO).
+    SQL pur, atomique. Retourne ``{updated, skipped, missing}``.
+
+    Pourquoi cette route existe : la probe tourne sur l'embedding vitl14 et les
+    octets du crop — le Mac a les deux et lit une réplique read-only, le VPS
+    écrit et n'a ni torch ni les images. Sans transport, ce calcul n'a aucun
+    endroit où atterrir. Le même constat, mot pour mot, que celui qui a fait
+    écrire ``/ingest/consensus``, ``/ingest/faces`` et ``/ingest/quality-scores``.
+
+    C'est cette route qui remplace le ``guard_vps_only`` de
+    ``scripts/backfill_denom.py`` — cf. la docstring de ``store/denoms.py``
+    pour la règle, et le garde métier (anti-clobber) qui, lui, reste.
+
+    ⚠️ **Ce que le verdict ne dit pas.** ``denom='2eur'`` affirme « c'est une
+    pièce de 2 € », pas « ce crop est utilisable ». Un crop bien cadré sur la
+    bonne pièce mais montrant le REVERS, ou deux pièces à la fois, passe la
+    porte. Les autres motifs de rejet ont leurs propres gardes (``face``,
+    ``quality_score``) et aucun ne subsume les autres.
+    """
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_denoms(conn, payload.denoms)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

@@ -23,9 +23,17 @@ from store.events import emit_field_event
 def apply_ingest_faces(conn, faces) -> dict:
     """Applique des verdicts de face.
 
-    ``faces`` = itérable d'objets avec .asset_id / .face (duck-typé : pydantic OU
+    ``faces`` = itérable d'objets avec .asset_id / .face, et optionnellement
+    .reverse_sim / .face_margin / .anchors_kind (duck-typé : pydantic OU
     dataclass). Retourne ``{"updated": n, "skipped": m, "missing": [asset_id…]}``
     (``skipped`` = verdict humain, épargné par le garde de provenance).
+
+    ⚠️ Les sims d'AUDIT (``reverse_sim`` / ``face_margin``) s'écrivent **même
+    quand le verdict est skippé**, et pour la même raison que
+    ``denom_2eur_score`` dans ``store/denoms.py`` : savoir ce que le détecteur
+    pense d'un crop déjà tranché par un humain est exactement ce qui permet de
+    mesurer sa dérive. C'est cette dérive — 73,3 % → 40,0 % de rappel entre
+    juin et août, à seuil inchangé — qui a été trouvée le 2026-08-27.
     """
     updated = 0
     skipped = 0
@@ -37,6 +45,14 @@ def apply_ingest_faces(conn, faces) -> dict:
         if row is None:
             missing.append(f.asset_id)
             continue
+        rs = getattr(f, "reverse_sim", None)
+        fm = getattr(f, "face_margin", None)
+        if rs is not None or fm is not None:
+            conn.execute(
+                "UPDATE image_asset_dino_predictions SET reverse_sim = ?, "
+                "face_margin = ? WHERE asset_id = ? AND anchors_kind = ?",
+                (rs, fm, f.asset_id, getattr(f, "anchors_kind", "2eur_all")),
+            )
         cur = conn.execute(
             "UPDATE image_assets SET face = ?, face_source = 'pipeline' "
             "WHERE id = ? AND (face_source IS NULL OR face_source = 'pipeline')",

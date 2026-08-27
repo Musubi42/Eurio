@@ -5,6 +5,16 @@ encore NULL dont la photo source est un **LOT** (même périmètre que le gate l
 dans `auto_validate` : titre lot / listing_kind='lot' / >1 crops — la pollution
 non-2€ vient des lots, HANDOFF-C7 §1), via la probe DINO (`vision/denom_probe.py`).
 
+La restriction LOT est **mesurée, pas supposée** (réplique, 2026-08-27, sur les
+9 092 crops tranchés hors ``auto_dino``) : ``quality_reason='not_2eur'`` vaut
+**42,8 %** des crops de lot (1 659 / 3 877) contre **0,2 %** des singles
+(8 / 5 215). Scorer les singles coûterait 5 200 encodages pour ~8 rejets.
+
+⚠️ Le périmètre porte sur l'**annonce 2€**, pas sur la présence d'une cible —
+cf. le commentaire long au-dessus de la requête de `_score_phase`. Un JOIN
+INNER sur ``target_eurio_id`` y excluait 3 333 crops, ceux-là mêmes que la
+porte doit trier.
+
 **Audit d'abord (défaut)** : AUCUN re-routage — denom + score seulement, pour
 inspection dans le funnel/bench. Le rejet terminal se déclenche avec ``--reject``
 APRÈS validation PO ; il lit ``denom='not_2eur'`` en base (pas les verdicts du
@@ -22,14 +32,19 @@ Usage :
     python -m scripts.backfill_denom [--run PREFIX] [--limit N] [--dry] [-v]
     python -m scripts.backfill_denom --reject   # après validation PO
 
-⚠️  MIGRATION VPS-ONLY sous Direction A (docs/work-in-progress/local-sync/
-migration-direction-a.md §C7) : ce script écrit le canonique (``UPDATE
-image_assets`` non transporté par une route ``/ingest``). Ne PAS le lancer
-contre une réplique locale (Mac/PC read-only ou client d'un VPS canonique) —
-refuse automatiquement sauf ``--i-know-this-is-canonical``. Dépend de la probe
-DINO (torch) : sur une machine GPU non-VPS, pointer ``--db`` vers une copie
-synchronisée du canonique puis pousser le résultat (procédure non encore
-tranchée, cf. docs/work-in-progress/local-sync/vps-only-migrations.md).
+OÙ ÇA TOURNE, OÙ ÇA ÉCRIT — et pourquoi ce n'est pas le même endroit
+--------------------------------------------------------------------
+Ce script tourne **sur la machine qui a l'encodeur** (Mac/PC) : la probe est
+une régression logistique sur l'embedding DINOv2 vitl14 gelé, elle a besoin de
+torch et des octets du crop. Il **écrit le canonique**, au VPS, qui n'a ni
+torch ni les images — ``infra/eurio-api/Dockerfile:7`` : *« torch /
+ultralytics : DÉLIBÉRÉMENT ABSENTS »*.
+
+Le transport est ``POST /ingest/denoms`` (cf. ``store/denoms.py``). Il
+remplace l'ancien ``guard_vps_only``, qui refusait de tourner ici parce
+qu'aucune voie ne transportait cette écriture — même mouvement que
+``backfill_quality_score`` le 2026-08-25. ``--no-push`` écrit la base locale,
+et n'a de sens que **sur** le host canonique.
 """
 
 from __future__ import annotations
@@ -38,31 +53,41 @@ import argparse
 import logging
 import sys
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
-
-import cv2
 
 ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
-from scripts._vps_only_guard import guard_vps_only  # noqa: E402
-from sources._base.steps.auto_validate import (  # noqa: E402
-    SUGGESTIONS_ANCHORS_KIND,
-    _get_bank,
-    _get_encoder_singleton,
-    _is_lot_source,
+# ⚠️ Les imports LOURDS (torch, cv2, numpy via `training.foundation` et
+# `vision.denom_probe`) sont volontairement PARESSEUX, dans `_score_phase`.
+#
+# Ce module a deux phases aux besoins opposés : le SCORE a besoin de l'encodeur
+# et des images — donc du Mac ; le REJET est du SQL pur et n'a besoin que de la
+# base — donc du VPS, seul writer. Les tirer en tête d'un module ferait échouer
+# `--reject` À L'IMPORT dans l'image lean, où torch est délibérément absent
+# (`infra/eurio-api/Dockerfile:7`). C'est le défaut d'architecture rencontré
+# trois fois le 2026-08-27 : une logique que le seul writer ne peut pas
+# importer est une logique inexécutable, et l'échec est muet.
+#
+# Les trois helpers de rejet/routage, eux, vivent dans `store/review_routing.py`
+# (SQL pur, lean-importable) depuis le 2026-08-27, pour cette raison exacte.
+from store.review_routing import (  # noqa: E402
+    kind_for_source_image as _kind_for_source_image,
+    reject_crop_terminal as _reject_crop_terminal,
+    route_decision_for_source_image as _route_decision_for_source_image,
 )
-from sources._base.steps.enqueue import (  # noqa: E402
-    _DENOM_ENGINE_VERSION,
-    _kind_for_source_image,
-    _reject_crop_terminal,
-    _route_decision_for_source_image,
-)
-from review.review_lanes import DEFAULT_LANE  # noqa: E402
-from training.foundation import SUGGESTIONS_ENCODER_VERSION, encode_image  # noqa: E402
-from shared.storage.local_cache import local_path  # noqa: E402
 from store import Store, resolve_db_path  # noqa: E402
-from vision.denom_probe import decide_denom, denom_score, denom_threshold  # noqa: E402
+# `shared.verdict_scope` et `review.review_lanes` sont stdlib-only : les
+# importer ici ne réintroduit aucune dep lourde. Le SEUL littéral recopié est
+# `_DENOM_ENGINE_VERSION`, parce que son module d'origine
+# (`sources._base.steps.enqueue`) tire `training` — l'égalité est verrouillée
+# par `tests/test_ingest_denoms.py`.
+from shared.verdict_scope import SUGGESTIONS_ANCHORS_KIND  # noqa: E402
+from review.review_lanes import DEFAULT_LANE  # noqa: E402
+
+#: Miroir de `sources._base.steps.enqueue._DENOM_ENGINE_VERSION`.
+_DENOM_ENGINE_VERSION = "denom@v1"
 
 # Défaut résolu par `store.resolve_db_path` : la base que le RESTE de la
 # machine lit (`EURIO_DB_PATH` — la réplique sous Direction A, le canonique
@@ -73,28 +98,78 @@ from vision.denom_probe import decide_denom, denom_score, denom_threshold  # noq
 # Repli hors devShell : `state/eurio.replica.db`. La règle et son arbitrage
 # (2026-08-19) sont dans la docstring de `store.resolve_db_path`.
 DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.replica.db")
+
+#: Taille des lots poussés au canonique — même valeur que `backfill_quality_score`.
+_PUSH_BATCH = 500
+
+
+@dataclass(frozen=True)
+class _Row:
+    """Ligne de verdict, duck-typée pour `apply_ingest_denoms` (qui accepte
+    pydantic OU dataclass). N'existe que pour le chemin `--no-push` : côté
+    réseau, c'est le modèle pydantic de la route qui valide."""
+
+    asset_id: str
+    denom: str
+    denom_2eur_score: float | None
+    anchors_kind: str
+
+
 logger = logging.getLogger("backfill_denom")
 
 
 def _score_phase(store, *, run_prefix: str | None, limit: int | None,
-                 dry: bool) -> int:
-    """Phase audit : score + verdict denom sur les crops lot encore NULL."""
+                 dry: bool, push: bool) -> int:
+    """Phase audit : score + verdict denom sur les crops lot encore NULL.
+
+    C'est ICI que le lourd est tiré — jamais au niveau module (cf. le
+    commentaire des imports)."""
+    import cv2  # noqa: PLC0415
+    from shared.storage.local_cache import local_path  # noqa: PLC0415
+    from sources._base.steps.auto_validate import (  # noqa: PLC0415
+        _get_bank, _get_encoder_singleton, _is_lot_source,
+    )
+    from training.foundation import (  # noqa: PLC0415
+        SUGGESTIONS_ENCODER_VERSION, encode_image,
+    )
+    from vision.denom_probe import decide_denom, denom_score  # noqa: PLC0415
+
     conn = store._connection()  # noqa: SLF001
     all_bank = _get_bank(SUGGESTIONS_ANCHORS_KIND)
     if all_bank is None:
         sys.exit("Banque 2eur_all absente — go-task ml:dino-anchors:build -- --kind 2eur_all")
     enc, dev, tf = _get_encoder_singleton(SUGGESTIONS_ENCODER_VERSION)
 
+    # Le JOIN sur `s.target_eurio_id` était INNER : il excluait silencieusement
+    # tout crop dont le scrape n'a pas résolu de cible — 3 333 crops au
+    # 2026-08-27, dont 1 676 dans la file ouverte. Or ce sont EXACTEMENT ceux
+    # que la porte doit voir : ils tombent en verdict `unknown` (règle 3 de
+    # `auto_validate_view`), personne ne les trie, et 82 % viennent de photos
+    # de lot — le périmètre même de la pollution non-2€.
+    #
+    # Le JOIN passe donc en LEFT, et le prédicat « c'est bien une annonce 2€ »
+    # retombe sur le premier CANDIDAT quand la cible manque. Mesuré sur la
+    # réplique : les 17 501 `source_images` eBay résolues pointent toutes une
+    # pièce à `face_value = 2.0`, et 3 319 des 3 333 crops sans cible ont un
+    # premier candidat 2€ (les 14 autres n'ont aucun candidat, et sortent).
+    # Le scrape est 2€-only : élargir n'ouvre pas la porte à une autre valeur.
+    #
+    # `eval_corpus IS NULL` : un crop réservé au corpus d'éval vit dans le
+    # bucket `eval-corpus`, pas `enrichment-crops` — `local_path` le refusait
+    # une fois par run, en WARNING, et son message nommait déjà ce prédicat.
     sql = """
         SELECT a.id AS asset_id, a.source_image_id, a.storage_path,
                s.is_lot_suspected
           FROM image_assets a
           JOIN source_images s ON s.id = a.source_image_id
-          JOIN coins c ON c.eurio_id = s.target_eurio_id
+          LEFT JOIN coins c  ON c.eurio_id = s.target_eurio_id
+          LEFT JOIN coins cc ON cc.eurio_id = json_extract(
+                                    a.candidate_eurio_ids_json, '$[0].eurio_id')
          WHERE a.denom IS NULL
            AND a.storage_status = 'present'
            AND a.storage_path IS NOT NULL
-           AND c.face_value = 2.0
+           AND a.eval_corpus IS NULL
+           AND (c.face_value = 2.0 OR cc.face_value = 2.0)
     """
     params: list = []
     if run_prefix:
@@ -147,18 +222,43 @@ def _score_phase(store, *, run_prefix: str | None, limit: int | None,
         return 0
 
     # ── Phase 2 : écritures AUDIT (denom + score) — pas de re-routage ────
-    with store._writing() as wconn:  # noqa: SLF001
-        wconn.executemany(
-            "UPDATE image_assets SET denom=? WHERE id=? AND denom IS NULL",
-            [(d, aid) for aid, d, _ in verdicts],
-        )
-        wconn.executemany(
-            "UPDATE image_asset_dino_predictions SET denom_2eur_score=? "
-            "WHERE asset_id=? AND anchors_kind=?",
-            [(s, aid, SUGGESTIONS_ANCHORS_KIND) for aid, _, s in verdicts],
-        )
-    print(f"Écrit : denom + denom_2eur_score sur {len(verdicts)} crops "
-          f"[denom IS NULL only — routes inchangées]")
+    #
+    # Sous Direction A, la destination n'est PAS la base que ce process lit.
+    # La probe a besoin de torch + de l'encodeur vitl14 + des octets du crop ;
+    # le VPS — seul writer — n'a aucun des trois (`Dockerfile:7` : « torch /
+    # ultralytics : DÉLIBÉRÉMENT ABSENTS »). Le calcul reste donc ici et
+    # seules les lignes voyagent, par `POST /ingest/denoms`.
+    rows = [
+        {"asset_id": aid, "denom": d, "denom_2eur_score": s,
+         "anchors_kind": SUGGESTIONS_ANCHORS_KIND}
+        for aid, d, s in verdicts
+    ]
+    totals = {"updated": 0, "skipped": 0}
+    missing: list[str] = []
+    for i in range(0, len(rows), _PUSH_BATCH):
+        lot = rows[i:i + _PUSH_BATCH]
+        if push:
+            from client.ingest import push_denoms  # noqa: PLC0415
+
+            res = push_denoms(lot) or {}
+        else:
+            from store.denoms import apply_ingest_denoms  # noqa: PLC0415
+
+            with store._writing() as wconn:  # noqa: SLF001
+                res = apply_ingest_denoms(wconn, [_Row(**r) for r in lot])
+        totals["updated"] += res.get("updated", 0)
+        totals["skipped"] += res.get("skipped", 0)
+        # Un `missing` non lu, c'est une écriture qu'on croit faite.
+        missing.extend(res.get("missing") or [])
+
+    dest = "canonique (POST /ingest/denoms)" if push else f"base locale {DB_PATH}"
+    print(f"Écrit vers {dest} : {totals['updated']} denom posés, "
+          f"{totals['skipped']} déjà étiquetés (garde anti-clobber), "
+          f"{len(missing)} asset_id inconnus")
+    if missing:
+        logger.warning("asset_id absents du canonique : %s%s",
+                       ", ".join(missing[:5]),
+                       f" (+{len(missing) - 5})" if len(missing) > 5 else "")
     return 0
 
 
@@ -249,11 +349,38 @@ def main() -> int:
     ap.add_argument("--db", default=str(DB_PATH))
     ap.add_argument("--verbose", "-v", action="store_true")
     ap.add_argument(
-        "--i-know-this-is-canonical", action="store_true", dest="allow_non_vps",
-        help="Bypass le garde-fou VPS-only (Direction A) — --db pointe une copie canonique.",
-    )
+        "--no-push", action="store_true",
+        help="écrit la base LOCALE au lieu de pousser au canonique "
+             "(n'a de sens que SUR le host canonique)")
     args = ap.parse_args()
-    guard_vps_only("backfill_denom", allow=args.allow_non_vps)
+
+    # ── Où atterrissent les lignes ──────────────────────────────────────────
+    # Remplace l'ancien `guard_vps_only`. Le garde refusait de tourner ici
+    # parce qu'AUCUNE voie ne transportait cette écriture ; `/ingest/denoms`
+    # l'ouvre, et un garde qui protège d'un danger disparu est un garde
+    # décoratif — la règle est posée dans `scripts/_vps_only_guard.py`.
+    from store import resolve_db_readonly  # noqa: PLC0415
+
+    push = False
+    if not args.dry:
+        if args.no_push:
+            if resolve_db_readonly():
+                print(
+                    "DB en lecture seule (réplique Direction A) et --no-push : "
+                    "aucune destination. Retire --no-push pour pousser au "
+                    "canonique, ou lance ceci sur le host canonique avec "
+                    "EURIO_DB_READONLY=0.", file=sys.stderr)
+                return 2
+        else:
+            from client.http import sync_enabled  # noqa: PLC0415
+
+            if not sync_enabled():
+                print(
+                    "EURIO_API_URL absent : impossible de pousser au canonique. "
+                    "Charge le devShell, ou ajoute --no-push pour écrire en local.",
+                    file=sys.stderr)
+                return 2
+            push = True
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -261,14 +388,19 @@ def main() -> int:
     )
     logging.getLogger("backfill_denom").setLevel(logging.INFO)
 
+    store = Store(Path(args.db))
+    if args.reject:
+        # Phase SQL pure : ni probe, ni encodeur, ni images. Elle doit pouvoir
+        # tourner sur le VPS — donc ne toucher AUCUN import lourd.
+        return _reject_phase(store, run_prefix=args.run, dry=args.dry)
+
+    from vision.denom_probe import denom_threshold  # noqa: PLC0415
+
     if denom_threshold() is None:
         sys.exit("Probe denom absente — state/denom_probe.npz (scripts.train_denom_probe --save)")
     print(f"seuil denom = {denom_threshold():.4f}")
-
-    store = Store(Path(args.db))
-    if args.reject:
-        return _reject_phase(store, run_prefix=args.run, dry=args.dry)
-    rc = _score_phase(store, run_prefix=args.run, limit=args.limit, dry=args.dry)
+    rc = _score_phase(store, run_prefix=args.run, limit=args.limit,
+                      dry=args.dry, push=push)
     if rc == 0 and not args.dry:
         print("(audit only — relancer avec --reject après validation PO pour "
               "rejeter les not_2eur et re-router les listings)")

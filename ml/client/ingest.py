@@ -89,6 +89,47 @@ def push_consensus(verdicts: list[dict[str, Any]]) -> dict | None:
     return _http.post_json("/ingest/consensus", {"verdicts": verdicts})
 
 
+def push_faces(faces: list[dict[str, Any]]) -> dict | None:
+    """POST ``/ingest/faces`` si la sync est activée, sinon no-op (``None``).
+
+    ``faces`` = verdicts DÉJÀ calculés (asset_id, face, reverse_sim?,
+    face_margin?, anchors_kind?). Le détecteur compare l'embedding vitl14 du
+    crop aux ancres du revers commun : torch + encodeur + octets du crop, dont
+    le VPS n'a rien. Même doctrine que ``push_denoms``.
+
+    Les erreurs HTTP/réseau sont levées à l'appelant : sous Direction A un
+    verdict non poussé n'existe nulle part, ce n'est pas du best-effort.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle
+
+    if not faces or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/faces", {"faces": faces})
+
+
+def push_denoms(denoms: list[dict[str, Any]]) -> dict | None:
+    """POST ``/ingest/denoms`` si la sync est activée, sinon no-op (``None``).
+
+    ``denoms`` = verdicts DÉJÀ calculés (asset_id, denom, denom_2eur_score?,
+    anchors_kind?). Le calcul reste ici — c'est lui qui a besoin de torch et de
+    l'encodeur DINOv2 vitl14, **délibérément absents** de l'image du VPS
+    (``infra/eurio-api/Dockerfile:7``) — seules les lignes voyagent. Même
+    doctrine que ``push_quality_scores``.
+
+    Les erreurs HTTP/réseau sont levées à l'appelant : sous Direction A un
+    verdict non poussé n'existe nulle part, ce n'est pas du best-effort.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle
+
+    if not denoms or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/denoms", {"denoms": denoms})
+
+
 def push_quality_scores(scores: list[dict[str, Any]]) -> dict | None:
     """POST ``/ingest/quality-scores`` si la sync est activée, sinon no-op (``None``).
 
