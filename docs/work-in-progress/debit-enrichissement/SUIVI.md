@@ -15,17 +15,45 @@
 > suit se lit à travers lui. Le bandeau du 26/08 est conservé plus bas au
 > §Journal — il disait vrai ce jour-là, il ne dit plus vrai aujourd'hui.
 
-**En une phrase : l'auto-validation ne fonctionnait NULLE PART, et maintenant
-elle tourne à 99 % de justesse mesurée sur 100 crops réels.**
+**En une phrase : le goulot n'est plus la reconnaissance, c'est le CADRAGE.
+DINO se trompe de classe 7 fois sur 414 ; les 71 autres échecs sont des crops
+inutilisables.**
 
-| | 26/08 au matin | **27/08 au soir** |
-|---|---:|---:|
-| file de review ouverte | 11 377 | **10 138** |
-| crops auto-acceptables | 0 *(route inexistante)* | **2 194** |
-| auto-acceptés par la machine | 0 depuis le 2026-07-08 | **100**, justesse **99 %** |
-| revers communs dans la file | 1 052 | **8** |
-| signaux texte à jour | `v2` | **`v3`** |
-| migrations au canonique | `0014` | **`0017`** |
+| | 26/08 au matin | 27/08 au soir | **27/08, nuit** |
+|---|---:|---:|---:|
+| file de review ouverte | 11 377 | 10 138 | **9 696** |
+| crops auto-acceptables | 0 *(route inexistante)* | 2 194 | 2 194 |
+| auto-acceptés par la machine | 0 depuis le 2026-07-08 | **100**, justesse **99 %** | idem |
+| crops avec `denom` calculé | — | 10 464 | **12 686** |
+| revers communs dans la file | 1 052 | **8** | 8 |
+| signaux texte à jour | `v2` | **`v3`** | `v3` |
+| migrations au canonique | `0014` | **`0017`** | `0017` |
+
+### ⚠️ Le déplacement de problème de la nuit du 27/08
+
+Le bloc `unknown` a été analysé. **Il n'a qu'UNE cause** : `target_eurio_id IS
+NULL` (règle 3 du verdict) — 3 868 sur 3 868. Zéro relève de « pas de prédiction
+DINO » : le modèle a une opinion sur la totalité du bloc.
+
+Et l'analyse a démenti **mon propre chiffre**. J'avais annoncé 98 % de justesse
+du top-1 sur cette population ; c'était un dénominateur biaisé — j'excluais les
+crops qu'un humain **rejette**, et il en rejette **72 %**. Chiffre honnête :
+
+| porte `spread ≥ 0,05`, crops sans cible | n | justes | **rejets** | fausse classe |
+|---|---:|---:|---:|---:|
+| dénominateur biaisé | 343 | 98,0 % | *exclus* | 7 |
+| **dénominateur honnête** | 414 | 81,2 % | **17,1 %** | 7 |
+
+**1,7 % d'erreurs de classe contre 17 % de crops sales.** Ce n'est pas un
+problème de reconnaissance. Un audit visuel de 14 crops (images regardées) le
+confirme indépendamment : 7 sur 14 seulement sont propres, 2 ne sont même pas
+des pièces de 2 €.
+
+⚠️ **La circularité a été testée et écartée** : les prédictions `2eur_all` datent
+toutes du 24/08, et **335 des 398 décisions leur sont antérieures** — l'humain ne
+pouvait pas voir ce top-1. Sur ce sous-ensemble non circulaire : 94,6 %, soit
+*plus* que sur le sous-ensemble circulaire (90,5 %). Ce n'était pas de l'ancrage,
+c'était de la survie.
 
 ### Ce qui est déployé et vérifié en production
 
@@ -37,6 +65,9 @@ elle tourne à 99 % de justesse mesurée sur 100 crops réels.**
 | **extracteur de titres v3** | 22 838 lignes, 3 001 annonces gagnent un pays |
 | **Q1** — le texte devient un veto | `auto_candidate` 1 819 → 2 308 |
 | **auto-accept** — module lean, verdict au lieu de la lane | route servie en prod pour la première fois |
+| **`POST /ingest/denoms`** *(nuit du 27/08)* | la porte 2€ a enfin une destination — 2 222 crops scorés, **478 `not_2eur`**, **375 sortis de la file** |
+| **`backfill_face`** — transport complet | sims d'audit portées par `/ingest/faces`, rejet des revers en phase `--reject` SQL pure |
+| **`scripts/` embarqué dans l'image lean** | la moitié SQL des passes correctives tourne enfin chez le writer |
 
 ### ⛔ Les quatre choses à savoir avant de toucher quoi que ce soit
 
@@ -1395,91 +1426,119 @@ ré-ouvrables par `/restore`.
 
 ---
 
-# 🧭 LA SUITE — tout est ordonné par « auto-valider le maximum »
+# 🧭 LA SUITE — le goulot a bougé : c'est le CADRAGE
 
-> Écrit en fin de session du 2026-08-27. **C'est la section à lire en premier
-> la prochaine fois.** Chaque ligne dit ce qu'elle rapporte en crops
-> auto-validés, ou dit franchement qu'elle n'en rapporte aucun.
+> Réécrit dans la nuit du 2026-08-27. **C'est la section à lire en premier.**
+> La version précédente ordonnait tout par « régler les seuils » ; la mesure a
+> déplacé le problème. Elle est conservée au §Journal.
 
-## L'équation, telle qu'elle est aujourd'hui
+## Le fait central, mesuré trois fois
 
-```
-10 138 crops ouverts
- ├─ 2 194  la machine peut trancher      ← à encaisser
- └─ 7 944  la machine ne peut pas        ← le vrai sujet
-      ├─ 3 868  unknown   (pas de cible connue)
-      ├─ 3 247  divergent (top-1 ≠ cible, ou texte contredit)
-      └─   808  partial   (Dino sous les seuils)
-```
+**Quand un humain cadre un crop, il en rejette 1,4 %. Quand la machine cadre,
+92 %.**
 
-**Le gisement immédiat est 2 194. Le gisement structurel est les 3 868
-`unknown`** — des crops dont on ne sait même pas quelle pièce ils devraient
-être. Aucun réglage de seuil ne les atteindra.
+| méthode de détection | tranchés | rejetés | taux |
+|---|---:|---:|---:|
+| `manual` | 2 745 | 38 | **1,4 %** |
+| `yolo+hough+polish+rimrefine` | 1 482 | 1 364 | 92,0 % |
+| `yolo+hough+rimrefine` | 3 861 | 3 564 | 92,3 % |
+| **`score_recover`** | 1 307 | 1 276 | **97,6 %** |
 
-## Immédiat — encaisser les 2 194
+*(Canonique, 2026-08-27 : `review_queue.status='done'` hors `decided_by='auto_dino'`,
+groupé par `image_assets.detection_method`.)*
 
-| # | Geste | Rapport | Coût | Risque |
-|---|---|---|---|---|
-| **1** | Monter `top1_country_sim_min` **0,55 → 0,58** | −6 éligibles, écarte le profil de la seule erreur observée | ⚠️ **bloqué** : le seuil est un littéral en dur, `PUT /lab/dino-thresholds` ment | faible |
-| **2** | Auto-accepter les **2 188** restants, par lots de 500 avec contrôle | **+2 188 crops validés** | 4 × la planche de contrôle | ~22 erreurs attendues, ré-ouvrables |
-| **3** | Rejouer le contrôle sur un lot **stratifié par classe** | dit si les 99 % tiennent hors du bloc `bremen` | 1 planche | — |
+## Le signal de qualité de crop existe déjà — et ce n'est PAS `quality_score`
 
-⚠️ **Le geste 1 conditionne le 2, et il est bloqué par une panne muette** : les
-seuils ne sont pas réglables par la route qui prétend les régler. Le fermer
-d'abord (soit brancher `store.dino_thresholds.resolve()`, soit répondre 400).
+| état du crop | n | `quality_score` moyen | **`top1_sim` moyen** |
+|---|---:|---:|---:|
+| ACCEPTÉ par l'humain | 3 168 | 0,919 | **0,922** |
+| rejeté à la main | 1 461 | 0,921 | **0,720** |
+| rejeté (autre motif) | 4 838 | 0,941 | 0,721 |
 
-## Structurel — élargir ce que la machine PEUT trancher
+**La colonne qui s'appelle « qualité » ne discrimine rien** — elle est même
+légèrement inversée. Elle mesure le CADRAGE (distance du rayon croppé au rim
+vrai) et sa propre docstring le dit : elle est *aveugle aux vraies pannes*.
 
-C'est ici que se joue le vrai maximum, et c'est plus lent.
+**`top1_sim` sépare franchement.** Un crop mal cadré de la bonne pièce ressemble
+mal à ses ancres. C'est **DINO qui mesure la qualité du crop**, pas l'oracle
+géométrique.
 
-| # | Chantier | Ce qu'il ouvre | État |
+## Le gisement : « le match était bon, j'ai dû désélectionner »
+
+Population où `top1 == cible` (le match est juste), gold n = 2 359 :
+
+| | n | part |
+|---|---:|---:|
+| acceptés | 1 955 | 82,9 % |
+| **rejetés à la main** (bon match, mauvais crop) | **280** | 11,9 % |
+| rejetés `not_2eur` | 85 | 3,6 % |
+| rejetés `face_reverse` | 36 | 1,5 % |
+
+Et `top1_sim` les sépare :
+
+| porte (sur match juste) | gold n | **acceptés** | jetés | file OUVERTE |
+|---|---:|---:|---:|---:|
+| aucune *(règle actuelle)* | 2 359 | **82,9 %** | 404 | 2 270 |
+| `top1_sim ≥ 0,85` | 1 720 | 96,5 % | 61 | 766 |
+| `top1_sim ≥ 0,88` | 1 485 | **98,2 %** | 26 | **437** |
+| `top1_sim ≥ 0,90` | 1 340 | 98,9 % | 15 | 270 |
+| `top1_sim ≥ 0,92` | 1 184 | 99,0 % | 12 | 155 |
+
+Sur les 280 « bon match, mauvais crop » : **4 % seulement** ont `sim ≥ 0,90`,
+contre 68 % des acceptés. Le signal est net.
+
+## Les trois gestes, par ordre de rendement
+
+| # | Geste | Ce qu'il rapporte | État |
 |---|---|---|---|
-| **4** | **Les 3 868 `unknown`** — crops sans cible connue. La règle 3 les sort avant tout examen | le plus gros bloc de la file, **jamais analysé** | 🔴 rien de fait, pas même un diagnostic |
-| **5** | **Pêche par pays** ([`PLAN-PECHE-PAYS.md`](./PLAN-PECHE-PAYS.md)) | route les crops du bon dessin/mauvais pays vers la bonne classe : **1 193 crops récupérés**, 464 vers des classes pauvres | 📋 plan écrit, 0 ligne |
-| **6** | **Écran binaire** ([`PLAN-ECRAN-BINAIRE.md`](./PLAN-ECRAN-BINAIRE.md)) | ne crée pas d'auto-validation mais **divise le coût** de ce qui reste manuel | 📋 plan écrit, 0 ligne |
-| **7** | **Nettoyer les ancres atypiques** (cf. §van Eyck) | supprime une source d'erreurs *à la racine*, dans la banque | 🔴 découvert aujourd'hui, non chiffré |
+| **1** | **Monter le plancher d'auto-accept à `top1_sim ≥ 0,88`** | fait passer le rendement de **82,9 % → 98,2 %** d'un coup. Coûte du volume : 2 270 → 437 crops éligibles | 🔴 non fait, 1 littéral |
+| **2** | **RE-CROPPER au lieu de rejeter** — 1 833 crops ouverts ont le bon match et `sim < 0,88` | le vrai gisement : ce sont des crops dont la pièce est BONNE, seul le cadrage est raté | 🔴 non fait |
+| **3** | Remonter à la source : pourquoi le détecteur crope des revers et des cents | `face_reverse` (2 636) + `not_2eur` (2 042) sont **les deux premiers motifs de rejet**, loin devant le cadrage (1 461) | 🟡 les deux portes existent et tournent maintenant |
+
+### Le geste 2 mérite un mot — l'outil existe et vise à côté
+
+`ml/vision/score_recover.py` fait **déjà** la bonne chose structurellement : un
+balayage de rayon, scoré, qui garde le meilleur crop. Il récupère 86 % des
+zéro-crops. Mais **il optimise le mauvais objectif** — il maximise le score de
+la probe *dénomination* (« est-ce 2 € ? »), pas la similarité aux ancres de la
+classe. Un crop coupé en deux mais bien bimétallique le satisfait.
+
+D'où ses **97,6 % de rejet humain**, le pire de toutes les méthodes.
+
+L'hypothèse à tester, et elle est bon marché : **rejouer ce balayage en le
+scorant par `top1_sim` aux ancres de la classe cible**. On a maintenant la
+preuve que c'est la bonne fonction objectif — c'est celle qui sépare les crops
+qu'un humain garde de ceux qu'il jette. Et on connaît la cible : ces crops ont
+`top1 == target`.
+
+⚠️ **Ne pas confondre avec un « meilleur détecteur ».** On ne change ni YOLO ni
+Hough : on rejoue une recherche qui existe, avec la métrique qui décide vraiment.
+
+## Ce qui est mort, et pourquoi c'est écrit
+
+- **Le bloc `unknown` n'est pas auto-validable par un seuil.** Testé : restreindre
+  aux candidats du scrape → 69,3 %, à leur pays → 45,5 %, veto de titre
+  « KMS/coffret » → aucun gain (91,5 % → 91,5 %). Le meilleur point de
+  fonctionnement plafonne à ~95 % pour 73 crops.
+- **Récupérer une cible depuis le titre : ≈ 360 crops sur 3 868.** 78,8 % sont
+  des commémos dont TOUS les candidats portent le même millésime ; rejouer le
+  theme-matcher courant sur les 3 047 concernés en résout **zéro**. L'ambiguïté
+  est réelle, pas une dette de code. Le scrape refuse d'inventer un prior
+  (`ml/sources/ebay/standards.py:24-30`), et il a raison.
+- **`sim` n'est PAS inerte.** Le chantier l'a écrit deux fois. Il l'était
+  uniquement parce qu'on le mesurait sur un dénominateur sans rejets.
+  **`spread` prédit la classe, `sim` prédit si le crop est utilisable.** Deux
+  métiers, pas un seuil redondant.
 
 ## Dette qui coûtera si on ne la paie pas
 
 | # | Quoi | Pourquoi ça mordra |
 |---|---|---|
 | **8** | Le FRONT du lot 0 (5 majeurs) | il perd du travail humain, et le backend est déjà déployé sans lui |
-| **9** | La panne muette de `PUT /lab/dino-thresholds` | bloque le geste 1, et fera croire à quelqu'un qu'il a réglé un seuil |
+| **9** | La panne muette de `PUT /lab/dino-thresholds` | fera croire à quelqu'un qu'il a réglé un seuil |
 | **10** | `select_eval_holdout --apply` non idempotent (M8) | un second apply prélèverait 5 crops de plus par classe, en silence |
-| **11** | La ligne `no such column` au bootstrap d'une base ancienne | déjà fermée pour `face_source` ; le patron se répète à chaque migration |
+| **12** | **~38 % de tout ce qu'on scrape arrive sans cible**, stable depuis mai | ce n'est pas un stock à résorber, c'est une taxe permanente sur chaque scrape futur |
 
-## Ce qu'on ne fera PAS, et pourquoi c'est écrit
-
-- **Rien sur la bande pays** — tranchée par le banc à l'aveugle (19-3, `p = 0,00086`). Question fermée.
-- **Rien sur les deux seuils de spread** — mesurés inertes deux fois, sur 466 puis 1 309 crops.
-- **Pas de capture device** — décision PO du 2026-08-26.
-- **Pas de scrape ciblé avant d'avoir purgé la file** — D1 : le goulot est la review.
-
-## Les pièges de ce chantier — à ne pas re-payer
-
-| Piège | Ce qu'il fait |
-|---|---|
-| La date du fichier `eurio.replica.db` **ment** sur la fraîcheur des faits | resynchronisé le 26/08 20:28, faits arrêtés au 24/08 23:31. Toujours vérifier par `max(enqueued_at)` / `max(fetched_at)`, jamais par `ls` |
-| `dino_anchor_banks` **n'existe pas** | c'est `dino_anchor_builds`, et sa colonne est `anchors_kind`, pas `kind` |
-| `pending_scoped` ne veut **pas** dire « servi » | 4 959, dont 2 423 dans des classes pleines. Le servable est **2 536** |
-| `parked.full_class` (6 587) et les écartés (5 481) **se chevauchent** | les additionner dépasse le total ouvert. Deux découpages de la même file |
-| `lane='auto_accept'` ne veut pas dire « décidé par la machine » | 289 des 524 done ont été tranchés à la main. Le seul compteur machine est `decided_by='auto_dino'` |
-| `dino_thresholds` est **vide** | lire cette table pour connaître les seuils actifs rend zéro ligne, pas les valeurs en vigueur |
-| Deux **mailles** cohabitent | la banque indexe 671 classes, `coins` en rend 592 par `COALESCE(design_group_id, eurio_id)`. 2 948 crops éligibles vus par `class_need` ≠ 2 968 vus par le COALESCE. Piège Q13, en tête de `ml/shared/class_need.py` |
-| Le grain « annonce » ≠ le grain `source_images` | 20 845 raws pour 9 216–9 985 annonces selon l'extraction. L'identifiant est le 2e champ de `source_ref` (`ebay_v1|<itemId>|<n>_img<k>`) |
-| Sous-requêtes corrélées sur cette base | `where source_image_id in (select …)` **ne termine pas** en 120 s. LEFT JOIN + GROUP BY |
-| `n_hidden_by_denom = 0` partout | pas une panne : la porte dénomination **n'a aucun appelant**. Un filtre déployé qui ne mord jamais rend le même code HTTP qu'un filtre absent |
-| Le témoin `recover=ON tau=… scope=… listings=N images=M` | prouve que la passe de secours est active, **pas** que le périmètre est neuf |
-| `--push` n'est pas un transport | c'est le choix de la base inscriptible. Sans lui, sous le devShell (`EURIO_DB_READONLY=1`), le script meurt en `attempt to write a readonly database` |
-| `source_runs.n_calls` **ment** | 8 appels rapportés pour 1 186 réels le 23/08. Le seul compteur vrai est `api_call_log` dans `ml/state/eurio.local.db` |
-| `n_targets` d'un run ne dit pas ce qui a été ciblé | 58 `target_eurio_id` pour 3 pièces demandées le 16/08 — `resolve` réattribue la cible |
-| `sim_min` est inerte de 0,00 à 0,50 | le faire varier produit une colonne de chiffres identiques qui **a l'air** d'une mesure |
-| Le gold fige `dino_in_scope` | il vaut pour la banque d'origine. `replay_gold` le recalcule ; un script maison qui lirait le champ figé mesurerait la mauvaise population sans le dire |
-| Ne pas exclure les crops qui **sont** des ancres | ils se reconnaissent eux-mêmes. 345 du gold à retirer |
-| L'API `:8042` garde une connexion read-only **thread-local** | lancée avant une écriture, elle sert des chiffres périmés sans le dire. Recalculer dans un **process neuf** |
-| Deux comptes de classes cohabitent côté scrape | l'allocateur planifie sur **470** classes déficitaires (min-need 2, tous bottlenecks), `scrape_plan_routes` n'en retient que **265** (`bottleneck=scrape` strict) |
-
----
 
 ## Journal
 
@@ -1547,3 +1606,14 @@ C'est ici que se joue le vrai maximum, et c'est plus lent.
 | 2026-08-27 | 🔎 **Mécanisme neuf, trouvé sur une question du PO** : un crop montrant le retable de Gand a été accepté comme van Eyck. DINO encode bien le CROP (`auto_validate.py:760`, vérifié) — mais **une des trois ancres de cette classe est la version COLORISÉE de la pièce**, qui reproduit le tableau. Une classe pauvre est fragile : une ancre atypique pèse un tiers de ce que le modèle sait d'elle. **La banque s'auto-empoisonne quand un humain valide un crop qui montre autre chose que la pièce.** |
 | 2026-08-27 | 🧭 **Section « LA SUITE » écrite**, ordonnée par l'objectif d'auto-validation. Gisement immédiat 2 194 ; gisement structurel les **3 868 `unknown`**, jamais analysés. |
 | 2026-08-27 | 🔁 **Constat d'architecture** : trois fois dans la journée, la logique utile était prisonnière d'un module que l'image lean ne peut pas charger (règle de face, helpers de rejet, route d'auto-accept). Le VPS est le SEUL writer : ce qu'il ne peut pas importer est **inexécutable**. Ce n'est plus un accident. |
+| 2026-08-27 | **Le bloc `unknown` analysé.** Une seule cause pour les 3 868 : `target_eurio_id IS NULL`. Zéro « pas de prédiction ». DINO a une opinion sur la totalité du bloc. |
+| 2026-08-27 | ❌ **Mon chiffre de 98 % était faux** — dénominateur biaisé : j'excluais les crops qu'un humain rejette, et il en rejette **72 %**. Honnête : **81,2 %**. Un audit visuel de 14 crops le confirme indépendamment (83 % sur sa strate). |
+| 2026-08-27 | ✅ **Circularité testée et ÉCARTÉE** : 335 des 398 décisions sont ANTÉRIEURES au calcul de la prédiction (toutes datées du 24/08). Sur ce sous-ensemble : 94,6 %, soit plus que sur le circulaire (90,5 %). Ce n'était pas de l'ancrage, c'était de la survie. |
+| 2026-08-27 | 🔴 **Le vrai résultat : 1,7 % d'erreurs de classe contre 17 % de crops sales.** Le goulot n'est pas la reconnaissance, c'est le cadrage. Mesuré par méthode : `manual` **1,4 %** de rejet, les pipelines automatiques **92 %**, `score_recover` **97,6 %**. |
+| 2026-08-27 | ❌ **Trois pistes testées et mortes** : restreindre aux candidats du scrape (69,3 %), à leur pays (45,5 %), veto de titre KMS (aucun gain). Récupérer une cible par le titre ne vaut que ≈ 360 crops sur 3 868 — le theme-matcher rejoué en résout **zéro** sur les 3 047 commémos ambiguës. |
+| 2026-08-27 | ⚠️ **`sim` n'est PAS inerte**, contrairement à ce que ce document affirmait deux fois. Il l'était par artefact du dénominateur. **`spread` prédit la classe, `sim` prédit si le crop est utilisable.** |
+| 2026-08-27 | 🔴 **`quality_score` ne discrimine rien** : 0,919 chez les acceptés contre 0,941 chez les rejetés — inversé. `top1_sim`, lui, sépare 0,922 / 0,720. C'est DINO qui mesure la qualité du crop, pas l'oracle géométrique. |
+| 2026-08-27 | ✅ **`POST /ingest/denoms` livré et déployé.** La porte 2€ ne pouvait tourner NULLE PART (torch absent du VPS par décision, réplique read-only sur le Mac) — 4e occurrence du même défaut d'architecture. 2 222 crops scorés, **478 `not_2eur`**, **375 sortis de la file** (10 071 → 9 696). Justesse du rejet mesurée sur 2 008 crops confrontés à un verdict humain : **99,8 %**. |
+| 2026-08-27 | ⚠️ **Le périmètre était le vrai bug** : un `JOIN` INNER sur `target_eurio_id` excluait 3 333 crops — précisément ceux que la porte devait trier. Passé en `LEFT JOIN` + repli sur le premier candidat. Périmètre 190 → 2 222. |
+| 2026-08-27 | ✅ **`backfill_face` corrigé** : il écrivait TROIS choses et une seule était transportée. Les sims d'audit partent maintenant par `/ingest/faces`, le rejet des revers devient une phase `--reject` SQL pure. |
+| 2026-08-27 | 🔴 **Mes tests « lean » ne testaient RIEN** : le bloqueur d'imports utilisait `find_module`, que Python 3.12 ne consulte plus sur `meta_path`. Trois tests verts, prod morte à l'import (`review.review_lanes` tire `training` en TRANSITIF). Réécrits en `find_spec`, en sous-process. **Trois gardes ont survécu à leur première mutation** — règle : un test de garde ne vaut que si on l'a vu ROUGE. |
