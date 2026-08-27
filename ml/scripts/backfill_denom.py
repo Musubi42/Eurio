@@ -84,7 +84,14 @@ from store import Store, resolve_db_path  # noqa: E402
 # (`sources._base.steps.enqueue`) tire `training` — l'égalité est verrouillée
 # par `tests/test_ingest_denoms.py`.
 from shared.verdict_scope import SUGGESTIONS_ANCHORS_KIND  # noqa: E402
-from review.review_lanes import DEFAULT_LANE  # noqa: E402
+
+#: ⚠️ PAS `from review.review_lanes import DEFAULT_LANE` : ce module tire
+#: `training.foundation.auto_validate` en TRANSITIF, et l'image lean n'a pas
+#: `training`. Mesuré en prod le 2026-08-27 — `--reject` mourait à l'import,
+#: après un déploiement où tous les tests locaux passaient. Un contrôle
+#: STATIQUE des imports DIRECTS ne voit pas ça ; seul un import réel, avec
+#: `training` bloqué, l'attrape. Le test le fait, en sous-process.
+DEFAULT_LANE = "manual"
 
 #: Miroir de `sources._base.steps.enqueue._DENOM_ENGINE_VERSION`.
 _DENOM_ENGINE_VERSION = "denom@v1"

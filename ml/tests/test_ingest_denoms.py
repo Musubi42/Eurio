@@ -207,19 +207,26 @@ def test_la_route_se_charge_dans_l_image_LEAN():
     """
     import subprocess
 
+    import os
+
+    # `find_spec`, PAS `find_module` — cf. le test lean plus bas : l'ancien
+    # protocole n'est plus consulté depuis Python 3.12 et ne bloque rien.
     code = (
         "import sys\n"
-        "class B:\n"
-        "    def find_module(self, n, p=None):\n"
-        "        return self if n.split('.')[0] in {'torch','cv2','ultralytics'} else None\n"
-        "    def load_module(self, n):\n"
-        "        raise ImportError(n + ' absent (image lean)')\n"
-        "sys.meta_path.insert(0, B())\n"
+        "ABSENTS = {'training', 'torch', 'ultralytics'}\n"
+        "class _Absent:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name.split('.')[0] in ABSENTS:\n"
+        "            raise ModuleNotFoundError(\n"
+        "                'No module named ' + repr(name.split('.')[0]))\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, _Absent())\n"
         "from serving import ingest_routes\n"
         "assert '/ingest/denoms' in {r.path for r in ingest_routes.router.routes}\n"
         "print('OK')\n"
     )
     r = subprocess.run([sys.executable, "-c", code], cwd=ML_DIR,
+                       env={**os.environ, "PYTHONPATH": str(ML_DIR)},
                        capture_output=True, text=True, timeout=180)
     assert r.returncode == 0, f"la route ne se charge pas en lean :\n{r.stderr[-2000:]}"
 
@@ -268,3 +275,47 @@ def test_le_litteral_recopie_suit_sa_source():
     from sources._base.steps import enqueue
 
     assert backfill_denom._DENOM_ENGINE_VERSION == enqueue._DENOM_ENGINE_VERSION
+
+
+def test_le_reject_s_importe_vraiment_SANS_training():
+    """Le contrôle qui a manqué, et qui a coûté un déploiement.
+
+    Le test statique d'à côté ne voit que les imports DIRECTS. Or
+    `review.review_lanes` — d'apparence inoffensive — tire
+    `training.foundation.auto_validate` en TRANSITIF. Tous les tests locaux
+    passaient (`training` existe sur le Mac), la prod est morte à l'import :
+
+        File "/srv/ml/review/review_lanes.py", line 45
+        ModuleNotFoundError: No module named 'training'
+
+    Seul un import RÉEL, avec les modules absents de l'image lean rendus
+    introuvables, attrape une chaîne transitive. En sous-process : vider
+    `sys.modules` en place casse les tests voisins (28 échecs en 401, mesuré).
+    """
+    import os
+    import subprocess
+
+    # ⚠️ `find_spec`, PAS `find_module` : depuis Python 3.12, `find_module`
+    # n'est plus consulté sur `meta_path`. Un bloqueur écrit avec l'ancien
+    # protocole ne bloque RIEN — le test passe et ne prouve rien. C'est
+    # exactement ce qui s'est produit le 2026-08-27 : trois tests « lean »
+    # verts, et la prod morte à l'import.
+    code = (
+        "import sys\n"
+        "ABSENTS = {'training', 'torch', 'ultralytics'}\n"
+        "class _Absent:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name.split('.')[0] in ABSENTS:\n"
+        "            raise ModuleNotFoundError(\n"
+        "                'No module named ' + repr(name.split('.')[0]))\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, _Absent())\n"
+        "import scripts.backfill_denom\n"
+        "print('OK')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], cwd=ML_DIR,
+                       env={**os.environ, "PYTHONPATH": str(ML_DIR)},
+                       capture_output=True, text=True, timeout=180)
+    assert r.returncode == 0, (
+        "le script ne s'importe pas dans l'image lean — `--reject` mourra en prod :"
+        f"\n{r.stderr[-2000:]}")

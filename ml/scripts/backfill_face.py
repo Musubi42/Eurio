@@ -61,7 +61,14 @@ from store.review_routing import (  # noqa: E402
     route_decision_for_source_image as _route_decision_for_source_image,
 )
 from shared.verdict_scope import SUGGESTIONS_ANCHORS_KIND  # noqa: E402
-from review.review_lanes import DEFAULT_LANE  # noqa: E402
+
+#: ⚠️ PAS `from review.review_lanes import DEFAULT_LANE` : ce module tire
+#: `training.foundation.auto_validate` en TRANSITIF, et l'image lean n'a pas
+#: `training`. Mesuré en prod le 2026-08-27 — `--reject` mourait à l'import,
+#: après un déploiement où tous les tests locaux passaient. Un contrôle
+#: STATIQUE des imports DIRECTS ne voit pas ça ; seul un import réel, avec
+#: `training` bloqué, l'attrape. Le test le fait, en sous-process.
+DEFAULT_LANE = "manual"
 from store import Store, resolve_db_path  # noqa: E402
 
 #: Miroir de `sources._base.steps.enqueue._FACE_ENGINE_VERSION` — son module
