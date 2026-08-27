@@ -9,34 +9,51 @@
 > de suivi.** Tout chiffre porte sa requête — recopie la requête, jamais le
 > nombre.
 
-## ⏱️ OÙ ON EN EST — 2026-08-26, fin de session
+## ⏱️ OÙ ON EN EST — 2026-08-27, fin de session
 
-**Le goulot a changé de côté et personne ne l'avait vu : ce n'est plus le
-scrape, c'est la review.** 307 classes sur 671 attendent un humain, 265
-attendent un appel eBay. La file ouverte porte **10 440 items**, et la machine
-n'a plus auto-accepté un seul crop depuis le **2026-07-08**.
+> **L'objectif est UN seul : auto-valider le maximum de crops.** Tout ce qui
+> suit se lit à travers lui. Le bandeau du 26/08 est conservé plus bas au
+> §Journal — il disait vrai ce jour-là, il ne dit plus vrai aujourd'hui.
+
+**En une phrase : l'auto-validation ne fonctionnait NULLE PART, et maintenant
+elle tourne à 99 % de justesse mesurée sur 100 crops réels.**
+
+| | 26/08 au matin | **27/08 au soir** |
+|---|---:|---:|
+| file de review ouverte | 11 377 | **10 138** |
+| crops auto-acceptables | 0 *(route inexistante)* | **2 194** |
+| auto-acceptés par la machine | 0 depuis le 2026-07-08 | **100**, justesse **99 %** |
+| revers communs dans la file | 1 052 | **8** |
+| signaux texte à jour | `v2` | **`v3`** |
+| migrations au canonique | `0014` | **`0017`** |
+
+### Ce qui est déployé et vérifié en production
 
 | | |
 |---|---|
-| **verdict** | le débit est plafonné par la **review humaine**, pas par le quota eBay ni par le crop. Le gratuit (`score_recover`) est **épuisé là où il servait**, et les seuils d'auto-accept sont **quasi inertes** — la marge n'est pas où on la croyait |
-| **fait** | 4 photos de départ chiffrées et rejouables · 1 script neuf (`sweep_verdict_thresholds.py`) · lot 0 (colmatage review en lot) et lot 5 (matrice) écrits et testés · 3 plans d'exécution |
-| **pas fait** | **rien n'est déployé**, rien n'est commité, aucune migration appliquée, aucun scrape lancé, aucun seuil changé. Le lot 0 porte **un bloquant de déploiement** (§Vérification adversariale) |
-| **machine** | Mac (mesures, réplique read-only). Le VPS n'a **pas** été touché. Le PC n'a pas servi |
-| **données** | réplique `ml/state/eurio.replica.db`, **faits arrêtés au 2026-08-24 23:31** — le fichier a été resynchronisé le 26/08 à 20:16-20:28, la date du fichier ne dit rien de la fraîcheur des faits |
+| migrations **0015 · 0016 · 0017** | appliquées au canonique, invariants relus dans un process neuf |
+| **détecteur de face** τ 0,065 → 0,000, provenance `face_source` | 4 298 faces réécrites, 3 122 verdicts humains protégés |
+| **rejet des revers** | 1 044 crops sortis de la file, 8 sticky épargnés |
+| **extracteur de titres v3** | 22 838 lignes, 3 001 annonces gagnent un pays |
+| **Q1** — le texte devient un veto | `auto_candidate` 1 819 → 2 308 |
+| **auto-accept** — module lean, verdict au lieu de la lane | route servie en prod pour la première fois |
 
-### ⛔ Les trois choses à savoir avant de toucher quoi que ce soit
+### ⛔ Les quatre choses à savoir avant de toucher quoi que ce soit
 
-1. **Le lot 0 ne peut pas être déployé front-d'abord.** `isActionable()` exige
-   `review_kind`/`review_status`, deux champs que le canonique **déployé ne sert
-   pas** (`curl -s https://eurio-api.musubi.dev/openapi.json` → `LotCrop` n'a ni
-   l'un ni l'autre). Front seul en avance = écran de review en lot **mort**,
-   avec un message plausible et faux. Back d'abord, obligatoirement.
+1. **Le FRONT du lot 0 n'est pas déployé, et il ne doit pas l'être en l'état.**
+   Il porte 5 défauts majeurs non corrigés (B1, M1–M5). Le backend, lui, est
+   parti — c'est le bon ordre.
 2. **`PUT /lab/dino-thresholds` sur `top1_country_sim_min` /
    `country_spread_min` répond 200, journalise, et ne change RIEN.** Ces seuils
-   sont trois littéraux en dur. Panne muette de manuel.
-3. **`go-task ml:src:ebay:reprocess-zero` (scope par défaut) produira un run
-   vide et un exit 0** : ses 250 images ont déjà été rejouées sous `recover=ON`
-   les 21/23/24 août.
+   sont des littéraux en dur. Panne muette de manuel, **toujours ouverte**.
+3. **`go-task ml:src:ebay:reprocess-zero` (scope par défaut) rendra un run vide
+   et un exit 0** — ses images ont déjà été rejouées.
+4. 🔁 **Trois fois aujourd'hui, la logique utile était prisonnière d'un module
+   que l'image lean du VPS ne peut pas charger** — la règle de face, les
+   helpers de rejet, la route d'auto-accept. Le VPS est le SEUL writer : une
+   logique qu'il ne peut pas importer est une logique **inexécutable**. Ce n'est
+   plus un accident, c'est un défaut d'architecture. Avant d'écrire une passe
+   corrective, vérifie ce qui s'importe **dans le conteneur**.
 
 ## L'objectif, en une phrase
 
@@ -1307,6 +1324,137 @@ Le lot de 100 est écrit, **sa précision n'est pas mesurée**. Le gold dit
 se retrouvent par `decided_by='auto_dino' AND decided_at >= '2026-08-27'`.
 **Ne pas ouvrir les 2 194 restants avant d'avoir regardé ces 100.**
 
+---
+
+## 🏁 Le lot des 100, jugé par le PO — 2026-08-27
+
+Planche de contrôle, 100 crops triés par marge croissante, jugés un par un.
+
+> ### **99 justes sur 100.** Wilson 95 % : **[94,6 % ; 99,8 %]**
+> Le gold annonçait 99,74 % — il tombe dans l'intervalle. **La mesure sur la
+> vraie file confirme le gold**, ce qui n'était pas acquis.
+
+### Ce que la structure des erreurs dit — et c'est net
+
+| découpage | résultat |
+|---|---|
+| par **verdict texte** | `convergent` 79 jugés · **1 faux** · `partial` 21 jugés · **0 faux** |
+| par **spread** | < 0,080 : 22 · 0 faux · 0,080-0,150 : 46 · **1 faux** · 0,150-0,300 : 29 · 0 · ≥ 0,300 : 3 · 0 |
+| par **sim** | **< 0,600 : 3 jugés · 1 faux** · toutes les autres tranches : **0 faux** |
+
+**✅ Q1 est exonérée.** Les 21 crops que Q1 a rendus acceptables — ceux au texte
+`partial`, refusés hier — sont **100 % justes**. La seule erreur est un
+`convergent`. Le changement de règle n'a pas coûté un point.
+
+**❌ Le spread ne prédit rien.** L'erreur est au milieu de la distribution. Le
+tri par marge croissante, qui promettait « les plus risqués d'abord », **n'a pas
+tenu** — et c'est une leçon sur mon propre design de planche.
+
+**✅ La sim prédit, et exactement.** L'erreur porte la **sim minimale du lot
+entier** : 0,5614, rang **1/100**, à 0,011 au-dessus du plancher de 0,55.
+
+### L'erreur, regardée
+
+`d77a7c4b7b52` — annonce *« Coincard 2 Euro FDC France 2016 UEFA »*, cible
+juste, texte convergent, pays juste. **Le crop n'est pas une pièce** : c'est
+l'hologramme d'authenticité collé sur la coincard, « UEFA EURO 2016 · OFFICIAL
+LICENSED PRODUCT », un disque irisé que le détecteur a pris pour une pièce.
+
+Tout le reste de la chaîne avait raison. Seule la sim a signalé quelque chose —
+et elle l'a fait au plus bas de 100.
+
+### 🎯 Le levier, chiffré sur les 2 194 restants
+
+| plancher de sim | éligibles | perdus | part |
+|---:|---:|---:|---:|
+| **0,55** (actuel) | 2 194 | — | — |
+| 0,56 | 2 192 | 2 | 0,1 % |
+| **0,58** ✅ | **2 188** | **6** | **0,3 %** |
+| 0,60 | 2 170 | 24 | 1,1 % |
+| 0,65 | 2 101 | 93 | 4,2 % |
+
+Distribution : sim minimale **0,5501**, p01 0,5935, médiane **0,8170**. La queue
+sous 0,60 est **maigre** — c'est ce qui rend le geste presque gratuit.
+
+⚠️ **Réserve honnête : une erreur, c'est n = 1.** Remonter le plancher parce
+qu'un seul crop est tombé dessous, c'est du sur-ajustement. Ce qui rend le geste
+défendable n'est pas la statistique, c'est **le coût** : 0,3 % du volume, et un
+argument mécanique — sim < 0,60 veut dire « ce crop ne ressemble à aucune ancre »,
+ce qui est exactement le cas « ce n'est pas une pièce ».
+
+### ⚠️ Ce que ce lot NE prouve pas
+
+**L'échantillon n'est pas représentatif.** Il a été pris par ordre de priorité
+de file, donc il se groupe par annonce et par classe : **32 crops sur 100 sont
+`de-2010-bremen`**, 14 `ad-2014-council`, et il n'y a que **24 classes
+distinctes** pour 100 crops. Les 2 194 restants en couvriront bien davantage.
+
+Extrapolation au reste, à prendre pour ce qu'elle vaut : **~22 erreurs
+attendues** sur 2 194, jusqu'à **~120** à la borne basse de l'intervalle. Toutes
+ré-ouvrables par `/restore`.
+
+---
+
+# 🧭 LA SUITE — tout est ordonné par « auto-valider le maximum »
+
+> Écrit en fin de session du 2026-08-27. **C'est la section à lire en premier
+> la prochaine fois.** Chaque ligne dit ce qu'elle rapporte en crops
+> auto-validés, ou dit franchement qu'elle n'en rapporte aucun.
+
+## L'équation, telle qu'elle est aujourd'hui
+
+```
+10 138 crops ouverts
+ ├─ 2 194  la machine peut trancher      ← à encaisser
+ └─ 7 944  la machine ne peut pas        ← le vrai sujet
+      ├─ 3 868  unknown   (pas de cible connue)
+      ├─ 3 247  divergent (top-1 ≠ cible, ou texte contredit)
+      └─   808  partial   (Dino sous les seuils)
+```
+
+**Le gisement immédiat est 2 194. Le gisement structurel est les 3 868
+`unknown`** — des crops dont on ne sait même pas quelle pièce ils devraient
+être. Aucun réglage de seuil ne les atteindra.
+
+## Immédiat — encaisser les 2 194
+
+| # | Geste | Rapport | Coût | Risque |
+|---|---|---|---|---|
+| **1** | Monter `top1_country_sim_min` **0,55 → 0,58** | −6 éligibles, écarte le profil de la seule erreur observée | ⚠️ **bloqué** : le seuil est un littéral en dur, `PUT /lab/dino-thresholds` ment | faible |
+| **2** | Auto-accepter les **2 188** restants, par lots de 500 avec contrôle | **+2 188 crops validés** | 4 × la planche de contrôle | ~22 erreurs attendues, ré-ouvrables |
+| **3** | Rejouer le contrôle sur un lot **stratifié par classe** | dit si les 99 % tiennent hors du bloc `bremen` | 1 planche | — |
+
+⚠️ **Le geste 1 conditionne le 2, et il est bloqué par une panne muette** : les
+seuils ne sont pas réglables par la route qui prétend les régler. Le fermer
+d'abord (soit brancher `store.dino_thresholds.resolve()`, soit répondre 400).
+
+## Structurel — élargir ce que la machine PEUT trancher
+
+C'est ici que se joue le vrai maximum, et c'est plus lent.
+
+| # | Chantier | Ce qu'il ouvre | État |
+|---|---|---|---|
+| **4** | **Les 3 868 `unknown`** — crops sans cible connue. La règle 3 les sort avant tout examen | le plus gros bloc de la file, **jamais analysé** | 🔴 rien de fait, pas même un diagnostic |
+| **5** | **Pêche par pays** ([`PLAN-PECHE-PAYS.md`](./PLAN-PECHE-PAYS.md)) | route les crops du bon dessin/mauvais pays vers la bonne classe : **1 193 crops récupérés**, 464 vers des classes pauvres | 📋 plan écrit, 0 ligne |
+| **6** | **Écran binaire** ([`PLAN-ECRAN-BINAIRE.md`](./PLAN-ECRAN-BINAIRE.md)) | ne crée pas d'auto-validation mais **divise le coût** de ce qui reste manuel | 📋 plan écrit, 0 ligne |
+| **7** | **Nettoyer les ancres atypiques** (cf. §van Eyck) | supprime une source d'erreurs *à la racine*, dans la banque | 🔴 découvert aujourd'hui, non chiffré |
+
+## Dette qui coûtera si on ne la paie pas
+
+| # | Quoi | Pourquoi ça mordra |
+|---|---|---|
+| **8** | Le FRONT du lot 0 (5 majeurs) | il perd du travail humain, et le backend est déjà déployé sans lui |
+| **9** | La panne muette de `PUT /lab/dino-thresholds` | bloque le geste 1, et fera croire à quelqu'un qu'il a réglé un seuil |
+| **10** | `select_eval_holdout --apply` non idempotent (M8) | un second apply prélèverait 5 crops de plus par classe, en silence |
+| **11** | La ligne `no such column` au bootstrap d'une base ancienne | déjà fermée pour `face_source` ; le patron se répète à chaque migration |
+
+## Ce qu'on ne fera PAS, et pourquoi c'est écrit
+
+- **Rien sur la bande pays** — tranchée par le banc à l'aveugle (19-3, `p = 0,00086`). Question fermée.
+- **Rien sur les deux seuils de spread** — mesurés inertes deux fois, sur 466 puis 1 309 crops.
+- **Pas de capture device** — décision PO du 2026-08-26.
+- **Pas de scrape ciblé avant d'avoir purgé la file** — D1 : le goulot est la review.
+
 ## Les pièges de ce chantier — à ne pas re-payer
 
 | Piège | Ce qu'il fait |
@@ -1390,3 +1538,12 @@ se retrouvent par `decided_by='auto_dino' AND decided_at >= '2026-08-27'`.
 | 2026-08-27 | **Module lean `serving/review_queue/auto_accept.py`**, monté par les deux serveurs, retiré du lourd. Le verdict recalculé remplace la lane ; la lane ne garde que le sticky humain. `dry_run` passe à TRUE par défaut, `limit` borne l'action et non l'examen, `decided_by='auto_dino'` conservé. Suite `2513 passed`, 10 mutations rouges. |
 | 2026-08-27 | 🐛 **Bug attrapé par les tests** : la démotion d'un item décoché n'était jamais committée (connexion fraîche sans autocommit, seul commit sur le chemin d'acceptation). Le « j'ai décoché » se perdait en silence dès qu'aucune acceptation ne suivait. |
 | 2026-08-27 | ✅ **Premier lot joué en production : 100 acceptés**, 0 concurrent, 100/100 passés `training_eligible=1`, 100 événements tracés, moteur `auto_dino@s0.55-d0.05`. **2 294 éligibles au total.** ⛔ La précision de ce lot n'est PAS mesurée — ne pas ouvrir les 2 194 restants avant de l'avoir regardé. |
+| 2026-08-27 | 🏁 **Le PO a jugé les 100 : 99 justes, 1 faux.** Wilson 95 % [94,6 ; 99,8] — le gold (99,74 %) tombe dedans, la file confirme le gold. |
+| 2026-08-27 | ✅ **Q1 est exonérée par le lot** : les 21 crops au texte `partial` — ceux que Q1 a rendus acceptables — sont **100 % justes**. La seule erreur est un `convergent`. |
+| 2026-08-27 | ❌ **Le spread ne prédit pas l'erreur** (elle est au milieu de la distribution) : mon tri « les plus risqués d'abord » n'a pas tenu. ✅ **La sim, si** : l'erreur porte la sim MINIMALE du lot (0,5614, rang 1/100), à 0,011 du plancher. |
+| 2026-08-27 | **L'erreur regardée : ce n'est pas une pièce.** C'est l'hologramme d'authenticité d'une coincard UEFA 2016, un disque irisé pris pour une pièce par le détecteur. Annonce juste, cible juste, texte convergent — seule la sim a parlé. |
+| 2026-08-27 | **Levier chiffré** : monter le plancher de sim 0,55 → **0,58** coûte **6 crops sur 2 194 (0,3 %)** et écarte le profil de l'erreur. ⚠️ Bloqué par la panne muette de `PUT /lab/dino-thresholds`. ⚠️ Et c'est n=1 : ce qui défend le geste est son coût, pas sa statistique. |
+| 2026-08-27 | ⚠️ **Le lot n'est pas représentatif** : pris par ordre de priorité, il se groupe par annonce — **32/100 sont `de-2010-bremen`**, 24 classes distinctes seulement. Un second contrôle doit être stratifié par classe. |
+| 2026-08-27 | 🔎 **Mécanisme neuf, trouvé sur une question du PO** : un crop montrant le retable de Gand a été accepté comme van Eyck. DINO encode bien le CROP (`auto_validate.py:760`, vérifié) — mais **une des trois ancres de cette classe est la version COLORISÉE de la pièce**, qui reproduit le tableau. Une classe pauvre est fragile : une ancre atypique pèse un tiers de ce que le modèle sait d'elle. **La banque s'auto-empoisonne quand un humain valide un crop qui montre autre chose que la pièce.** |
+| 2026-08-27 | 🧭 **Section « LA SUITE » écrite**, ordonnée par l'objectif d'auto-validation. Gisement immédiat 2 194 ; gisement structurel les **3 868 `unknown`**, jamais analysés. |
+| 2026-08-27 | 🔁 **Constat d'architecture** : trois fois dans la journée, la logique utile était prisonnière d'un module que l'image lean ne peut pas charger (règle de face, helpers de rejet, route d'auto-accept). Le VPS est le SEUL writer : ce qu'il ne peut pas importer est **inexécutable**. Ce n'est plus un accident. |
