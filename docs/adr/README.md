@@ -26,6 +26,7 @@
 | [014](./014-sauvegarde-duplicati-et-anneaux.md) | Sauvegarde : Duplicati unique, staging applicatif, cinq anneaux | ✅ | 2026-08-14 | Le risque n'est pas de ne pas sauvegarder, c'est de croire qu'on sauvegarde — 81 jours de vert sur des jobs en 401 |
 | [015](./015-secrets-sops-age.md) | Secrets : SOPS + age, une source unique, y compris sur le VPS | ✅ | 2026-06-16 | `secrets/dev.env` chiffré et committé ; le code lit `os.environ`, jamais un fichier |
 | [016](./016-un-acquis-est-ce-que-le-builder-posera.md) | Un acquis, c'est ce que le builder posera | ✅ | 2026-08-24 | Compté à l'étiquette humaine et postérieur au build : sinon la classe passe `pleine` sur des exemplaires qui n'arriveront jamais |
+| [017](./017-le-crop-d-enrichissement-est-decouple-du-scan.md) | Le crop d'enrichissement est découplé du scan, et se juge par contrainte | ✅ | 2026-08-27 | Sept chantiers crop, zéro ADR : chacun a atteint sa cible sur son propre oracle. `IoU ≥ 0,80` tolérait 10,6 % d'amputation |
 
 ## Où vit quelle information
 
