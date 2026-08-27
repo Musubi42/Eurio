@@ -65,6 +65,13 @@ COPY --from=ml referential    ./referential
 COPY --from=ml vision         ./vision
 COPY --from=ml sources        ./sources
 COPY --from=ml review         ./review
+# `scripts/` : les passes correctives à DEUX PHASES (backfill_denom,
+# backfill_face) ont une moitié SQL pure — `--reject` — qui doit tourner là où
+# est le writer, c'est-à-dire ici. Leur moitié lourde (`--score`) reste sur le
+# Mac et pousse par `/ingest/*` ; leurs imports lourds sont paresseux, donc
+# rien n'est tiré au chargement. Sans ce COPY, `--reject` répond
+# `No module named 'scripts'` — mesuré le 2026-08-27.
+COPY --from=ml scripts        ./scripts
 COPY --from=ml state/schema.sql ./state/schema.sql
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
