@@ -157,30 +157,40 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.gold-crop { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
+/* Le front admin est en thème CLAIR : les couleurs viennent de `shared/tokens.css`
+   (R2), jamais d'hexadécimaux inventés. Premier jet stylé en sombre — le bloc de
+   commande sortait noir sur noir, invisible. */
+.gold-crop { padding: 1.5rem; max-width: 1400px; margin: 0 auto; color: var(--ink-700); }
 header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-h1 { font-size: 1.15rem; margin: 0 0 0.2rem; }
-.doux { color: var(--text-muted, #9aa3b2); }
-.erreur { color: #f87171; }
-.pastille { padding: 0.15rem 0.6rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
-.gele { background: rgba(96, 165, 250, 0.16); color: #60a5fa; }
-.ouvert { background: rgba(255, 209, 102, 0.16); color: #ffd166; }
-.vide { margin-top: 2rem; padding: 1.25rem; border: 1px dashed var(--border, #2f343d);
-        border-radius: 10px; }
-.vide pre { margin: 0.6rem 0 0; padding: 0.6rem 0.75rem; background: #0b0d10;
-            border-radius: 6px; overflow-x: auto; font-size: 0.78rem; }
+h1 { font-size: var(--text-lg); margin: 0 0 0.2rem; font-family: var(--font-display); }
+.doux { color: var(--ink-500); }
+.erreur { color: var(--danger); }
+.etat { flex: none; }
+.pastille { display: inline-block; white-space: nowrap; padding: 0.15rem 0.6rem;
+            border-radius: 99px; font-size: var(--text-xs); font-weight: 600; }
+.gele { background: var(--indigo-100); color: var(--indigo-700); }
+.ouvert { background: var(--gold-100); color: var(--gold-700); }
+.vide { margin-top: 2rem; padding: 1.25rem; border: 1px dashed var(--surface-3);
+        border-radius: 10px; background: var(--surface-1); }
+.vide pre { margin: 0.6rem 0 0; padding: 0.6rem 0.75rem; background: var(--surface-3);
+            color: var(--ink-700); border-radius: 6px; overflow-x: auto;
+            font-family: var(--font-mono); font-size: var(--text-xs); }
 .bilan { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1.25rem 0;
-         padding: 0.9rem 1rem; border: 1px solid var(--border, #2f343d); border-radius: 10px; }
+         padding: 0.9rem 1rem; border: 1px solid var(--surface-3); border-radius: 10px;
+         background: var(--surface-1); }
 .bilan div { display: flex; flex-direction: column; }
-.bilan b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
-.bilan span { font-size: 0.72rem; color: var(--text-muted, #9aa3b2); }
+.bilan b { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+.bilan span { font-size: var(--text-xs); color: var(--ink-500); }
 .filtres { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-.filtres button { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem;
-                  border: 1px solid var(--border, #2f343d); border-radius: 6px;
-                  background: transparent; color: inherit; cursor: pointer; }
-.filtres button.actif { background: #60a5fa; border-color: #60a5fa; color: #0b0d10; font-weight: 600; }
-.sep { width: 1px; height: 1.2rem; background: var(--border, #2f343d); margin: 0 0.3rem; }
-.bascule { font-size: 0.78rem; display: flex; gap: 0.35rem; align-items: center; cursor: pointer; }
+.filtres button { font: inherit; font-size: var(--text-xs); padding: 0.25rem 0.6rem;
+                  border: 1px solid var(--surface-3); border-radius: 6px;
+                  background: var(--surface); color: var(--ink-700); cursor: pointer; }
+.filtres button:hover { background: var(--surface-2); }
+.filtres button.actif { background: var(--indigo-600); border-color: var(--indigo-600);
+                        color: #fff; font-weight: 600; }
+.sep { width: 1px; height: 1.2rem; background: var(--surface-3); margin: 0 0.3rem; }
+.bascule { font-size: var(--text-xs); display: flex; gap: 0.35rem; align-items: center;
+           cursor: pointer; color: var(--ink-500); }
 .grille { display: grid; gap: 0.75rem;
           grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 </style>

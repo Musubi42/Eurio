@@ -57,21 +57,23 @@ const obliquite = computed(() =>
 </template>
 
 <style scoped>
-.vignette { margin: 0; background: var(--surface-1, #1e2127); border: 1px solid var(--border, #2f343d);
+.vignette { margin: 0; background: var(--surface-1); border: 1px solid var(--surface-3);
             border-radius: 10px; overflow: hidden; }
 .vignette.indecidable { opacity: 0.55; }
-.scene { position: relative; aspect-ratio: 1; background: #0b0d10; }
+/* Fond SOMBRE sous l'image, et lui seul : le trait d'or doit se détacher du
+   vide autour d'un raw qui n'est pas carré. */
+.scene { position: relative; aspect-ratio: 1; background: var(--ink-700); }
 .scene img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .sans-or { position: absolute; inset: 0; display: grid; place-items: center;
-           font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase;
-           color: #f87171; }
+           font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase;
+           color: var(--danger); }
 figcaption { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
-             padding: 0.4rem 0.55rem; font-size: 0.72rem; }
+             padding: 0.4rem 0.55rem; font-size: var(--text-xs); color: var(--ink-700); }
 .strate { font-variant-numeric: tabular-nums; }
 .verdict { padding: 0 0.45rem; border-radius: 99px; font-weight: 600; }
-.acc { background: rgba(74, 222, 128, 0.16); color: #4ade80; }
-.rej { background: rgba(248, 113, 113, 0.16); color: #f87171; }
-.passe { margin-left: auto; color: #60a5fa; }
-.doux { color: var(--text-muted, #9aa3b2); }
+.acc { background: var(--success-soft); color: var(--success); }
+.rej { background: var(--danger-soft); color: var(--danger); }
+.passe { margin-left: auto; color: var(--indigo-600); }
+.doux { color: var(--ink-500); }
 </style>
