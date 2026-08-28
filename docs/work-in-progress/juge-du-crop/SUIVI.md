@@ -22,7 +22,7 @@ change quoi que ce soit à sa façon de travailler.
 | **L0** — `PROBLEME` + `JUGE` + `JEU-D-OR` + seuils signés | 🟡 docs écrits, `d = 0,08·a` **mesuré et confirmé** (28/08), **seuils toujours non signés** (D4) |
 | **L1** — instrumentation du recadrage manuel | ✅ **livrée et déployée le 2026-08-27** — la collecte tourne |
 | **L2** — outil d'annotation + séance PO | 🟡 **outil écrit, tirage fait (60 + 24 réserve, raws en cache)** — reste la séance du PO, ~40 min + 10 min de double passe |
-| **L3** — juge implémenté + **RE-4** | 🔴 ⛔ point d'arrêt |
+| **L3** — juge implémenté + **RE-4** | 🟡 **L3.1 + L3.2 écrits et testés** (juge, bornes, harness, RE-2/5/7 exécutables) — RE-4 attend l'or. ⛔ point d'arrêt |
 | **L4** — bornes | 🔴 |
 | **L5** — méthodes candidates | 🔴 |
 
@@ -54,6 +54,8 @@ change quoi que ce soit à sa façon de travailler.
 | `crop_edit.py` écrit **en place** | la géométrie proposée est écrasée au moment même où elle devient une étiquette |
 | **les non-modifications n'existent nulle part** | le jeu reconstitué n'a que des négatifs. Un modèle entraîné dessus apprend que tout cadrage est mauvais |
 | geler un oracle ≠ le rendre non-optimisable | geler fixe la cible que l'optimiseur va viser |
+| **monotone ≠ informatif** | `arc_coverage` ne peut pas monter sous rognage — et reste à 1,000 jusqu'à 25 % d'amputation. Une grandeur saturée est monotone au sens large et n'apprend rien |
+| **le masque dur, pas le cadre, retire les pixels** | C1 sur le carré déclare sain un cas amputé dans les diagonales ; C1 sur le disque met le PLAFOND du banc à 100 % |
 | **le listel n'est pas une zone lisse sur une photo** | c'est l'arête la plus contrastée de l'image. Toute statistique de texture le classe comme « du dessin » — trois mesures ont échoué là avant que la périodicité 12 des étoiles ne marche |
 
 ## Journal
@@ -80,3 +82,8 @@ change quoi que ce soit à sa façon de travailler.
 | 2026-08-28 | ⚠️ **La clé de tirage ne doit rien au `sha256` du raw.** `length(image_assets.id) = 32`, `length(sha256) = 64` : les 8 derniers caractères de `si.sha256 \|\| ia.id` tombent **entièrement** dans l'id. `JEU-D-OR.md` laissait croire que le hachage du raw pesait sur le tirage — il n'y pèse pas. Le tirage reste bon (uuid4), la phrase était fausse. Corrigée, et verrouillée par un test. |
 | 2026-08-28 | ⚠️ **La réserve fait 6 images par strate, pas 8** — `JEU-D-OR.md` annonçait 8 et détaillait `rn` 9-11 / 8-10, soit 6. Le détail a été suivi ; la ligne est corrigée. |
 | 2026-08-28 | 🔴 **Une planche de contrôle du tirage a montré des strates douteuses** : des capsules classées `S1_facile`, des raws à deux pièces classés `S4_oblique`. C'est attendu (les strates viennent de proxys textuels) et c'est précisément ce que la **confirmation de strate par le PO** doit redresser — l'outil la demande à chaque image. |
+| 2026-08-28 | ✅ **L3.1 + L3.2 écrits.** `judge.py` (C1 dans ses trois lectures, C2, Boundary IoU ancrée sur l'or, IoU de masque, Hausdorff), `geometry.py`, `iface.py`, `datasets.py`, `bras.py`, `harness.py`. **RE-2 est une frontière de type** : un candidat reçoit un `ContexteCandidat` qui ne porte pas l'or, et un contrôle syntaxique refuse un bras qui importerait le juge. RE-5 et RE-7 sont exécutables. 67 tests, **14 mutations jouées, 14 rouges**. Suite 2 602 → 2 669. |
+| 2026-08-28 | 🔴 **C2 est inerte : `arc_coverage` = 1,000 jusqu'à 25 % d'amputation.** L'anneau `[0,70 ; 1,15]` de `measure_tilt` englobe la jonction bimétallique (ρ ≈ 0,735), toujours présente dans les 12 secteurs. La monotonie de `JUGE.md` est vraie et **vide**. Resserrer l'anneau la rend discriminante mais elle ne mesure plus que la géométrie — que C1 tranche déjà. Journalisée, retirée du taux d'amputation en attendant l'amendement PO (D8). |
+| 2026-08-28 | 🔴 **Le plafond du banc est à 100 % d'amputation sous la lettre de C1.** `gold_replay` prend `r = a`, donc le masque dur coupe pile sur le listel et la marge retenue est nulle : à `m = 0,02`, `gold_replay` échoue partout. C'est géométrique, vrai pour tout or, et c'est **exactement le rôle d'une borne** — sans elle on aurait imputé ça aux méthodes. Trois issues au PO (D9). |
+| 2026-08-28 | ⚠️ **La table Boundary IoU de `JUGE.md` supposait une bande proportionnelle à chaque forme.** Le juge ancre `d` sur l'or (sinon une méthode qui rétrécit rétrécit sa propre bande) : 0,4545 et 0,1429 au lieu de 0,464 et 0,148. Écart < 0,01, sans effet sur un classement, mais dit (D10). |
+| 2026-08-28 | ⚠️ **Défaut connexe : `measure_tilt` peut compter un 13ᵉ secteur.** `np.degrees(...) % 360.0` rend exactement `360.0` pour un angle négatif infinitésimal, et `int(360/30) = 12` sort de `range(12)` — `arc_coverage` vaut alors 13/12. Là-bas la garde `< 0,60` n'en devient que plus permissive ; ici ça cassait la borne supérieure de C2. Corrigé dans le juge (`% N_SECTEURS`), **pas** dans `crop_detectors.py` — défaut réel, à corriger là où il vit. |

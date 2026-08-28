@@ -149,6 +149,100 @@ le 2026-08-26 et qui est entraîné sur des crops pièce entière. Une bascule
 imposerait un réentraînement **et une reconstruction de banque, jamais un
 mélange**.
 
+## D8 — 🔴 C2 est inerte sur ce format · 2026-08-28 · ⛔ AMENDEMENT DEMANDÉ
+
+**`arc_coverage` vaut 1,000 jusqu'à 25 % d'amputation du rayon.** Mesuré sur les
+60 raws du jeu, puis reproduit sur pièce de synthèse
+(`ml/tests/test_gold_crop_judge.py::test_c2_est_inerte_sur_l_anneau_specifie`).
+
+**Pourquoi.** L'anneau de `measure_tilt`, `[0,70 ; 1,15]·ρ`, englobe la
+**jonction bimétallique** — ρ ≈ 0,735, chiffre déjà au SUIVI. C'est un cercle
+de contraste **intrinsèque à la pièce**, présent dans les 12 secteurs quel que
+soit le cadrage. Les secteurs sont donc pleins par construction.
+
+**Ce que ça fait à l'argument de `JUGE.md`.** La monotonie par inclusion est
+vraie et **vide** : elle garantit que rogner ne peut pas *augmenter* la
+couverture — elle ne garantit pas qu'elle la *fasse baisser*. Une grandeur
+saturée est monotone au sens large et ne dit rien.
+
+**Et resserrer l'anneau ne sauve pas C2.** Avec `[0,95 ; 1,05]`, elle devient
+discriminante — mais pour rien : le masque circulaire dur a noirci tout au-delà
+de `r`, donc l'anneau est vide de Canny dès que `r < ~0,95·a`. C2 répond alors
+« `r ≥ 0,95·a` ? », une question **purement géométrique** que C1 tranche déjà,
+plus finement et de façon continue.
+
+| anneau | k=1,00 | k=0,95 | k=0,90 | k=0,85 | k=0,75 |
+|---|---:|---:|---:|---:|---:|
+| `[0,70 ; 1,15]` *(spécifié)* | 1,000 | 1,000 | 1,000 | 1,000 | 1,000 |
+| `[0,95 ; 1,05]` | 1,000 | 1,000 | 0,000 | 0,000 | 0,000 |
+
+**Ce qui est fait en attendant** : C2 est **calculée et journalisée** (RE-3
+interdit de retirer un critère sans amendement daté) mais **n'entre pas dans
+`amputation_rate`** — `juger(..., c2_compte=False)` par défaut, `--c2-compte`
+pour l'inverse. Un critère mort qui décide est pire qu'un critère absent.
+
+**Ce que ça ne casse pas.** C2 avait été introduite pour une propriété que C1
+possède déjà : **C1 n'est pas un score**, c'est une distance entre `E_gold` et
+la géométrie proposée. Aucune méthode ne peut déplacer `E_gold`. L'argument
+« il faut C2 parce que les scores sont optimisables » ne s'applique pas à C1.
+
+**Trois issues possibles, au PO :** (a) retirer C2 du critère et piloter sur
+C1 + Boundary IoU ; (b) la garder au journal comme diagnostic ; (c) la
+remplacer par un critère qui mesure autre chose que la géométrie — mais sur une
+sortie masquée en dur, il n'est pas clair qu'un tel critère existe.
+
+## D9 — Sur quelle région C1 mesure-t-elle la marge · 2026-08-28 · 🟡 AU PO
+
+`JUGE.md` §C1 écrit `dist(P(φ), ∂F) ≥ m·a` avec **F le cadre carré**. Or ce
+n'est pas le carré qui retire des pixels : c'est le **masque circulaire dur** de
+rayon `r`, qui noircit tout le dehors du disque. Les deux régions ne coïncident
+pas — le carré a un demi-côté `1,02·r` et atteint `1,44·r` dans ses coins.
+
+| lecture | ce qu'elle mesure | `gold_replay` (r = a) | détection parfaite d'un cercle |
+|---|---|---|---|
+| **`cadre`** (la lettre) | la prod tient-elle sa promesse de padding ? | marge = 0,02 exactement ✅ | ✅ |
+| **`retenu`** = disque ∩ cadre | la prod perd-elle des pixels de la pièce ? | marge = **0** ❌ à `m = 0,02` | ❌ |
+
+🔴 **Conséquence mesurée : sur la région `retenu` avec `m = 0,02`, le PLAFOND du
+banc (`gold_replay`) est à 100 % d'amputation.** C'est géométrique et vrai pour
+tout or : `gold_replay` prend `r = a`, donc le masque coupe pile sur le listel.
+Un tableau dont le plafond est au plancher est illisible.
+
+Et l'inverse est vrai aussi : la lecture `cadre` déclare sain un cas où une
+ellipse oblique tient dans le carré mais **sort du disque** — amputée pour de
+bon (`test_le_carre_est_plus_permissif_que_le_masque_dans_les_diagonales`).
+
+**Trois issues, toutes légitimes :**
+
+1. **C1 sur le cadre**, `m = 0,02` — fidèle à la lettre, aveugle aux diagonales ;
+2. **C1 sur la région retenue, `m = 0`** — mesure l'amputation pure, sans exiger
+   de marge ; le plafond redevient à 0 % ;
+3. **C1 sur la région retenue, `m = 0,02`, et `gold_replay` à `r = 1,02·a`** —
+   on exige la marge et on donne au plafond de quoi la tenir.
+
+Le juge journalise **les trois marges** dans chaque cas ; `--region-c1` choisit
+laquelle décide. Défaut actuel : `retenu`. **À trancher avant RE-1**, avec les
+seuils : ce choix déplace le taux d'amputation de dizaines de points.
+
+## D10 — La bande du Boundary IoU est ancrée sur l'or · 2026-08-28 · ✅
+
+`d = d_frac · a_gold`, **en pixels, identique pour les deux formes**. Une bande
+dont la largeur suivrait le rayon *prédit* serait une grandeur calculée sur la
+sortie de la méthode — et une méthode qui rétrécit rétrécirait sa propre bande.
+C'est la règle fondatrice appliquée à la métrique.
+
+⚠️ **La table de `JUGE.md` a été calculée avec l'autre convention** (une bande
+proportionnelle à chaque forme). Les valeurs exactes :
+
+| rognage | table `JUGE.md` (par forme) | juge (ancré sur l'or) |
+|---|---:|---:|
+| 3 % | 0,464 | **0,4545** |
+| 6 % | 0,148 | **0,1429** |
+
+L'écart est < 0,01 et ne change aucun classement. Il est dit ici plutôt que
+découvert plus tard. Vérifié en forme close par
+`test_les_deux_conventions_de_bande`.
+
 ## Défaut connexe relevé · 2026-08-27
 
 **`_R_OUTER_FRAC = 0.47` (`ml/vision/denom_geometry.py`) sous-estime le rayon

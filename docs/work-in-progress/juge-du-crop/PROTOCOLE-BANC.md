@@ -60,6 +60,28 @@ Artefacts dans `ml/state/gold_crop/`, code dans `ml/bench/gold_crop/` — à cô
 `ml/bench/crop_recovery/`, dont il **réutilise le harness**. On n'en écrit pas un
 deuxième.
 
+✅ **Écrit le 2026-08-28.** `judge.py` · `geometry.py` · `iface.py` ·
+`datasets.py` · `bras.py` · `harness.py`.
+
+```bash
+cd ml && python -m bench.gold_crop.harness --out state/gold_crop/v1
+# bras par défaut : human_2nd_pass · gold_replay · baseline_prod · measure_tilt_ellipse
+# --region-c1 {retenu,cadre,disque}   (D9)   --c2-compte   (D8)
+```
+
+**RE-2 n'est pas une consigne, c'est une frontière de type.** Un bras candidat
+reçoit un `ContexteCandidat` qui **ne porte pas l'or** ; seules les bornes
+reçoivent un `ContexteBorne`. Un contrôle syntaxique (`controler_re2`) refuse en
+plus tout bras candidat qui importerait le juge ou citerait `gold.json` —
+`executer` lève avant de lancer quoi que ce soit. **RE-5** (le `sha256` de l'or
+dans chaque run) et **RE-7** (`departage` refuse de classer sous 5 points) sont
+exécutables et testés.
+
+⚠️ Deux constats du juge attendent le PO avant la première exécution réelle :
+**C2 est inerte** ([`DECISIONS.md` §D8](./DECISIONS.md)) et **la région de C1
+n'est pas tranchée** ([§D9](./DECISIONS.md)) — sous la lettre actuelle, le
+plafond `gold_replay` est à 100 % d'amputation.
+
 ## Le tableau
 
 `amputation_rate` en **première colonne** :

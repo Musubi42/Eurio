@@ -12,6 +12,13 @@ la sortie de la méthode — donc toutes sont optimisables par la méthode.
 Soient `E_gold = (cx, cy, a, b, θ)` l'ellipse d'or en pixels natifs et `F` le
 cadre carré effectivement découpé.
 
+⚠️ **Ce n'est pas le carré qui retire des pixels** — c'est le masque circulaire
+dur de rayon `r`. Les deux régions diffèrent (le carré atteint `1,44·r` dans ses
+coins), et le choix entre elles déplace le taux d'amputation de dizaines de
+points. **Question ouverte au PO, à trancher avec les seuils :**
+[`DECISIONS.md` §D9](./DECISIONS.md). Le juge journalise les trois marges
+(`retenu`, `cadre`, `disque`) ; `--region-c1` choisit laquelle décide.
+
 > Pour les 360 directions `φ` (pas de 1°), le point du contour d'or `P(φ)` doit
 > satisfaire `dist(P(φ), ∂F) ≥ m · a`, avec **`m = 0,02`**.
 
@@ -41,6 +48,15 @@ arc_coverage = occupied / n_sectors
 > crop 224 masqué, tel qu'il partirait à l'entraînement), l'anneau étant défini
 > par `E_gold` reprojetée, doit valoir **≥ 11/12**.
 
+🔴 **C2 est INERTE — mesuré le 2026-08-28, cf. [`DECISIONS.md` §D8](./DECISIONS.md).**
+`arc_coverage` vaut **1,000 jusqu'à 25 % d'amputation du rayon**. L'anneau
+`[0,70 ; 1,15]` englobe la **jonction bimétallique** (ρ ≈ 0,735), un cercle de
+contraste intrinsèque à la pièce qui remplit les 12 secteurs quel que soit le
+cadrage. Elle est calculée et journalisée, mais **n'entre pas dans
+`amputation_rate`** tant que le PO n'a pas amendé (RE-3). Tout ce qui suit sur
+la monotonie reste vrai — et se révèle **vide** : voir l'encadré en fin de
+section.
+
 ### Pourquoi cette grandeur — la monotonie par inclusion
 
 > Si `F₁ ⊆ F₂`, alors `arc_coverage(F₁) ≤ arc_coverage(F₂)`.
@@ -60,6 +76,17 @@ C'est une propriété **prouvable**, pas une observation. Comparer :
 
 Un score continu se fait manger parce qu'il n'a **aucune orientation garantie**
 vis-à-vis de l'amputation. C2 en a une. C'est le seul argument qui compte.
+
+> 🔴 **Et il ne suffit pas.** La monotonie dit que rogner ne peut pas *augmenter*
+> la couverture. Elle ne dit pas qu'elle la fait *baisser*. Une grandeur saturée
+> à 1,000 est monotone au sens large et n'apprend rien — c'est exactement le cas
+> ici (§D8). Resserrer l'anneau la rend discriminante, mais elle ne mesure alors
+> plus que « `r ≥ 0,95·a` ? », une question géométrique que C1 tranche déjà.
+>
+> **Ce que C2 devait apporter, C1 l'a déjà** : C1 n'est pas un score, c'est une
+> distance entre `E_gold` et la géométrie proposée. Aucune méthode ne peut
+> déplacer `E_gold`. L'argument « il faut C2 parce que les scores sont
+> optimisables » ne s'applique pas à C1.
 
 ### Deux garde-fous à ne pas perdre
 
@@ -90,7 +117,11 @@ IoU de 85,2 — un facteur 7,4 de sensibilité.**
 
 Décisions :
 
-- **principale : Boundary IoU, `d = 0,08 · a`** ;
+- **principale : Boundary IoU, `d = 0,08 · a`**, la bande étant **ancrée sur
+  l'or** pour les deux formes ([§D10](./DECISIONS.md)) — sinon une méthode qui
+  rétrécit rétrécirait sa propre bande. ⚠️ La table ci-dessus a été calculée
+  avec une bande proportionnelle à chaque forme ; ancrée sur l'or on lit 0,4545
+  et 0,1429 au lieu de 0,464 et 0,148 ;
 - **Hausdorff** en **diagnostic seulement** — c'est un maximum, un seul pixel
   aberrant la fait exploser ; utile pour voir *où* ça dérape, pas pour classer ;
 - **IoU de masque** loggée pour comparabilité historique, **jamais dans un
