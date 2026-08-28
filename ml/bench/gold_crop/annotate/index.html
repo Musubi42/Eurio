@@ -36,6 +36,18 @@
           border-radius:7px; padding:6px 10px; font-variant-numeric:tabular-nums; }
   #flash { position:absolute; right:12px; top:12px; background:rgba(11,13,16,.9); border:1px solid var(--bord);
            border-radius:7px; padding:6px 10px; opacity:0; transition:opacity .25s; }
+  .consigne { margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(255,209,102,.08);
+              border:1px solid rgba(255,209,102,.35); line-height:1.55; }
+  .consigne b { color:var(--or); display:block; margin-bottom:3px; }
+  .consigne b + * { display:inline; }
+  .legende { display:grid; grid-template-columns:auto 1fr; gap:6px 10px; align-items:center; }
+  .legende i { width:11px; height:11px; border-radius:50%; display:block; border:1px solid #0b0d10; }
+  #loupes { position:absolute; left:12px; bottom:56px; display:flex; gap:8px; }
+  #loupes figure { margin:0; background:rgba(11,13,16,.9); border:1px solid var(--bord);
+                   border-radius:8px; padding:4px; }
+  #loupes figcaption { text-align:center; font-size:10px; color:var(--doux); letter-spacing:.06em; }
+  #etat-image { position:absolute; right:12px; bottom:12px; background:rgba(11,13,16,.86);
+                border:1px solid var(--bord); border-radius:7px; padding:6px 10px; }
   .pastille { display:inline-block; padding:1px 7px; border-radius:99px; font-size:11px; font-weight:600; }
   .acc { background:rgba(74,222,128,.16); color:var(--vert); }
   .rej { background:rgba(248,113,113,.16); color:var(--rouge); }
@@ -43,7 +55,9 @@
 
 <div id="scene">
   <svg id="svg"></svg>
+  <div id="loupes"></div>
   <div id="etat">—</div>
+  <div id="etat-image">—</div>
   <div id="flash"></div>
 </div>
 
@@ -51,6 +65,25 @@
   <h1>Jeu d'or — ellipses</h1>
   <div class="doux" id="soustitre">chargement…</div>
   <div class="barre"><i id="progres"></i></div>
+
+  <div class="consigne">
+    <b>Ce qu'on te demande</b>
+    Fais coïncider l'ellipse jaune avec le <b>bord extérieur de la pièce</b> —
+    le listel, pas l'anneau aux étoiles. Puis <kbd>Entrée</kbd>.
+    <div class="doux" style="margin-top:6px">
+      Les 4 vignettes du bas montrent ce bord de près, aux 4 points cardinaux.
+      Si le trait jaune y colle au métal, c'est bon.
+    </div>
+  </div>
+
+  <div class="bloc">
+    <h2>Les trois poignées</h2>
+    <div class="legende">
+      <i style="background:#60a5fa"></i><span><b>centre</b> — déplacer l'ellipse</span>
+      <i style="background:#4ade80"></i><span><b>grand axe</b> — taille <em>et</em> rotation</span>
+      <i style="background:#34d399"></i><span><b>petit axe</b> — aplatir seulement</span>
+    </div>
+  </div>
 
   <div class="bloc">
     <h2>Image</h2>
@@ -133,8 +166,16 @@ async function demarrer() {
     const b = e.target.closest("button"); if (b) poserStrate(b.dataset.strate);
   };
   $("btn-indecidable").onclick = () => basculerIndecidable();
-  // reprendre là où la séance s'est arrêtée
-  idx = Math.min(images.length - 1, images.findIndex(i => !annotations[i.asset_id]) + 0);
+  // Reprendre à la première image NON FAITE. « Faite » = validée ou déclarée
+  // indécidable — surtout PAS « a une entrée » : confirmer une strate en crée
+  // une, et reprendre après elle sauterait une image sans un mot. Vécu le
+  // 2026-08-28 : l'image 1 portait `strate_confirmee` sans ellipse, la reprise
+  // ouvrait directement la 2.
+  const faite = (i) => {
+    const a = annotations[i.asset_id];
+    return !!a && (!!a.ellipse || !!a.indecidable);
+  };
+  idx = images.findIndex((i) => !faite(i));
   if (idx < 0) idx = 0;
   charger();
 }
@@ -176,7 +217,7 @@ function recadrer() {
   if (!img) return;
   const W = svg.clientWidth, H = svg.clientHeight;
   // on cadre sur l'ellipse, pas sur le raw : c'est le listel qu'on vient juger
-  const rayon = Math.max(ell.a, ell.b) * 1.45;
+  const rayon = Math.max(ell.a, ell.b, courante().hint.r) * 1.35;
   vue.k = Math.min(W, H) / (2 * rayon);
   vue.tx = W / 2 - ell.cx * vue.k;
   vue.ty = H / 2 - ell.cy * vue.k;
@@ -213,17 +254,54 @@ function dessiner() {
   g.push(`<ellipse cx="${cx}" cy="${cy}" rx="${A * 0.92}" ry="${B * 0.92}" transform="${rot}"
            fill="none" stroke="#ffd166" stroke-width="0.8" stroke-dasharray="4 4" opacity=".55"/>`);
   const p = poignees();
-  const nom = { C: "#60a5fa", A: "#4ade80", B: "#4ade80" };
+  const nom = { C: "#60a5fa", A: "#4ade80", B: "#34d399" };
+  const titre = { C: "centre — déplacer", A: "grand axe — taille et rotation",
+                  B: "petit axe — aplatir" };
   for (const [k, [x, y]] of Object.entries(p)) {
     const [X, Y] = versEcran(x, y);
-    g.push(`<circle data-poignee="${k}" cx="${X}" cy="${Y}" r="6"
-             fill="${nom[k]}" stroke="#0b0d10" stroke-width="1.5" style="cursor:pointer"/>`);
+    // halo sombre : sur un listel clair, un disque plein seul disparaît
+    g.push(`<circle cx="${X}" cy="${Y}" r="9" fill="none" stroke="#0b0d10"
+             stroke-width="2.5" opacity=".7" pointer-events="none"/>`);
+    g.push(`<circle data-poignee="${k}" cx="${X}" cy="${Y}" r="7"
+             fill="${nom[k]}" stroke="#0b0d10" stroke-width="1.5"
+             style="cursor:grab"><title>${titre[k]}</title></circle>`);
   }
   svg.innerHTML = g.join("");
+  dessinerLoupes();
   const dt = (performance.now() - debut) / 1000;
   $("etat").innerHTML = `a=${ell.a.toFixed(1)} b=${ell.b.toFixed(1)} ` +
     `b/a=${(ell.b / ell.a).toFixed(3)} θ=${ell.theta.toFixed(1)}° ` +
     `<span class="doux">· ${dt.toFixed(0)} s</span>`;
+}
+
+/* ─── les quatre loupes du bord ───────────────────────────────────────── */
+// « Mon ellipse est-elle SUR le bord ? » ne se répond pas à la vue d'ensemble :
+// à l'échelle où la pièce tient à l'écran, 2 % du rayon font 4 pixels. On
+// montre donc le contour de près, aux 4 points cardinaux, avec le trait dessus.
+const LOUPE = 104, ZOOM = 4;
+
+function dessinerLoupes() {
+  const cont = $("loupes");
+  if (!img) { cont.innerHTML = ""; return; }
+  const t = ell.theta * Math.PI / 180, ct = Math.cos(t), st = Math.sin(t);
+  const vues = [["haut", -Math.PI / 2], ["droite", 0], ["bas", Math.PI / 2], ["gauche", Math.PI]];
+  cont.innerHTML = vues.map(([nom, phi]) => {
+    // point du contour dans le repère de l'ellipse, puis en coords image
+    const u = ell.a * Math.cos(phi), v = ell.b * Math.sin(phi);
+    const px = ell.cx + u * ct - v * st, py = ell.cy + u * st + v * ct;
+    const k = ZOOM, tx = LOUPE / 2 - px * k, ty = LOUPE / 2 - py * k;
+    const A = ell.a * k, B = ell.b * k;
+    const cx = ell.cx * k + tx, cy = ell.cy * k + ty;
+    return `<figure><svg width="${LOUPE}" height="${LOUPE}" viewBox="0 0 ${LOUPE} ${LOUPE}">
+      <image href="/${courante().fichier}" x="${tx}" y="${ty}"
+             width="${img.width * k}" height="${img.height * k}"/>
+      <ellipse cx="${cx}" cy="${cy}" rx="${A}" ry="${B}"
+               transform="rotate(${ell.theta} ${cx} ${cy})"
+               fill="none" stroke="#ffd166" stroke-width="1.2"/>
+      <circle cx="${LOUPE / 2}" cy="${LOUPE / 2}" r="2" fill="none"
+              stroke="#ffd166" stroke-width="1" opacity=".8"/>
+    </svg><figcaption>${nom}</figcaption></figure>`;
+  }).join("");
 }
 
 /* ─── interaction ────────────────────────────────────────────────────── */
@@ -326,10 +404,21 @@ function enregistrer() {
       : c.ok
         ? `<span style="color:var(--vert)">canonique · ${j.n}</span>`
         : `<span style="color:var(--rouge)">disque seul</span> <span class="doux">${
-            (c.detail || "").slice(0, 60)}</span>`;
+            expliquer(c)}</span>`;
     if (!j.ok) flash("⚠️ écriture disque refusée");
     else if (!c.ok) flash("🔴 non sauvegardé au canonique");
   }, 120);
+}
+
+function expliquer(c) {
+  // Un code d'erreur brut n'apprend rien. Ces trois-là ont chacun une cause
+  // connue et une conduite à tenir ; les autres passent tels quels.
+  const d = (c.detail || "");
+  if (d.includes("1010")) return "Cloudflare a refusé le client — relance l'outil";
+  if (c.code === 409) return "cette version d'or est GELÉE — il en faut une nouvelle";
+  if (c.code === 401 || c.code === 403) return "jeton refusé — es-tu dans le devShell ?";
+  if (c.code === 0) return d.slice(0, 70);
+  return `${c.code} · ${d.slice(0, 50)}`;
 }
 
 function flash(txt) {
@@ -339,6 +428,15 @@ function flash(txt) {
 
 function majPanneau() {
   const a = annotations[courante().asset_id];
+  const e = $("etat-image");
+  if (a && a.indecidable) {
+    e.innerHTML = '<span class="pastille rej">indécidable</span>';
+  } else if (a && a.ellipse) {
+    e.innerHTML = '<span class="pastille acc">validée</span>'
+      + (a.strate_confirmee ? "" : ' <span class="doux">strate non confirmée</span>');
+  } else {
+    e.innerHTML = '<span class="doux">à faire — <kbd>Entrée</kbd> pour valider</span>';
+  }
   for (const b of $("strates").children)
     b.classList.toggle("actif", !!a && a.strate_confirmee === b.dataset.strate);
   $("btn-indecidable").classList.toggle("actif", !!a && a.indecidable);

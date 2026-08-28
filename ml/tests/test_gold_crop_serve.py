@@ -168,6 +168,7 @@ def _faux_canonique(tmp_path, code=200, corps=None):
             n = int(self.headers.get("Content-Length", 0))
             recu["chemin"] = self.path
             recu["auth"] = self.headers.get("Authorization")
+            recu["ua"] = self.headers.get("User-Agent")
             recu["corps"] = json.loads(self.rfile.read(n))
             body = json.dumps(corps or {"comptes": {"ecrit": 1}}).encode()
             self.send_response(code)
@@ -193,6 +194,11 @@ def test_l_annotation_part_bien_au_canonique(serveur, tmp_path):
         assert r["canonique"]["ok"] is True
         assert recu["chemin"] == "/crop-gold/vtest/annotations"
         assert recu["auth"] == "Bearer secret"
+        # ⚠️ Cloudflare refuse l'UA par défaut d'urllib avec un 403 « error code:
+        # 1010 ». `curl` passait, l'outil non — la panne ne se voyait QUE dans
+        # l'outil. Mesuré en prod le 2026-08-28.
+        assert recu["ua"] and "urllib" not in recu["ua"].lower()
+        assert recu["ua"] == "eurio-gold-annotate/1.0"
         (envoye,) = recu["corps"]["annotations"]
         assert envoye["asset_id"] == "a" and envoye["passe"] == 1
         assert envoye["strate_confirmee"] == "S1_facile"

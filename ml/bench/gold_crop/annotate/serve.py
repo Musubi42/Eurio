@@ -75,7 +75,15 @@ def pousser_au_canonique(annotations: dict, *, version: str, passe: int,
         f"{base_url.rstrip('/')}/crop-gold/{version}/annotations",
         data=json.dumps(corps).encode(), method="PUT",
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {token}"})
+                 "Authorization": f"Bearer {token}",
+                 # ⚠️ INDISPENSABLE. `eurio-api.musubi.dev` est derrière
+                 # Cloudflare, qui refuse l'UA par défaut d'urllib
+                 # (`Python-urllib/3.x`) avec un **403 « error code: 1010 »** —
+                 # une page HTML, pas du JSON. Mesuré le 2026-08-28 : le même
+                 # PUT passe en 200 avec n'importe quel autre UA. `curl` marchait
+                 # donc, et l'outil non : la panne ne se voyait que dans l'outil.
+                 # Même convention que `client/http.py:_headers`.
+                 "User-Agent": "eurio-gold-annotate/1.0"})
     try:
         with urlrequest.urlopen(req, timeout=timeout) as r:
             return {"ok": True, **json.loads(r.read())}
