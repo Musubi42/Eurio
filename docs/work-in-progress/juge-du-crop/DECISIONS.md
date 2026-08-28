@@ -47,8 +47,41 @@ soustrait délibérément. Il ne manque que la **transmission**.
 par strate · gardes `BIoU p10 ≥ 0,50` et aucune strate > 10 %.
 
 ⚠️ **RE-1 impose qu'ils soient signés avant la première exécution d'un bras
-candidat.** ⚠️ `d = 0,08·a` suppose que le listel occupe ~8 % du rayon — **non
-vérifié**, à mesurer sur les canoniques avant de figer.
+candidat.**
+
+✅ **`d = 0,08·a` est mesuré, et la prémisse tient** (2026-08-28). Reproduire :
+
+```bash
+cd ml && .venv/bin/python -m bench.gold_crop.measure_listel --plate /tmp/listel.png
+# 521 / 819 canoniques BCE (anneau d'étoiles lisible, SNR harmonique 12 ≥ 3)
+# bande lisse extérieure : p25 0,0825 a · p50 0,1035 a · p75 0,1195 a
+```
+
+La mesure **surestime** la bande d'environ **0,023·a** — biais mesuré sur pièce
+de synthèse (`ml/tests/test_measure_listel.py`), la demi-hauteur de l'harmonique
+tombant entre le centre de l'étoile et sa pointe. Après correction :
+
+| | bande lisse vraie, estimée |
+|---|---|
+| p25 | ≈ 0,060 a |
+| **p50** | **≈ 0,080 a** |
+| p75 | ≈ 0,097 a |
+
+**`d = 0,08·a` est donc la médiane de la bande sans dessin du parc canonique.**
+Sur la moitié basse des dessins la bande du Boundary IoU effleure la pointe des
+étoiles ; sur la moitié haute elle reste dans le listel nu. C'est exactement ce
+que `JUGE.md` voulait dire par « l'IoU du listel ».
+
+⚠️ **Trois méthodes ont échoué avant celle-ci, toutes pour la même raison** :
+sur une photo ou un rendu, le listel n'est *pas* une zone lisse — c'est l'arête
+la plus contrastée de l'image. Toute statistique de texture le classe comme du
+dessin. Ce qui marche est la **périodicité 12 des étoiles**, que ni le bord ni
+l'éclairage ne partagent. Ne pas ré-essayer par le relief.
+
+⚠️ **Réserve de substrat** : mesuré sur des rendus BCE de pièces **commémoratives
+de 2 €**, pas sur les crops eBay. L'ellipse ajustée est légèrement généreuse sur
+certains rendus (le halo doux), ce qui joue dans le même sens que le biais —
+donc la bande vraie est plutôt un peu plus étroite encore.
 
 ## D5 — L'ellipse dans l'éditeur : après, pas avant · 🟡 PROPOSÉ
 

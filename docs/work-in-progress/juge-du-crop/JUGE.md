@@ -133,10 +133,17 @@ résultat de méthode.
 |---|---|---|
 | `m` (marge C1) | **0,02** | `COIN_MARGIN` de la prod |
 | `arc_min` (C2) | **11/12** | un secteur de tolérance pour un vrai défaut d'image |
-| `d` (Boundary IoU) | **0,08 · a** | ~la largeur du listel |
+| `d` (Boundary IoU) | **0,08 · a** | **médiane mesurée** de la bande sans dessin, 521 canoniques (D4) |
 | succès primaire | `amputation_rate ≤ 5 %` par strate | à discuter |
 | garde | `BIoU p10 ≥ 0,50` | le décile bas contient ce que l'humain jette |
 | garde | aucune strate > 10 % d'amputation | gagner en moyenne en perdant sur une strate, ce n'est pas gagner |
 
-⚠️ **`d = 0,08·a` suppose que le listel occupe ~8 % du rayon. NON VÉRIFIÉ.**
-À mesurer sur les canoniques avant de figer.
+✅ **`d = 0,08·a` est vérifié** (2026-08-28) : la bande sans dessin du parc
+canonique BCE mesure **≈ 0,080·a en médiane** (p25 ≈ 0,060 · p75 ≈ 0,097), après
+correction d'un biais de surestimation de 0,023·a calibré sur pièce de synthèse.
+`d = 0,08·a` est donc littéralement la médiane du listel nu.
+
+Reproduire — `cd ml && .venv/bin/python -m bench.gold_crop.measure_listel --plate /tmp/listel.png`.
+Méthode, biais et réserves : [`DECISIONS.md` §D4](./DECISIONS.md). **Ne pas
+ré-essayer la mesure par le relief** : sur une photo, le listel est l'arête la
+plus contrastée de l'image, pas une zone lisse — trois tentatives ont échoué là.

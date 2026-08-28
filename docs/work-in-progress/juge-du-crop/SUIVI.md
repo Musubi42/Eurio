@@ -19,7 +19,7 @@ change quoi que ce soit à sa façon de travailler.
 
 | lot | état |
 |---|---|
-| **L0** — `PROBLEME` + `JUGE` + `JEU-D-OR` + seuils signés | 🟡 docs écrits, **seuils non signés** (D4) |
+| **L0** — `PROBLEME` + `JUGE` + `JEU-D-OR` + seuils signés | 🟡 docs écrits, `d = 0,08·a` **mesuré et confirmé** (28/08), **seuils toujours non signés** (D4) |
 | **L1** — instrumentation du recadrage manuel | ✅ **livrée et déployée le 2026-08-27** — la collecte tourne |
 | **L2** — outil d'annotation + séance PO | 🔴 |
 | **L3** — juge implémenté + **RE-4** | 🔴 ⛔ point d'arrêt |
@@ -40,6 +40,7 @@ change quoi que ce soit à sa façon de travailler.
 | recadrages reconstituables | **2 181 / 2 913** via `detections_json` | réplique |
 | le disque intérieur suffit | 96,9–98,8 % contre 98,1 %, **aucun McNemar significatif** | banc du 27/08 |
 | rapport de rayons réel | **0,735** (physique 0,699) | 40 crops, gradient b\* |
+| largeur du listel nu | **≈ 0,080 a** en médiane (p25 0,060 · p75 0,097) | `bench.gold_crop.measure_listel`, 521/819 canoniques BCE, 2026-08-28 |
 
 ## Les pièges de ce chantier
 
@@ -53,6 +54,7 @@ change quoi que ce soit à sa façon de travailler.
 | `crop_edit.py` écrit **en place** | la géométrie proposée est écrasée au moment même où elle devient une étiquette |
 | **les non-modifications n'existent nulle part** | le jeu reconstitué n'a que des négatifs. Un modèle entraîné dessus apprend que tout cadrage est mauvais |
 | geler un oracle ≠ le rendre non-optimisable | geler fixe la cible que l'optimiseur va viser |
+| **le listel n'est pas une zone lisse sur une photo** | c'est l'arête la plus contrastée de l'image. Toute statistique de texture le classe comme « du dessin » — trois mesures ont échoué là avant que la périodicité 12 des étoiles ne marche |
 
 ## Journal
 
@@ -71,3 +73,6 @@ change quoi que ce soit à sa façon de travailler.
 | 2026-08-27 | ✅ **L1 livré et déployé.** Migration `0018` + `crop_edit_observations` + `store/crop_observations.py` + `POST /crop-edit-abandon` + instrumentation du front. Vérifié bout en bout en prod : `before_*` est **relu en base** (r=102,6) alors que le client envoyait `start_r=200` — le serveur ne croit pas le client sur parole. Tests 2542 → 2563 (Python), 14 → 19 (front). **12 mutations jouées, 12 rouges**, dont celle qui compte : faire repartir le delta de `before_*`. |
 | 2026-08-27 | 🔴 **Le front est resté figé une heure sans qu'aucune alerte ne le dise.** `build` = `vue-tsc --noEmit && vite build`, et l'image du VPS n'installe que les deps de PRODUCTION : le premier fichier de test **committé** l'a cassé en `TS2307` sur `vitest`. Invisible jusque-là parce que les specs existantes n'étaient pas committées. Le conteneur garde alors son image précédente **et le site répond 200** — panne muette de plus. Corrigé : `tsconfig.json` exclut les specs, `tsconfig.vitest.json` les prend, `typecheck` lance les deux. |
 | 2026-08-27 | 🔴 **Puis `--frozen-lockfile` a échoué** : j'avais commité un `package.json` portant des devDependencies **sans son lockfile**. Deuxième déploiement raté d'affilée, même geste — committer un sous-ensemble incohérent de l'arbre de travail. |
+| 2026-08-28 | ✅ **`d = 0,08·a` mesuré, la prémisse tient.** Bande sans dessin du parc canonique : **≈ 0,080 a en médiane** après correction du biais (+0,023 a, calibré sur pièce de synthèse). `d` est donc littéralement la médiane du listel nu. `ml/bench/gold_crop/measure_listel.py` + 11 tests ; **8 mutations jouées, 8 rouges**. |
+| 2026-08-28 | ❌ **Trois mesures du listel par le relief, trois échecs — et le même faux postulat** : « le listel est lisse ». Sur un rendu ou une photo, c'est l'arête la plus contrastée de l'image (reflet + ombre). Ce qui a marché : la **périodicité 12** des étoiles, que ni le bord ni l'éclairage ne partagent. |
+| 2026-08-28 | ⚠️ **Mon commentaire de code disait le biais à l'envers** — j'avais écrit que la mesure sous-estimait la bande ; la pièce de synthèse a montré qu'elle la **sur**estime de 0,023 a. Le test l'a attrapé avant la doc. |
