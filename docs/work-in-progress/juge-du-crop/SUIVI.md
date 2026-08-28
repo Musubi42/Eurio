@@ -16,12 +16,15 @@ change quoi que ce soit à sa façon de travailler.
 | `POST /review-queue/{id}/crop-edit-abandon` | servie, vérifiée à l'OpenAPI, 204 sur une vraie review |
 | front hébergé | redéployé |
 | lignes collectées | 0 au 27/08 au soir (la ligne de test a été supprimée) |
+| migration `0019` | appliquée au boot le 2026-08-28 (`db_migrate: applying 0019_… (5 926 bytes)`) |
+| `/crop-gold/{v}` · `…/annotations` · `…/geler` · `…/instantane` | servies, vérifiées à l'OpenAPI, testées avec un vrai PAT |
+| annotations d'or collectées | 0 (la ligne de fumée a été supprimée) |
 
 | lot | état |
 |---|---|
 | **L0** — `PROBLEME` + `JUGE` + `JEU-D-OR` + seuils signés | 🟡 docs écrits, `d = 0,08·a` **mesuré et confirmé** (28/08), **seuils toujours non signés** (D4) |
 | **L1** — instrumentation du recadrage manuel | ✅ **livrée et déployée le 2026-08-27** — la collecte tourne |
-| **L2** — outil d'annotation + séance PO | 🟡 **outil écrit, tirage fait, persistance canonique livrée** (migration 0019 + routes) — ⚠️ **le backend n'est pas déployé** ; reste ça, puis la séance du PO |
+| **L2** — outil d'annotation + séance PO | 🟡 **outil, tirage et persistance canonique DÉPLOYÉS** (28/08) — reste la séance du PO, ~40 min + 10 min de double passe à ≥ 24 h |
 | **L3** — juge implémenté + **RE-4** | 🟡 **L3.1 + L3.2 écrits et testés** (juge, bornes, harness, RE-2/5/7 exécutables) — RE-4 attend l'or. ⛔ point d'arrêt |
 | **L4** — bornes | 🔴 |
 | **L5** — méthodes candidates | 🔴 |
@@ -93,3 +96,5 @@ change quoi que ce soit à sa façon de travailler.
 | 2026-08-28 | ✅ **L'or persiste dans le canonique.** Migration `0019` (`crop_gold_versions` + `crop_gold_annotations`), `store/crop_gold.py`, `POST/PUT /crop-gold/…`, et l'outil d'annotation pousse à chaque validation. **RE-5 devient exécutable** : une version gelée refuse l'écriture (409), et le `sha256` du gel est calculé par le serveur. 38 tests, **14 mutations jouées, 14 rouges**. Suite 2 670 → 2 701. |
 | 2026-08-28 | ✅ **Bout en bout vérifié en local** (serveur d'annotation → route → relecture SQL) : envoyé `a = 394,6 / b = 401,4` (axes inversés exprès), relu en base `a = 401,4 / b = 394,6`, `theta` +90°. Le serveur ne croit pas le client sur parole — même leçon que L1, où `before_r` valait 102,6 alors que le client envoyait 200. |
 | 2026-08-28 | ⚠️ **Sans `EURIO_API_URL`, l'outil le DIT** — au démarrage et à chaque écriture, et l'écran passe au rouge « disque seul ». Un dispositif qui a l'air de marcher sans sauvegarder est le défaut qu'on corrige : `denom-gold` écrit son verdict humain dans `ml/state/denom_bench/human_validation.jsonl`, invisible du front hébergé et hors sauvegarde. |
+| 2026-08-28 | ✅ **Déployé.** Migration `0019` appliquée au boot, les 4 routes `/crop-gold/*` à l'OpenAPI, testées avec un vrai PAT contre la prod. **Le garde-fou des demi-axes a fonctionné EN PRODUCTION** : envoyé `a=394,6 b=401,4 θ=21,5`, relu en base `a=401,4 b=394,6 θ=111,5`. Le gel testé aussi : 409 avec le motif complet. *(La version de fumée a été supprimée — c'était une fausse annotation, elle aurait pollué le jeu, même leçon qu'à L1.)* |
+| 2026-08-28 | ✅ **Le correctif `eval-corpus` vérifié EN PRODUCTION**, pas seulement en test : après miroir du bucket, `[3] image_assets ↔ eval-corpus : aucun dangling — 260 références résolues, 0 orphelin`. Et `enrichment-crops` passe de « 20 370 références dont 260 introuvables » à **20 110 résolues, 0 dangling** — c'est exactement ce que le résolveur sépare. ⚠️ Un rouge subsiste, `[2] migrations ≡ dépôt : 0019 non appliquée` : le staging date de 02:02, avant la migration. Il se résout au prochain passage nocturne. |
