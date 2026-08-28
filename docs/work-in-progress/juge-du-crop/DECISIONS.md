@@ -260,6 +260,50 @@ L'écart est < 0,01 et ne change aucun classement. Il est dit ici plutôt que
 découvert plus tard. Vérifié en forme close par
 `test_les_deux_conventions_de_bande`.
 
+## D11 — L'or vit dans le canonique, pas dans un bucket · 2026-08-28 · ✅ TRANCHÉ (PO)
+
+Migration `0019` : `crop_gold_versions` + `crop_gold_annotations`.
+
+**Ce qui l'a tranché, mesuré le jour même.** `MIRROR_BUCKETS`
+(`infra/backup/eurio-backup.sh:74`) est une liste **en dur** :
+
+```bash
+mc ls eurio/ | grep eval-corpus     # créé le 2026-08-26, 260 objets
+sed -n 74p infra/backup/eurio-backup.sh   # …et absent de la liste
+```
+
+`eval-corpus` — le corpus qui a tranché ArcFace ↔ DINO — **n'était pas
+sauvegardé**, et l'invariant [3] rougissait depuis. Un bucket neuf est hors des
+cinq anneaux par défaut, et l'oubli est muet. `juge-et-banc/LOT0-REPLICATION.md`
+avait identifié ce piège exact et choisi `model-artifacts` pour l'éviter ;
+on applique la même prudence.
+
+Quatre raisons, dans l'ordre où elles pèsent :
+
+1. `eurio.db` est capturée **par construction** (`VACUUM INTO`) — rien à penser ;
+2. l'or doit se **joindre** à `image_assets` (strate, verdict humain,
+   `detection_method`). Un blob JSON ne se joint pas ;
+3. le front hébergé doit l'afficher → il faut une route → il faut du SQL ;
+4. `crop_edit_observations` (0018) porte déjà la **même nature de donnée**. Deux
+   rangements pour une même nature, c'est la dette que R0 interdit.
+
+**RE-5 est tenu par le GEL, pas par le support.** Tant que
+`crop_gold_versions.frozen_at` est NULL, la version s'annote — c'est la séance.
+Une fois gelée, elle refuse toute écriture (409), et son instantané part dans
+**`model-artifacts`**, bucket déjà miroité. Le `sha256` est calculé **par le
+serveur** : un gel dont le client fournit l'empreinte n'atteste rien.
+
+Re-geler le même contenu est idempotent ; re-geler un contenu **différent** est
+refusé. Sans ça on pourrait geler, éditer, re-geler — et le gel ne prouverait
+rien.
+
+**Scopes.** Écriture `review:arbitrate`, pas `review:write` : un ami invité
+tranche des crops, il ne fixe pas la référence contre laquelle on juge. Et pas
+un scope neuf `bench:write` non plus — les PAT en circulation portent une liste
+figée à leur création, un scope neuf les ferait tomber en 403 jusqu'à
+réémission. Lecture `lab:read`, que `reviewer` possède : la planche doit être
+regardable depuis un téléphone.
+
 ## Défaut connexe relevé · 2026-08-27
 
 **`_R_OUTER_FRAC = 0.47` (`ml/vision/denom_geometry.py`) sous-estime le rayon
