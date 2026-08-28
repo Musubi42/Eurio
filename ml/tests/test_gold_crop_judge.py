@@ -187,8 +187,8 @@ def test_un_cadre_clampe_par_le_bord_ampute_meme_si_le_disque_ne_le_fait_pas():
 
 def test_le_rognage_fait_basculer_c1():
     gold = Ellipse.depuis_cercle(*CENTRE, R)
-    sain = juger(gold, Cercle(*CENTRE, 1.05 * R), RAW_HW)
-    casse = juger(gold, Cercle(*CENTRE, 0.94 * R), RAW_HW)
+    sain = juger(gold, Cercle(*CENTRE, 1.05 * R), RAW_HW, m=0.02)
+    casse = juger(gold, Cercle(*CENTRE, 0.94 * R), RAW_HW, m=0.02)
     assert sain["C1_ok"] and not sain["ampute"]
     assert not casse["C1_ok"] and casse["ampute"]
 
@@ -305,8 +305,8 @@ def test_la_region_de_c1_change_le_verdict_et_doit_etre_choisie():
     """
     gold = Ellipse.depuis_degres(*CENTRE, 1.25 * R, 0.5 * R, 45.0)
     pred = Cercle(*CENTRE, R)
-    assert juger(gold, pred, RAW_HW, region="cadre")["C1_ok"] is True
-    assert juger(gold, pred, RAW_HW, region="retenu")["C1_ok"] is False
+    assert juger(gold, pred, RAW_HW, region="cadre", m=0.02)["C1_ok"] is True
+    assert juger(gold, pred, RAW_HW, region="retenu", m=0.02)["C1_ok"] is False
     with pytest.raises(ValueError, match="région C1 inconnue"):
         juger(gold, pred, RAW_HW, region="inventée")
 
@@ -323,8 +323,30 @@ def test_le_plafond_mecanique_ne_peut_pas_tenir_la_marge_sur_la_region_retenue()
     """
     gold = Ellipse.depuis_cercle(*CENTRE, R)
     replay = Cercle(gold.cx, gold.cy, gold.a)          # ce que fait `gold_replay`
-    assert juger(gold, replay, RAW_HW, region="retenu")["C1_ok"] is False
+    assert juger(gold, replay, RAW_HW, region="retenu", m=0.02)["C1_ok"] is False
     assert juger(gold, replay, RAW_HW, region="retenu", m=0.0)["C1_ok"] is True
-    assert juger(gold, replay, RAW_HW, region="cadre")["C1_ok"] is True
+    assert juger(gold, replay, RAW_HW, region="cadre", m=0.02)["C1_ok"] is True
     dilate = Cercle(gold.cx, gold.cy, 1.02 * gold.a)
-    assert juger(gold, dilate, RAW_HW, region="retenu")["C1_ok"] is True
+    assert juger(gold, dilate, RAW_HW, region="retenu", m=0.02)["C1_ok"] is True
+
+
+def test_un_crop_complet_mais_serre_n_est_pas_un_crop_casse():
+    """D9, l'autre moitié : les deux questions doivent pouvoir répondre
+    DIFFÉREMMENT, sinon les séparer n'aurait servi à rien.
+
+    Pièce près du bord gauche : la prod clampe le cadre à `x0 = 0` puis le rend
+    carré, donc le padding tombe à 1,3 % — sous la promesse. Mais **rien n'est
+    coupé** : le disque contient la pièce entière. C'est un crop serré, pas un
+    crop cassé, et `ampute` doit le dire.
+    """
+    gold = Ellipse.depuis_cercle(385.0, 660.0, 380.0)
+    v = juger(gold, Cercle(385.0, 660.0, 400.0), RAW_HW)
+    assert v["C1_cadre_marge_min_frac"] == pytest.approx(0.0132, abs=0.002)
+    assert v["marge_promise_ok"] is False       # la promesse de 2 % n'est pas tenue
+    assert v["ampute"] is False                 # …et pourtant rien n'est amputé
+    assert v["C1_cadre_tronque"] is True
+
+    # 7 px plus à gauche, le cadre coupe pour de bon : là, c'est une amputation
+    plus_bord = juger(Ellipse.depuis_cercle(378.0, 660.0, 380.0),
+                      Cercle(378.0, 660.0, 400.0), RAW_HW)
+    assert plus_bord["ampute"] is True

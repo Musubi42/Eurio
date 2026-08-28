@@ -31,6 +31,7 @@ from bench.gold_crop.judge import (
     ARC_MIN,
     D_FRAC,
     JUGE_VERSION,
+    M_AMPUTATION,
     M_MARGE,
     REGION_C1,
     juger,
@@ -48,7 +49,7 @@ def _sortie_224(raw, cand: Cercle):
                                    config=CropConfig()).image
 
 
-def executer(nom: str, jeu: JeuDOr, *, m: float = M_MARGE, arc_min: float = ARC_MIN,
+def executer(nom: str, jeu: JeuDOr, *, m: float = M_AMPUTATION, arc_min: float = ARC_MIN,
              d_frac: float = D_FRAC, c2_compte: bool = False,
              avec_c2: bool = True, region: str = REGION_C1) -> dict:
     fn, borne = get_bras(nom)
@@ -111,6 +112,7 @@ def resume(run: dict, cases: list[dict] | None = None) -> dict:
         "amputation_pct": _pct(c["ampute"] for c in cs),
         "amp_C1_pct": _pct(not c["C1_ok"] for c in cs),
         "amp_C2_pct": _pct(not c["C2_ok"] for c in cs),
+        "marge_promise_ko_pct": _pct(not c.get("marge_promise_ok", True) for c in cs),
         "biou_med": float(np.median(biou)),
         "biou_p10": float(np.percentile(biou, 10)),
         "iou_masque_med": float(np.median([c["mask_iou"] for c in cs])),
@@ -120,7 +122,7 @@ def resume(run: dict, cases: list[dict] | None = None) -> dict:
 
 def tableau(runs: list[dict]) -> str:
     """Le tableau de `PROTOCOLE-BANC.md` : amputation en première colonne."""
-    lignes = ["| bras | amput. % | amp C1 | amp C2 | BIoU méd. | BIoU p10 | "
+    lignes = ["| bras | amput. % | marge < 2 % | amp C2 | BIoU méd. | BIoU p10 | "
               "IoU masque méd. | Haus. p90 |",
               "|---|---:|---:|---:|---:|---:|---:|---:|"]
     ordre = ([r for r in runs if r["arm"] == "human_2nd_pass"]
@@ -133,7 +135,7 @@ def tableau(runs: list[dict]) -> str:
             continue
         etiq = f"`{r['arm']}`" + (" *(borne)*" if r["borne"] else "")
         lignes.append(
-            f"| {etiq} | **{s['amputation_pct']:.1f}** | {s['amp_C1_pct']:.1f} | "
+            f"| {etiq} | **{s['amputation_pct']:.1f}** | {s['marge_promise_ko_pct']:.1f} | "
             f"{s['amp_C2_pct']:.1f} | {s['biou_med']:.3f} | **{s['biou_p10']:.3f}** | "
             f"{s['iou_masque_med']:.3f} | {s['hausdorff_p90']:.3f} |")
     return "\n".join(lignes)
@@ -206,7 +208,8 @@ def main(argv=None) -> int:
     ap.add_argument("--bras", nargs="+",
                     default=["human_2nd_pass", "gold_replay", "baseline_prod",
                              "measure_tilt_ellipse"])
-    ap.add_argument("--m", type=float, default=M_MARGE)
+    ap.add_argument("--m", type=float, default=M_AMPUTATION,
+                    help="seuil d'AMPUTATION sur la région retenue (défaut 0 : ne rien couper)")
     ap.add_argument("--d-frac", type=float, default=D_FRAC)
     ap.add_argument("--arc-min", type=float, default=ARC_MIN)
     ap.add_argument("--c2-compte", action="store_true",

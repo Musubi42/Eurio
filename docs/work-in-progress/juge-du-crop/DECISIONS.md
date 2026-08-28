@@ -149,7 +149,7 @@ le 2026-08-26 et qui est entraîné sur des crops pièce entière. Une bascule
 imposerait un réentraînement **et une reconstruction de banque, jamais un
 mélange**.
 
-## D8 — 🔴 C2 est inerte sur ce format · 2026-08-28 · ⛔ AMENDEMENT DEMANDÉ
+## D8 — C2 sort du critère · 2026-08-28 · ✅ TRANCHÉ (PO)
 
 **`arc_coverage` vaut 1,000 jusqu'à 25 % d'amputation du rayon.** Mesuré sur les
 60 raws du jeu, puis reproduit sur pièce de synthèse
@@ -186,12 +186,11 @@ possède déjà : **C1 n'est pas un score**, c'est une distance entre `E_gold` e
 la géométrie proposée. Aucune méthode ne peut déplacer `E_gold`. L'argument
 « il faut C2 parce que les scores sont optimisables » ne s'applique pas à C1.
 
-**Trois issues possibles, au PO :** (a) retirer C2 du critère et piloter sur
-C1 + Boundary IoU ; (b) la garder au journal comme diagnostic ; (c) la
-remplacer par un critère qui mesure autre chose que la géométrie — mais sur une
-sortie masquée en dur, il n'est pas clair qu'un tel critère existe.
+**✅ Tranché par le PO le 2026-08-28 : (a) + (b).** C2 sort du critère, reste au
+journal comme diagnostic. `c2_compte=False` est le défaut ; `--c2-compte` la
+réintègre pour qui veut vérifier. Le juge pilote sur **C1 + Boundary IoU**.
 
-## D9 — Sur quelle région C1 mesure-t-elle la marge · 2026-08-28 · 🟡 AU PO
+## D9 — C1 pose DEUX questions, pas une · 2026-08-28 · ✅ TRANCHÉ (PO)
 
 `JUGE.md` §C1 écrit `dist(P(φ), ∂F) ≥ m·a` avec **F le cadre carré**. Or ce
 n'est pas le carré qui retire des pixels : c'est le **masque circulaire dur** de
@@ -212,17 +211,35 @@ Et l'inverse est vrai aussi : la lecture `cadre` déclare sain un cas où une
 ellipse oblique tient dans le carré mais **sort du disque** — amputée pour de
 bon (`test_le_carre_est_plus_permissif_que_le_masque_dans_les_diagonales`).
 
-**Trois issues, toutes légitimes :**
+**✅ Tranché : les deux questions sont séparées, parce qu'elles n'en étaient
+pas une.**
 
-1. **C1 sur le cadre**, `m = 0,02` — fidèle à la lettre, aveugle aux diagonales ;
-2. **C1 sur la région retenue, `m = 0`** — mesure l'amputation pure, sans exiger
-   de marge ; le plafond redevient à 0 % ;
-3. **C1 sur la région retenue, `m = 0,02`, et `gold_replay` à `r = 1,02·a`** —
-   on exige la marge et on donne au plafond de quoi la tenir.
+| grandeur | question | région | seuil | décide de `ampute` ? |
+|---|---|---|---:|---|
+| `ampute` | perd-on des **pixels de la pièce** ? | `retenu` | **0** | ✅ oui |
+| `marge_promise_ok` | la prod tient-elle son `COIN_MARGIN` ? | `cadre` | 0,02 | ❌ journalisée |
 
-Le juge journalise **les trois marges** dans chaque cas ; `--region-c1` choisit
-laquelle décide. Défaut actuel : `retenu`. **À trancher avant RE-1**, avec les
-seuils : ce choix déplace le taux d'amputation de dizaines de points.
+`m = 0` n'est pas un desserrage : c'est la fin d'une confusion. **Un crop
+complet mais serré n'est pas un crop cassé** — et c'est sur le crop cassé que
+l'humain rejette. Les deux répondent bel et bien différemment ; le cas près du
+bord de l'image le montre (padding à 1,3 %, zéro pixel perdu), il est verrouillé
+par `test_un_crop_complet_mais_serre_n_est_pas_un_crop_casse`.
+
+**Effet mesuré : le plafond `gold_replay` passe de 100 % à 0 % d'amputation.**
+C'est ce qu'un plafond doit faire. Et la perte du format ne disparaît pas pour
+autant — elle se déplace là où elle est réelle, dans la Boundary IoU :
+
+| obliquité de l'or `b/a` | 1,00 | 0,95 | 0,90 | 0,85 | 0,80 |
+|---|---:|---:|---:|---:|---:|
+| BIoU de `gold_replay` | 1,000 | 0,518 | **0,257** | 0,182 | 0,145 |
+
+> **Sur une pièce à 10 % d'obliquité, aucune méthode ne peut dépasser
+> BIoU ≈ 0,26 tant que la sortie doit être un cercle.** Ce n'est pas une limite
+> de méthode, c'est ADR-017. La strate S4 doit être lue avec ce plafond sous les
+> yeux.
+
+`--region-c1 {retenu,cadre,disque}` et `--m` restent disponibles pour rejouer
+sous une autre convention ; les trois marges sont journalisées dans chaque cas.
 
 ## D10 — La bande du Boundary IoU est ancrée sur l'or · 2026-08-28 · ✅
 

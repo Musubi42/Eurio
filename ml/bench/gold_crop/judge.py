@@ -21,13 +21,31 @@ import numpy as np
 from bench.gold_crop.geometry import Cercle, Ellipse, bande_de_bord
 from vision.normalize_snap import COIN_MARGIN
 
-# Les seuils de `JUGE.md`, à figer par le PO (RE-1).
-M_MARGE = 0.02          # C1 — la marge que `normalize_snap.COIN_MARGIN` promet
+# ─── Les seuils, et les DEUX questions qu'ils tranchent ─────────────────────
+#
+# `JUGE.md` §C1 n'en posait qu'une, et c'est ce qui la rendait indécidable :
+# « la pièce a-t-elle 2 % d'air autour d'elle ? » et « la pièce est-elle
+# entière ? » ne sont pas la même question, ne se mesurent pas sur la même
+# région, et n'ont pas la même conséquence. Le juge les sépare (D9).
+#
+#   AMPUTATION — perd-on des PIXELS de la pièce ?
+#     région `retenu` = disque(r) ∩ cadre, ce qui survit au masque circulaire
+#     dur. Seuil 0 : on ne demande pas de marge, on demande de ne rien couper.
+#     C'est ce qui pilote `ampute`, et c'est ce sur quoi l'humain rejette.
+#
+#   MARGE PROMISE — la prod tient-elle son `COIN_MARGIN` ?
+#     région `cadre`, seuil 0,02. Journalisée, jamais dans `ampute` : un crop
+#     complet mais serré n'est pas un crop cassé.
+#
+# Ce découpage résout l'absurdité mesurée le 2026-08-28 : sous la lettre de
+# `JUGE.md`, le PLAFOND du banc (`gold_replay`, r = a) était à 100 %
+# d'amputation. Il y est désormais à 0 %, ce qu'un plafond doit faire.
+M_AMPUTATION = 0.0      # C1/amputation — aucune tolérance, aucune exigence de marge
+M_MARGE = 0.02          # C1/marge promise — `normalize_snap.COIN_MARGIN`
 ARC_MIN = 11 / 12       # C2 — un secteur de tolérance
 D_FRAC = 0.08           # Boundary IoU — la médiane mesurée du listel nu (D4)
 
-# Sur QUELLE région C1 mesure-t-elle la marge ? Les trois sont journalisées ;
-# celle-ci décide de `C1_ok`. Cf. `DECISIONS.md` §D9 — question ouverte au PO.
+# Les trois régions sont journalisées ; celle-ci décide de `ampute`.
 #   "retenu" : disque(r) ∩ cadre — ce qui reste réellement après le masque dur
 #   "cadre"  : le carré seul — la lettre de `JUGE.md` §C1
 #   "disque" : le masque seul
@@ -238,13 +256,19 @@ _CLE_REGION = {"retenu": "C1_marge_min_frac", "cadre": "C1_cadre_marge_min_frac"
 
 def juger(gold: Ellipse, pred: Cercle, raw_hw: tuple[int, int],
           sortie_224: np.ndarray | None = None, *,
-          m: float = M_MARGE, arc_min: float = ARC_MIN, d_frac: float = D_FRAC,
-          c2_compte: bool = False, region: str = REGION_C1) -> dict:
-    """Toutes les grandeurs d'un cas. `c2_compte` : C2 entre-t-elle dans `ampute` ?
+          m: float = M_AMPUTATION, arc_min: float = ARC_MIN, d_frac: float = D_FRAC,
+          c2_compte: bool = False, region: str = REGION_C1,
+          m_marge: float = M_MARGE) -> dict:
+    """Toutes les grandeurs d'un cas.
 
-    Elle n'y entre pas par défaut — cf. D8 : mesurée inerte, en attente
-    d'amendement PO. La journaliser sans la faire compter est la seule façon
-    honnête de tenir RE-3 sans laisser un critère mort décider.
+    `ampute` = on a perdu des pixels de la pièce (`m = 0` sur la région retenue).
+    `marge_promise_ok` = la prod tient son `COIN_MARGIN` (0,02 sur le cadre) —
+    journalisé, **jamais** dans `ampute` : un crop complet mais serré n'est pas
+    un crop cassé.
+
+    `c2_compte` : C2 entre-t-elle dans `ampute` ? Non par défaut — cf. D8, elle
+    est mesurée inerte. La journaliser sans la faire décider est la seule façon
+    de tenir RE-3 sans laisser un critère mort trancher.
     """
     h, w = raw_hw
     # `m` est le seuil du JUGE ; `COIN_MARGIN` est la marge que la PROD applique
@@ -268,5 +292,6 @@ def juger(gold: Ellipse, pred: Cercle, raw_hw: tuple[int, int],
         C2_ok = mes["arc_coverage"] >= arc_min - 1e-9
     mes["C1_ok"] = C1_ok
     mes["C2_ok"] = C2_ok
+    mes["marge_promise_ok"] = mes["C1_cadre_marge_min_frac"] >= m_marge - 1e-9
     mes["ampute"] = (not C1_ok) or (c2_compte and not C2_ok)
     return mes

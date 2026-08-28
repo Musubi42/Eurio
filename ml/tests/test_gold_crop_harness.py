@@ -250,15 +250,27 @@ def test_un_hint_ampute_est_vu_comme_ampute(tmp_path):
     assert resume(casse)["amputation_pct"] == 100.0
 
 
-def test_gold_replay_donne_le_plafond_mecanique(tmp_path):
-    """`r = a` : le masque coupe pile sur le listel, donc la marge retenue est
-    nulle et C1 échoue à `m = 0,02`. Ce n'est pas un défaut du bras — c'est le
-    FORMAT qui ne peut pas tenir la marge promise avec un cercle circonscrit.
-    Sans cette borne, on l'imputerait à la méthode."""
+def test_gold_replay_est_un_vrai_plafond_pas_un_plancher(tmp_path):
+    """Le plafond du banc doit être **à 0 % d'amputation** — sinon il ne plafonne
+    rien.
+
+    C'est ce que D9 a réglé : `gold_replay` prend `r = a`, donc le masque coupe
+    pile sur le listel. Tant qu'`ampute` exigeait 2 % de marge sur la région
+    retenue, le plafond était à 100 % et le tableau illisible. Séparer
+    « amputé » (0 % de tolérance sur les pixels) de « marge promise tenue »
+    (2 % sur le cadre) rend au plafond son rôle — et la seconde ligne dit
+    quand même la vérité sur le padding.
+    """
     run = executer("gold_replay", charger(_jeu(tmp_path, n=4)))
     assert run["borne"] is True
-    assert resume(run)["amputation_pct"] == 100.0
-    assert all(c["boundary_iou"] > 0.9 for c in run["cases"])   # géométrie parfaite
+    s = resume(run)
+    assert s["amputation_pct"] == 0.0
+    # …et la marge promise est tenue elle aussi : le cadre a un demi-côté
+    # `1,02·r`, donc exactement 2 % d'air autour d'une pièce de rayon `a`.
+    # La perte du format ne se voit PAS dans C1 — elle se voit dans la Boundary
+    # IoU, parce qu'un cercle ne peut pas épouser une ellipse.
+    assert s["marge_promise_ko_pct"] == 0.0
+    assert all(c["boundary_iou"] > 0.9 for c in run["cases"])   # or circulaire ici
 
 
 def test_human_2nd_pass_est_absent_sans_seconde_passe(tmp_path):
