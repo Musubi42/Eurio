@@ -69,6 +69,26 @@ class GelIn(BaseModel):
     snapshot_key: str | None = None
 
 
+def _url_raw(source: str | None, source_image_id: str, storage_path: str | None) -> str:
+    """URL servable du raw. Même doctrine que `review_queue/repository._raw_url`.
+
+    Import PARESSEUX de `shared.storage` : il tire boto3, et un import au niveau
+    module ferait skipper ce routeur ENTIER dans l'image lean, en silence.
+
+    ⚠️ L'URL est présignée avec `MINIO_PUBLIC_ENDPOINT`, pas avec l'endpoint du
+    réseau Docker — sinon l'API répond 200 avec une URL parfaitement formée que
+    le navigateur ne résout pas, et seule l'image ne s'affiche pas.
+    """
+    if storage_path:
+        try:
+            from shared.storage import signed_url
+
+            return signed_url("enrichment-raws", storage_path)
+        except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
+            pass
+    return f"/sources/{source}/raws/{source_image_id}/file"
+
+
 @router.get("/{gold_version}")
 def get_or(
     gold_version: str,
@@ -83,6 +103,9 @@ def get_or(
         "  FROM crop_gold_versions WHERE gold_version = ?",
         (gold_version,)).fetchone()
     lignes = lire(conn, gold_version, passe)
+    for ligne in lignes:
+        ligne["raw_url"] = _url_raw(ligne.get("source"), ligne.get("source_image_id", ""),
+                                    ligne.get("raw_path"))
     return {
         "gold_version": gold_version,
         "version": dict(version) if version is not None else None,

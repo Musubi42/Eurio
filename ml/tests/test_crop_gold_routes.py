@@ -158,3 +158,14 @@ def test_une_version_absente_ne_plante_pas(env):
     app, cli, _ = env
     r = cli.get("/crop-gold/jamais-creee").json()
     assert r["n"] == 0 and r["version"] is None
+
+
+def test_chaque_ligne_porte_une_url_d_image(env):
+    """La planche doit s'afficher depuis le front HÉBERGÉ, qui n'a pas accès au
+    disque du Mac. Sans URL servable, la galerie est aveugle hors de la machine
+    du ML — c'est le défaut que `_raw_url` corrige côté review."""
+    app, cli, _ = env
+    cli.put("/crop-gold/v1/annotations", json=_lot("ia0"))
+    (ligne,) = cli.get("/crop-gold/v1").json()["annotations"]
+    assert ligne["raw_url"]
+    assert ligne["raw_path"] == "ebay/x.jpg" and ligne["source_image_id"] == "si"

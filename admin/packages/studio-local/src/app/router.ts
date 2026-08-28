@@ -206,6 +206,15 @@ const router = createRouter({
           meta: heavy,
         },
         {
+          // Jeu d'or du cadrage (juge-du-crop). PAS `heavy`, et c'est le point :
+          // elle lit le CANONIQUE et des URLs MinIO présignées, donc la
+          // référence visuelle est regardable depuis le front hébergé — donc
+          // depuis un téléphone. L'annotation, elle, reste dans l'outil local
+          // qui a les raws en cache et les poignées.
+          path: 'gold-crop',
+          component: () => import('@/features/gold-crop/pages/GoldCropPage.vue'),
+        },
+        {
           path: 'denom-gold',
           component: () => import('@/features/denom-gold/pages/DenomGoldValidatePage.vue'),
           meta: heavy,

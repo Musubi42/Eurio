@@ -157,7 +157,8 @@ def lire(conn: sqlite3.Connection, gold_version: str,
     """Les annotations d'une version, jointes à ce que le banc doit savoir."""
     sql = (
         "SELECT g.*, ia.resolution_status, ia.quality_reason, ia.bbox_json,"
-        "       ia.detection_method, si.storage_path AS raw_path,"
+        "       ia.detection_method, si.id AS source_image_id,"
+        "       si.storage_path AS raw_path,"
         "       si.width, si.height, si.source"
         "  FROM crop_gold_annotations g"
         "  JOIN image_assets ia ON ia.id = g.asset_id"

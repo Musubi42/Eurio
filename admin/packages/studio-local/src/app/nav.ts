@@ -243,6 +243,17 @@ export const navSections: NavSection[] = [
         scope: 'training:run',
         heavy: true,
       },
+      {
+        // PAS `heavy` : elle lit le canonique et des URLs présignées, donc
+        // elle reste visible en hébergé. `lab:read` et non `training:run` —
+        // regarder la référence n'est pas lancer un entraînement, et le rôle
+        // `reviewer` porte `lab:read`.
+        id: 'gold-crop',
+        label: 'Jeu d\'or du crop',
+        icon: Crop,
+        route: '/gold-crop',
+        scope: 'lab:read',
+      },
     ],
   },
   {
