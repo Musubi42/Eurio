@@ -1,8 +1,23 @@
 """Serveur jetable de la séance d'annotation du jeu d'or.
 
-Sert `<out>/` (manifeste + raws) et l'outil, et **écrit `gold.json` à chaque
-image validée**. L'écriture incrémentale n'est pas un confort : une séance de
-40 minutes perdue sur un onglet fermé, on ne la refait pas.
+Sert `<out>/` (manifeste + raws) et l'outil, et **écrit à chaque image
+validée** — dans le canonique **et** dans `<out>/gold.json`.
+
+L'écriture incrémentale n'est pas un confort : une séance de 40 minutes perdue
+sur un onglet fermé, on ne la refait pas. Et les deux destinations ne font pas
+doublon :
+
+* le **canonique** (`PUT /crop-gold/<version>/annotations`, via `EURIO_API_URL`
+  + `EURIO_API_TOKEN`) est la vérité — sauvegardée, joignable, servable au
+  front hébergé. C'est ce qui manquait à `denom-gold`, dont le verdict humain
+  vit dans un `.jsonl` local ;
+* le **fichier** est le filet : si le réseau tousse au milieu de la séance,
+  l'annotation est déjà sur disque et le renvoi la rattrapera. Il n'est PAS la
+  source de vérité.
+
+Sans `EURIO_API_URL`, le serveur le **dit au démarrage et à chaque écriture**
+au lieu de tourner en mode local silencieux — un dispositif qui a l'air de
+marcher sans sauvegarder est exactement le défaut qu'on corrige.
 
     cd ml && python -m bench.gold_crop.annotate.serve --out state/gold_crop/v1
     # puis http://127.0.0.1:8765
@@ -21,10 +36,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
 ICI = Path(__file__).resolve().parent
 ML_DIR = ICI.parents[2]
@@ -34,9 +52,45 @@ def _sortie(out: Path, passe: int) -> Path:
     return out / ("gold.json" if passe == 1 else f"gold.pass{passe}.json")
 
 
+def pousser_au_canonique(annotations: dict, *, version: str, passe: int,
+                         base_url: str, token: str,
+                         requete_sha256: str | None = None,
+                         timeout: float = 20.0) -> dict:
+    """`PUT /crop-gold/<version>/annotations`. Rend le compte par statut.
+
+    Ne lève pas : une erreur réseau ne doit pas retenir la séance. Elle est
+    RENDUE, affichée dans l'outil, et l'annotation reste sur disque — le renvoi
+    suivant la rattrapera puisque la route est idempotente.
+    """
+    corps = {"annotations": [
+        {"asset_id": a["asset_id"], "ellipse": a.get("ellipse"),
+         "indecidable": bool(a.get("indecidable")), "passe": passe,
+         "strate_tiree": a.get("strate_tiree"),
+         "strate_confirmee": a.get("strate_confirmee"),
+         "secondes": a.get("secondes"),
+         "prefill_modifie": a.get("prefill_modifie")}
+        for a in annotations.values() if a.get("ellipse") or a.get("indecidable")
+    ], "requete_sha256": requete_sha256}
+    req = urlrequest.Request(
+        f"{base_url.rstrip('/')}/crop-gold/{version}/annotations",
+        data=json.dumps(corps).encode(), method="PUT",
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {token}"})
+    try:
+        with urlrequest.urlopen(req, timeout=timeout) as r:
+            return {"ok": True, **json.loads(r.read())}
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")[:300]
+        return {"ok": False, "code": exc.code, "detail": detail}
+    except Exception as exc:                              # noqa: BLE001
+        return {"ok": False, "code": 0, "detail": str(exc)}
+
+
 class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *a, racine: Path, passe: int, n_double: int, **kw):
+    def __init__(self, *a, racine: Path, passe: int, n_double: int,
+                 version: str, api_url: str | None, api_token: str | None, **kw):
         self.racine, self.passe, self.n_double = racine, passe, n_double
+        self.version, self.api_url, self.api_token = version, api_url, api_token
         super().__init__(*a, directory=str(racine), **kw)
 
     def log_message(self, fmt, *args):            # silence : la console sert au PO
@@ -105,8 +159,21 @@ class Handler(SimpleHTTPRequestHandler):
              "ecrit_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "n": len(annotations), "annotations": annotations},
             indent=1, ensure_ascii=False))
-        tmp.replace(cible)                          # écriture atomique
-        self._json({"ok": True, "n": len(annotations), "fichier": cible.name})
+        tmp.replace(cible)                          # écriture atomique, filet local
+
+        if not self.api_url or not self.api_token:
+            self._json({"ok": True, "n": len(annotations), "fichier": cible.name,
+                        "canonique": {"ok": False, "code": 0,
+                                      "detail": "EURIO_API_URL/EURIO_API_TOKEN absents "
+                                                "— rien n'est sauvegardé"}})
+            return
+        manifeste = json.loads((self.racine / "manifest.json").read_text())
+        canon = pousser_au_canonique(
+            annotations, version=self.version, passe=self.passe,
+            base_url=self.api_url, token=self.api_token,
+            requete_sha256=manifeste.get("requete_sha256"))
+        self._json({"ok": True, "n": len(annotations), "fichier": cible.name,
+                    "canonique": canon})
 
 
 def main(argv=None) -> int:
@@ -116,6 +183,10 @@ def main(argv=None) -> int:
     ap.add_argument("--passe", type=int, default=1, choices=(1, 2))
     ap.add_argument("--n-double", type=int, default=10,
                     help="images re-annotées en passe 2 (plafond du banc)")
+    ap.add_argument("--version", default=None,
+                    help="version d'or ; défaut : celle du manifeste")
+    ap.add_argument("--api-url", default=os.environ.get("EURIO_API_URL"))
+    ap.add_argument("--api-token", default=os.environ.get("EURIO_API_TOKEN"))
     a = ap.parse_args(argv)
 
     racine = Path(a.out).resolve()
@@ -124,10 +195,18 @@ def main(argv=None) -> int:
               f"`python -m bench.gold_crop.sample --out {a.out}`")
         return 1
 
+    manifeste = json.loads((racine / "manifest.json").read_text())
+    version = a.version or manifeste.get("version", "v1")
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), partial(
-        Handler, racine=racine, passe=a.passe, n_double=a.n_double))
-    print(f"jeu d'or : {racine}")
+        Handler, racine=racine, passe=a.passe, n_double=a.n_double,
+        version=version, api_url=a.api_url, api_token=a.api_token))
+    print(f"jeu d'or : {racine}  ·  version {version}")
     print(f"passe {a.passe} → {_sortie(racine, a.passe).name}")
+    if a.api_url and a.api_token:
+        print(f"canonique : {a.api_url.rstrip('/')}/crop-gold/{version}/annotations")
+    else:
+        print("🔴 EURIO_API_URL / EURIO_API_TOKEN absents — l'or ne sera écrit "
+              "QUE sur disque, donc pas sauvegardé. Charge le devShell.")
     print(f"ouvre  http://127.0.0.1:{a.port}   (Ctrl-C pour arrêter)")
     try:
         srv.serve_forever()

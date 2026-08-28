@@ -38,6 +38,7 @@ from serving import (
     audit_routes,
     auth_routes,
     confusion_routes,
+    crop_gold_routes,
     db_migrate,
     db_routes,
     ingest_routes,
@@ -194,6 +195,13 @@ app.include_router(dino_thresholds_router)
 # POST /ingest/encoder-bench. stdlib + sqlite3 (logique dans store.encoder_bench),
 # aucun import lourd → mount inconditionnel sur l'image lean.
 app.include_router(encoder_bench_router)
+# Jeu d'or du cadrage (juge-du-crop L2, migration 0019) : l'or est une DONNÉE,
+# pas un fichier local — c'est ce qui manquait à `denom-gold`, dont le verdict
+# humain vit dans un `.jsonl` invisible du front hébergé et hors sauvegarde.
+# Lecture lab:read (la planche doit être regardable depuis un téléphone),
+# écriture review:arbitrate (un ami invité TRANCHE, il ne fixe pas la
+# référence). stdlib + sqlite3 → mount inconditionnel sur l'image lean.
+app.include_router(crop_gold_routes.router)
 # R2 (Model B) : réplique servie DIRECTEMENT par le writer unique (snapshot
 # VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
 # (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.

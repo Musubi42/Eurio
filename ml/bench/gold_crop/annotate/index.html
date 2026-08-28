@@ -318,8 +318,17 @@ function enregistrer() {
     const r = await fetch("/api/save", { method: "POST",
       body: JSON.stringify({ annotations }) });
     const j = await r.json();
-    $("ecrit").textContent = j.ok ? `${j.fichier} · ${j.n}` : "échec";
-    if (!j.ok) flash("⚠️ écriture refusée");
+    const c = j.canonique || {};
+    // Deux destinations, deux verdicts. Un « ok » global masquerait la seule
+    // qui compte : le canonique. Le fichier n'est que le filet.
+    $("ecrit").innerHTML = !j.ok
+      ? '<span style="color:var(--rouge)">échec disque</span>'
+      : c.ok
+        ? `<span style="color:var(--vert)">canonique · ${j.n}</span>`
+        : `<span style="color:var(--rouge)">disque seul</span> <span class="doux">${
+            (c.detail || "").slice(0, 60)}</span>`;
+    if (!j.ok) flash("⚠️ écriture disque refusée");
+    else if (!c.ok) flash("🔴 non sauvegardé au canonique");
   }, 120);
 }
 

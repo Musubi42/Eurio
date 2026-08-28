@@ -63,6 +63,9 @@ MIROIR_ATTENDU = [
     # C'est ce qui la distingue de 0017, exclue parce qu'elle fait un ALTER +
     # backfill sur une table que `schema.sql` crée déjà.
     "0018_crop_edit_observations.sql",
+    # 0019 crée deux tables NEUVES (`crop_gold_versions`,
+    # `crop_gold_annotations`), rejouables telles quelles sur une base vide.
+    "0019_crop_gold_annotations.sql",
 ]
 
 #: Les objets qu'une migration a DÉCLARÉS puis qu'une suivante a remplacés.
