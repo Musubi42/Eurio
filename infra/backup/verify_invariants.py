@@ -57,6 +57,28 @@ DB_TO_BUCKET = {
     "source_images": "enrichment-raws",
 }
 
+# Le bucket ne se déduit pas de la table seule : un crop réservé à un corpus
+# d'ÉVALUATION vit dans `eval-corpus`, pas dans `enrichment-crops`, et sa clé le
+# dit (préfixe `eval/`). Décision D9 du chantier `juge-et-banc`, 2026-08-26.
+#
+# ⚠️ Règle DUPLIQUÉE depuis `ml/shared/storage/bucket_for_key`. Ce script est
+# volontairement stdlib-pur — il tourne sur le VPS, hors du devShell ML, et
+# importer le paquet `ml` ici échangerait un doublon d'une ligne contre une
+# dépendance qui casserait la sauvegarde le jour où l'import échoue. Le doublon
+# est le moindre mal ; il est nommé pour qu'on le retrouve.
+EVAL_KEY_PREFIX = "eval/"
+EVAL_BUCKET = "eval-corpus"
+
+
+def bucket_pour_cle(storage_path: str, defaut: str) -> str:
+    """Le bucket où cette clé DOIT se trouver.
+
+    Sans ce résolveur, les 260 crops d'éval sont cherchés dans
+    `enrichment-crops`, ne s'y trouvent pas, et l'invariant [3] rougit —
+    ce qui était le cas depuis le 2026-08-26.
+    """
+    return EVAL_BUCKET if storage_path.startswith(EVAL_KEY_PREFIX) else defaut
+
 OK, WARN, FAIL = "ok", "warn", "fail"
 GLYPH = {OK: "✅", WARN: "⚠️ ", FAIL: "🔴"}
 
@@ -415,7 +437,7 @@ def check_sample_integrity(staging: str, manifest: dict, sample_size: int, repor
                     "and storage_path is not null and storage_path <> ''"
                 ).fetchall()
                 candidates += [
-                    (bucket, path, sha)
+                    (bucket_pour_cle(path, bucket), path, sha)
                     for path, sha in rows
                     if not path.startswith(EXCLUDED_PREFIXES)
                 ]
@@ -467,32 +489,42 @@ def check_cross_store(staging: str, manifest: dict, report: Report) -> None:
     with guarded(report, "[3] cohérence DB ↔ MinIO"):
         con = sqlite3.connect(f"file:{os.path.join(staging, 'eurio.db')}?mode=ro", uri=True)
         try:
-            for table, bucket in DB_TO_BUCKET.items():
-                bucket_dir = os.path.join(minio_root, bucket)
-                if not os.path.isdir(bucket_dir):
-                    report.check(f"[3] {table} ↔ {bucket}", False, "bucket absent du miroir")
+            for table, bucket_defaut in DB_TO_BUCKET.items():
+                # Une table peut référencer PLUSIEURS buckets : on regroupe par
+                # bucket résolu depuis la clé, puis on contrôle chaque groupe.
+                par_bucket: dict[str, set] = {}
+                for (chemin,) in con.execute(
+                    f"select storage_path from {table} "
+                    "where storage_path is not null and storage_path <> ''"
+                ):
+                    if chemin.startswith(EXCLUDED_PREFIXES):
+                        continue
+                    par_bucket.setdefault(bucket_pour_cle(chemin, bucket_defaut),
+                                          set()).add(chemin)
+                if not par_bucket:
+                    report.add(f"[3] {table} ↔ MinIO", WARN,
+                               "aucune référence exploitable — contrôle INOPÉRANT")
                     continue
-                present = set()
-                for dirpath, _dirnames, filenames in os.walk(bucket_dir):
-                    rel = os.path.relpath(dirpath, bucket_dir)
-                    for filename in filenames:
-                        present.add(filename if rel == "." else f"{rel}/{filename}")
-                referenced = {
-                    r[0]
-                    for r in con.execute(
-                        f"select storage_path from {table} "
-                        "where storage_path is not null and storage_path <> ''"
+                for bucket, referenced in sorted(par_bucket.items()):
+                    bucket_dir = os.path.join(minio_root, bucket)
+                    if not os.path.isdir(bucket_dir):
+                        report.check(f"[3] {table} ↔ {bucket}", False,
+                                     f"bucket absent du miroir ({len(referenced)} référence(s))")
+                        continue
+                    present = set()
+                    for dirpath, _dirnames, filenames in os.walk(bucket_dir):
+                        rel = os.path.relpath(dirpath, bucket_dir)
+                        for filename in filenames:
+                            present.add(filename if rel == "." else f"{rel}/{filename}")
+                    dangling = referenced - present
+                    report.check(
+                        f"[3] {table} ↔ {bucket} : aucun dangling",
+                        not dangling,
+                        f"{len(dangling)} référence(s) sans objet"
+                        if dangling
+                        else f"{len(referenced)} référence(s) résolues, "
+                             f"{len(present - referenced)} orphelin(s)",
                     )
-                    if not r[0].startswith(EXCLUDED_PREFIXES)
-                }
-                dangling = referenced - present
-                report.check(
-                    f"[3] {table} ↔ {bucket} : aucun dangling",
-                    not dangling,
-                    f"{len(dangling)} référence(s) sans objet"
-                    if dangling
-                    else f"{len(referenced)} référence(s) résolues, {len(present - referenced)} orphelin(s)",
-                )
         finally:
             con.close()
 

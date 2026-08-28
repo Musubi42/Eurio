@@ -650,3 +650,52 @@ la main.
 en case à cocher, c'est-à-dire en la chose exacte qu'il remplace (la case « Monthly DR
 Test » de `BACKUP_STRATEGY.md`, jamais cochée depuis novembre 2025). Un exercice raté
 laisse l'anneau silencieux, et ce silence alerte au trimestre suivant.
+
+### D-33 — Un bucket neuf est hors sauvegarde par défaut, et l'oubli est muet · 2026-08-28
+
+**Constat.** `eval-corpus`, créé le 2026-08-26 pour le corpus d'évaluation de
+`juge-et-banc` — le jeu de 260 frames qui a tranché ArcFace ↔ DINO — **n'était
+pas dans `MIRROR_BUCKETS`**. Il n'était donc ni miroité, ni couvert par aucun
+des cinq anneaux.
+
+```bash
+sed -n 74p infra/backup/eurio-backup.sh   # avant le correctif
+# MIRROR_BUCKETS=(… enrichment-crops enrichment-raws numista-canonical model-artifacts eurio-db)
+mc ls --recursive eurio/eval-corpus | wc -l          # 260 objets, ~23 Mo
+sqlite3 eurio.db "select count(*) from image_assets where storage_path like 'eval/%'"   # 260
+```
+
+**Et ce n'était pas le seul effet.** L'invariant [3] résout **tous** les
+`image_assets.storage_path` contre `enrichment-crops`. Les 260 clés `eval/…`
+n'y sont pas — donc **l'invariant [3] rougissait depuis le 2026-08-26**, sur
+260 références dangling. Ajouter le bucket au miroir sans toucher au résolveur
+n'aurait rien réparé : les objets auraient été présents, mais cherchés au
+mauvais endroit.
+
+*Décision* — deux gestes, indissociables :
+
+1. `eval-corpus` entre dans `MIRROR_BUCKETS` ;
+2. `verify_invariants.py` gagne `bucket_pour_cle()` : le bucket se déduit de la
+   **clé** (préfixe `eval/` → `eval-corpus`), pas de la table seule. Les
+   invariants [3] et [6] regroupent désormais par bucket résolu, et une table
+   qui ne rend aucune référence exploitable émet un **WARN « contrôle
+   INOPÉRANT »** au lieu de se taire.
+
+*Pourquoi le résolveur est dupliqué* : la règle existe déjà dans
+`ml/shared/storage.bucket_for_key`, mais `verify_invariants.py` est
+volontairement stdlib-pur — il tourne sur le VPS, hors devShell ML. Importer le
+paquet `ml` échangerait un doublon d'une ligne contre une dépendance qui
+casserait la vérification le jour où l'import échoue. Le doublon est nommé dans
+le code pour qu'on le retrouve.
+
+*Vérification* : `infra/backup/test_verify.sh` gagne un cas **[17bis]** — un
+crop d'éval absent de `eval-corpus` doit rougir, et rougir **sur ce bucket-là**.
+20 → 21 cas, tous verts. Mutation jouée : résolveur neutralisé → 2 cas rouges.
+
+⚠️ **Le correctif est inerte tant que le VPS n'a pas tiré.** `MIRROR_BUCKETS`
+est lu au lancement du script, sur la machine qui sauvegarde.
+
+⚠️ **Défaut voisin, NON corrigé** : `image_assets.sha256` est NULL sur les
+20 375 lignes, donc l'invariant [6] ne tire **aucun** échantillon côté
+`enrichment-crops` — la moitié « crops » du contrôle est inopérante depuis
+toujours. Le WARN ajouté ici la rend audible ; la peupler est un autre chantier.

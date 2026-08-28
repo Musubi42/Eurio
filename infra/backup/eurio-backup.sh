@@ -71,7 +71,11 @@ REVIEW_DB_PATH="${REVIEW_DB_PATH:-/var/lib/eurio/review.db}"
 # sortira sans bloc `minio` et `verify` le signalera comme contrôle inopérant.
 MINIO_REMOTE="${EURIO_BACKUP_MINIO_REMOTE:-minio}"
 # shellcheck disable=SC2206
-MIRROR_BUCKETS=(${EURIO_BACKUP_BUCKETS-enrichment-crops enrichment-raws numista-canonical model-artifacts eurio-db})
+# ⚠️ Liste EN DUR : un bucket neuf qui n'y figure pas est hors miroir, donc hors
+# des 5 anneaux — et l'oubli est MUET. C'est arrivé : `eval-corpus`, créé le
+# 2026-08-26 pour le corpus d'éval de `juge-et-banc`, y a manqué deux jours.
+# Ajouter un bucket ici est le premier geste après l'avoir créé.
+MIRROR_BUCKETS=(${EURIO_BACKUP_BUCKETS-enrichment-crops enrichment-raws numista-canonical model-artifacts eval-corpus eurio-db})
 # Espace libre exigé avant de lancer le miroir (Go). Le premier `sync` écrit
 # ~6,3 Go ; un disque plein en cours de route laisserait un miroir tronqué que
 # seul l'invariant de cohérence rattraperait, et après coup.

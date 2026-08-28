@@ -104,6 +104,16 @@ for bucket, table, ext in (("enrichment-crops", "image_assets", "png"),
     # Une ligne exclue par construction : chemin absolu de machine de dev.
     con.execute(f"insert into {table} values (?,?)",
                 ("/Users/musubi42/.cache/eurio/legacy.bin", None))
+# Un crop d'ÉVAL : même table `image_assets`, mais clé prefixée `eval/` et objet
+# rangé dans le bucket `eval-corpus` (juge-et-banc D9). Le resolveur doit le
+# chercher là et pas dans `enrichment-crops`.
+key = "eval/matrice-encodeurs-2026-08/ebay/run/asset.png"
+path = os.path.join(root, "eval-corpus", key)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+blob = b"contenu-eval-corpus"
+open(path, "wb").write(blob)
+con.execute("insert into image_assets values (?,?)",
+            (key, hashlib.sha256(blob).hexdigest()))
 con.commit(); con.close()
 PY
   python3 "$BUILD" "$dir" --t1 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -350,6 +360,16 @@ PY
 remanifest_minio "$WORK/dangling"
 expect_fail "[17] référence sans objet dans le miroir" "dangling" -- \
   V "$WORK/dangling" --repo-root "$REPO_ROOT"
+
+# Cas 17bis — un crop d'ÉVAL absent de `eval-corpus`. Sans resolveur de bucket,
+# ce cas ne peut pas exister : les 260 clés `eval/` seraient déjà toutes
+# dangling dans `enrichment-crops`, donc le cas 16 (miroir sain) rougirait.
+make_fixture "$WORK/eval-dangling"
+add_minio_fixture "$WORK/eval-dangling"
+rm -rf "$WORK/eval-dangling/minio/eval-corpus"
+remanifest_minio "$WORK/eval-dangling"
+expect_fail "[17bis] crop d'éval absent de eval-corpus" "eval-corpus" -- \
+  V "$WORK/eval-dangling" --repo-root "$REPO_ROOT"
 
 # Cas 18 — objets supprimés côté MinIO. `rclone sync` propage les suppressions,
 # donc le miroir seul ne peut pas s'en apercevoir : seule la référence le voit.
