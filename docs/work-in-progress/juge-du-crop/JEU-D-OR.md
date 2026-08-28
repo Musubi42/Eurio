@@ -63,11 +63,30 @@ honnête.
 
 Clé : `substr(si.sha256 || ia.id, -8)`. **`image_assets.sha256` est NULL sur les
 20 375 lignes** — inutilisable ; `source_images.sha256` est peuplé sur
-21 608/23 056. La concaténation avec `ia.id` désambiguïse les crops frères d'un
-même raw. Reproductible à l'octet, sans `random()`.
+21 608/23 056. Reproductible à l'octet, sans `random()`.
+
+⚠️ **Correction du 2026-08-28 — le `sha256` n'entre pas dans la clé.** Mesuré :
+`length(image_assets.id) = 32` sur les 20 375 lignes, `length(sha256) = 64` sur
+les 21 608 peuplées. Les **8 derniers caractères** de la concaténation tombent
+donc *entièrement* dans l'id : `substr(si.sha256 || ia.id, -8)` **est**
+`substr(ia.id, -8)`.
+
+```sql
+SELECT length(id), COUNT(*) FROM image_assets GROUP BY 1;                    -- 32 | 20375
+SELECT length(sha256), COUNT(*) FROM source_images WHERE sha256 IS NOT NULL
+  GROUP BY 1;                                                                -- 64 | 21608
+```
+
+Ce n'est **pas un défaut** : `image_assets.id` est un uuid4, le tirage reste
+uniforme, reproductible, et il désambiguïse bien les crops frères d'un même raw
+— c'est la seule des deux colonnes qui le peut. Mais la phrase « la
+concaténation … » laissait croire que le hachage du raw pesait sur le tirage :
+il n'y pèse pas. Verrouillé par
+`ml/tests/test_gold_crop_sample.py::test_la_cle_de_tirage_ne_doit_rien_au_sha256_du_raw`.
 
 Pour un second tirage indépendant (départage d'égalité) : changer l'offset,
-`substr(..., -16, 8)`.
+`substr(..., -16, 8)` — qui tombe lui aussi dans l'id (caractères 81 à 88 sur
+96), donc reste une tranche indépendante de la même source d'aléa.
 
 ```sql
 -- Jeu d'or crop v1 — 60 images, 4 strates × 15, 8 acceptés / 7 rejetés.
@@ -137,8 +156,10 @@ ORDER BY strate, verdict, rn;
 RE-4 — vérifier que le juge prédit le verdict humain au lieu de se contenter
 d'être géométriquement cohérent.
 
-**Réserve : 8 images par strate** (`rn` 9-11 côté accept, 8-10 côté reject) pour
-remplacer un cas déclaré indécidable sans retirer le tirage.
+**Réserve : 6 images par strate** (`rn` 9-11 côté accept, 8-10 côté reject) pour
+remplacer un cas déclaré indécidable sans retirer le tirage — soit **24 au
+total**. *(Cette ligne annonçait « 8 par strate » ; le détail entre parenthèses
+en donne 6, et c'est lui qui a été implémenté. Corrigé le 2026-08-28.)*
 
 ## L'outil d'annotation
 
@@ -170,7 +191,32 @@ géométrie **ne se synchronise pas au VPS, en silence**.
 → **Rejeté.** On ne fait pas 600 lignes sur le chemin de production pour 60
 annotations. C'est la dette que R0 interdit.
 
-### L'outil jetable — recommandé
+### L'outil jetable — écrit le 2026-08-28
+
+`ml/bench/gold_crop/` : `sample.py` produit le manifeste et copie les raws,
+`annotate/serve.py` sert l'outil et écrit `gold.json`.
+
+```bash
+cd ml
+python -m bench.gold_crop.sample   --out state/gold_crop/v1   # 60 + 24 réserve
+python -m bench.gold_crop.annotate.serve --out state/gold_crop/v1
+# puis http://127.0.0.1:8765 ; passe 2 : --passe 2 --n-double 10
+```
+
+Mesuré au premier lancement : **84/84 raws déjà en cache** (zéro réseau, 1,4 s)
+et **84/84 pré-remplissages `measure_tilt` réussis**. `gold.json` est écrit à
+chaque validation, atomiquement (`.tmp` puis `replace`) : une séance de 40
+minutes ne se refait pas.
+
+Écart assumé sur le geste : **3 poignées, pas 4.** La poignée du demi-grand axe
+porte *aussi* la rotation (elle est à l'extrémité de cet axe : la traîner
+définit `a` et `θ` d'un seul geste). Une quatrième poignée de rotation serait
+redondante et coûterait un aller-retour de plus par image.
+
+L'ellipse pointillée à `0,92·a` matérialise la bande du Boundary IoU
+(`d = 0,08·a`) : l'annotateur voit ce que le juge regardera.
+
+### Ce qui l'a fait préférer
 
 Page HTML + `<canvas>`/`<svg>`, servie en local, qui lit un `manifest.json`
 produit par la requête ci-dessus et écrit un `gold.json`.

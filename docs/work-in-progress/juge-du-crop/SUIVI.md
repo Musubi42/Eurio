@@ -21,7 +21,7 @@ change quoi que ce soit à sa façon de travailler.
 |---|---|
 | **L0** — `PROBLEME` + `JUGE` + `JEU-D-OR` + seuils signés | 🟡 docs écrits, `d = 0,08·a` **mesuré et confirmé** (28/08), **seuils toujours non signés** (D4) |
 | **L1** — instrumentation du recadrage manuel | ✅ **livrée et déployée le 2026-08-27** — la collecte tourne |
-| **L2** — outil d'annotation + séance PO | 🔴 |
+| **L2** — outil d'annotation + séance PO | 🟡 **outil écrit, tirage fait (60 + 24 réserve, raws en cache)** — reste la séance du PO, ~40 min + 10 min de double passe |
 | **L3** — juge implémenté + **RE-4** | 🔴 ⛔ point d'arrêt |
 | **L4** — bornes | 🔴 |
 | **L5** — méthodes candidates | 🔴 |
@@ -76,3 +76,7 @@ change quoi que ce soit à sa façon de travailler.
 | 2026-08-28 | ✅ **`d = 0,08·a` mesuré, la prémisse tient.** Bande sans dessin du parc canonique : **≈ 0,080 a en médiane** après correction du biais (+0,023 a, calibré sur pièce de synthèse). `d` est donc littéralement la médiane du listel nu. `ml/bench/gold_crop/measure_listel.py` + 11 tests ; **8 mutations jouées, 8 rouges**. |
 | 2026-08-28 | ❌ **Trois mesures du listel par le relief, trois échecs — et le même faux postulat** : « le listel est lisse ». Sur un rendu ou une photo, c'est l'arête la plus contrastée de l'image (reflet + ombre). Ce qui a marché : la **périodicité 12** des étoiles, que ni le bord ni l'éclairage ne partagent. |
 | 2026-08-28 | ⚠️ **Mon commentaire de code disait le biais à l'envers** — j'avais écrit que la mesure sous-estimait la bande ; la pièce de synthèse a montré qu'elle la **sur**estime de 0,023 a. Le test l'a attrapé avant la doc. |
+| 2026-08-28 | ✅ **L2.1 + L2.2 livrés.** `bench/gold_crop/sample.py` (tirage reproductible, 60 + 24 réserve) et `bench/gold_crop/annotate/` (outil + serveur, écriture atomique à chaque validation). Mesuré au premier lancement : **84/84 raws déjà en cache** (1,4 s, zéro réseau) et **84/84 pré-remplissages `measure_tilt` réussis**. 38 tests, **19 mutations jouées, 17 rouges** (les 2 survivantes sont documentées comme équivalentes en production). |
+| 2026-08-28 | ⚠️ **La clé de tirage ne doit rien au `sha256` du raw.** `length(image_assets.id) = 32`, `length(sha256) = 64` : les 8 derniers caractères de `si.sha256 \|\| ia.id` tombent **entièrement** dans l'id. `JEU-D-OR.md` laissait croire que le hachage du raw pesait sur le tirage — il n'y pèse pas. Le tirage reste bon (uuid4), la phrase était fausse. Corrigée, et verrouillée par un test. |
+| 2026-08-28 | ⚠️ **La réserve fait 6 images par strate, pas 8** — `JEU-D-OR.md` annonçait 8 et détaillait `rn` 9-11 / 8-10, soit 6. Le détail a été suivi ; la ligne est corrigée. |
+| 2026-08-28 | 🔴 **Une planche de contrôle du tirage a montré des strates douteuses** : des capsules classées `S1_facile`, des raws à deux pièces classés `S4_oblique`. C'est attendu (les strates viennent de proxys textuels) et c'est précisément ce que la **confirmation de strate par le PO** doit redresser — l'outil la demande à chaque image. |

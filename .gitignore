@@ -95,6 +95,7 @@ ml/state/listing_bimetal_bench/
 ml/state/listing_bench/
 ml/state/ablation_eval/
 ml/state/crop_diag/
+ml/state/gold_crop/
 ml/state/coin_census_bench/
 ml/state/bce_runs/
 ml/state/live_test_logs/

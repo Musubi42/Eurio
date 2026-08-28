@@ -1,0 +1,346 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Jeu d'or — annotation des ellipses</title>
+<style>
+  :root {
+    --fond:#14161a; --carte:#1e2127; --bord:#2f343d; --texte:#e6e9ef;
+    --doux:#9aa3b2; --or:#ffd166; --vert:#4ade80; --rouge:#f87171; --bleu:#60a5fa;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; display:flex; background:var(--fond); color:var(--texte);
+         font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  #scene { flex:1; position:relative; overflow:hidden; background:#0b0d10; }
+  #svg { width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+  #svg.saisie { cursor:grabbing; }
+  aside { width:320px; flex:none; border-left:1px solid var(--bord); background:var(--carte);
+          padding:14px; overflow-y:auto; }
+  h1 { font-size:14px; margin:0 0 2px; letter-spacing:.02em; }
+  .doux { color:var(--doux); }
+  .bloc { border-top:1px solid var(--bord); margin-top:14px; padding-top:12px; }
+  .bloc h2 { font-size:11px; text-transform:uppercase; letter-spacing:.09em;
+             color:var(--doux); margin:0 0 8px; font-weight:600; }
+  .lignes { display:grid; grid-template-columns:auto 1fr; gap:3px 10px; font-variant-numeric:tabular-nums; }
+  .lignes b { color:var(--doux); font-weight:400; }
+  button { font:inherit; color:var(--texte); background:#262b33; border:1px solid var(--bord);
+           border-radius:6px; padding:5px 9px; cursor:pointer; }
+  button:hover { background:#313843; }
+  button.actif { background:var(--bleu); border-color:var(--bleu); color:#0b0d10; font-weight:600; }
+  button.danger.actif { background:var(--rouge); border-color:var(--rouge); }
+  .rangee { display:flex; gap:6px; flex-wrap:wrap; }
+  .barre { height:5px; background:#0b0d10; border-radius:3px; overflow:hidden; margin-top:8px; }
+  .barre i { display:block; height:100%; background:var(--vert); width:0; transition:width .2s; }
+  kbd { background:#0b0d10; border:1px solid var(--bord); border-bottom-width:2px; border-radius:4px;
+        padding:0 5px; font:11px ui-monospace,monospace; }
+  .aide { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; color:var(--doux); font-size:12px; }
+  #etat { position:absolute; left:12px; bottom:12px; background:rgba(11,13,16,.86); border:1px solid var(--bord);
+          border-radius:7px; padding:6px 10px; font-variant-numeric:tabular-nums; }
+  #flash { position:absolute; right:12px; top:12px; background:rgba(11,13,16,.9); border:1px solid var(--bord);
+           border-radius:7px; padding:6px 10px; opacity:0; transition:opacity .25s; }
+  .pastille { display:inline-block; padding:1px 7px; border-radius:99px; font-size:11px; font-weight:600; }
+  .acc { background:rgba(74,222,128,.16); color:var(--vert); }
+  .rej { background:rgba(248,113,113,.16); color:var(--rouge); }
+</style>
+
+<div id="scene">
+  <svg id="svg"></svg>
+  <div id="etat">—</div>
+  <div id="flash"></div>
+</div>
+
+<aside>
+  <h1>Jeu d'or — ellipses</h1>
+  <div class="doux" id="soustitre">chargement…</div>
+  <div class="barre"><i id="progres"></i></div>
+
+  <div class="bloc">
+    <h2>Image</h2>
+    <div class="lignes">
+      <b>rang</b><span id="rang">—</span>
+      <b>verdict</b><span id="verdict">—</span>
+      <b>strate tirée</b><span id="strate">—</span>
+      <b>pré-remplissage</b><span id="prefill">—</span>
+      <b>asset</b><span id="asset" style="font:11px ui-monospace,monospace">—</span>
+    </div>
+  </div>
+
+  <div class="bloc">
+    <h2>Confirmer la strate</h2>
+    <div class="rangee" id="strates"></div>
+    <div class="doux" style="margin-top:7px">
+      Les strates viennent de proxys textuels. C'est cette confirmation qui les rend honnêtes.
+    </div>
+  </div>
+
+  <div class="bloc">
+    <h2>Cas non annotable</h2>
+    <div class="rangee">
+      <button id="btn-indecidable" class="danger">Indécidable <kbd>i</kbd></button>
+    </div>
+    <div class="doux" style="margin-top:7px">
+      Pièce coupée par le bord, floue, masquée. Un cas non annotable sort explicitement —
+      il ne s'annote pas au jugé. La réserve le remplace.
+    </div>
+  </div>
+
+  <div class="bloc">
+    <h2>Clavier</h2>
+    <div class="aide">
+      <kbd>Entrée</kbd><span>valider et suivante</span>
+      <kbd>← →</kbd><span>naviguer</span>
+      <kbd>1…4</kbd><span>confirmer la strate</span>
+      <kbd>i</kbd><span>indécidable</span>
+      <kbd>r</kbd><span>revenir au pré-remplissage</span>
+      <kbd>f</kbd><span>recadrer la vue</span>
+      <kbd>molette</kbd><span>zoom · glisser = déplacer</span>
+    </div>
+  </div>
+
+  <div class="bloc">
+    <h2>Séance</h2>
+    <div class="lignes">
+      <b>annotées</b><span id="n-faites">0</span>
+      <b>indécidables</b><span id="n-indec">0</span>
+      <b>médiane / image</b><span id="mediane">—</span>
+      <b>écrit</b><span id="ecrit">—</span>
+    </div>
+    <div class="doux" style="margin-top:7px">
+      Au-delà de 90 s/image, c'est le pré-remplissage qui est mauvais sur cette strate —
+      l'information est elle-même utile.
+    </div>
+  </div>
+</aside>
+
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const svg = $("svg");
+
+let images = [], annotations = {}, idx = 0, passe = 1;
+let vue = { k: 1, tx: 0, ty: 0 };
+let img = null, ell = null, prefill = null, debut = 0, saisie = null;
+
+const STRATES = ["S1_facile", "S2_capsule", "S3_multi", "S4_oblique"];
+
+/* ─── chargement ─────────────────────────────────────────────────────── */
+async function demarrer() {
+  const s = await (await fetch("/api/session")).json();
+  if (s.erreur) { $("soustitre").textContent = s.erreur; return; }
+  images = s.images; annotations = s.annotations || {}; passe = s.passe;
+  $("soustitre").textContent = `passe ${passe} · ${images.length} images`;
+  $("strates").innerHTML = STRATES.map((v, i) =>
+    `<button data-strate="${v}">${v.slice(0, 2)} <kbd>${i + 1}</kbd></button>`).join("");
+  $("strates").onclick = (e) => {
+    const b = e.target.closest("button"); if (b) poserStrate(b.dataset.strate);
+  };
+  $("btn-indecidable").onclick = () => basculerIndecidable();
+  // reprendre là où la séance s'est arrêtée
+  idx = Math.min(images.length - 1, images.findIndex(i => !annotations[i.asset_id]) + 0);
+  if (idx < 0) idx = 0;
+  charger();
+}
+
+function courante() { return images[idx]; }
+
+function ellipseDepuisPrefill(r) {
+  const p = r.prefill, h = r.hint;
+  if (p && p.ok) return { cx: p.cx, cy: p.cy, a: p.major, b: p.minor, theta: p.angle };
+  return { cx: h.cx, cy: h.cy, a: h.r, b: h.r, theta: 0 };  // repli : le cercle du crop
+}
+
+function charger() {
+  const r = courante();
+  prefill = ellipseDepuisPrefill(r);
+  const dejaFait = annotations[r.asset_id];
+  ell = dejaFait && dejaFait.ellipse ? { ...dejaFait.ellipse } : { ...prefill };
+  debut = performance.now();
+
+  $("rang").textContent = `${idx + 1} / ${images.length}`;
+  $("verdict").innerHTML = `<span class="pastille ${r.verdict === "accept" ? "acc" : "rej"}">` +
+    `${r.verdict === "accept" ? "accepté" : "rejeté"}</span>` +
+    (r.quality_reason ? ` <span class="doux">${r.quality_reason}</span>` : "");
+  $("strate").textContent = r.strate;
+  $("asset").textContent = r.asset_id;
+  const p = r.prefill;
+  $("prefill").innerHTML = !p ? "—" : (p.ok
+    ? `measure_tilt · ${p.trustworthy ? "fiable" : `<span class="doux">${p.reason || "non fiable"}</span>`}`
+    : `<span class="doux">échec : ${p.reason}</span>`);
+
+  const im = new Image();
+  im.onload = () => { img = im; recadrer(); dessiner(); };
+  im.src = "/" + r.fichier;
+  majPanneau();
+}
+
+/* ─── vue ────────────────────────────────────────────────────────────── */
+function recadrer() {
+  if (!img) return;
+  const W = svg.clientWidth, H = svg.clientHeight;
+  // on cadre sur l'ellipse, pas sur le raw : c'est le listel qu'on vient juger
+  const rayon = Math.max(ell.a, ell.b) * 1.45;
+  vue.k = Math.min(W, H) / (2 * rayon);
+  vue.tx = W / 2 - ell.cx * vue.k;
+  vue.ty = H / 2 - ell.cy * vue.k;
+}
+const versEcran = (x, y) => [x * vue.k + vue.tx, y * vue.k + vue.ty];
+const versImage = (X, Y) => [(X - vue.tx) / vue.k, (Y - vue.ty) / vue.k];
+
+/* ─── rendu ──────────────────────────────────────────────────────────── */
+function poignees() {
+  const t = ell.theta * Math.PI / 180;
+  // OpenCV : l'angle est celui du GRAND axe, x vers la droite, y vers le bas
+  const ux = Math.cos(t), uy = Math.sin(t);
+  return {
+    C: [ell.cx, ell.cy],
+    A: [ell.cx + ell.a * ux, ell.cy + ell.a * uy],
+    B: [ell.cx - ell.b * uy, ell.cy + ell.b * ux],
+  };
+}
+
+function dessiner() {
+  if (!img) return;
+  const W = svg.clientWidth, H = svg.clientHeight;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const g = [];
+  g.push(`<image href="/${courante().fichier}" x="${vue.tx}" y="${vue.ty}"
+           width="${img.width * vue.k}" height="${img.height * vue.k}"
+           style="image-rendering:auto"/>`);
+  const [cx, cy] = versEcran(ell.cx, ell.cy);
+  const A = ell.a * vue.k, B = ell.b * vue.k;
+  const rot = `rotate(${ell.theta} ${cx} ${cy})`;
+  g.push(`<ellipse cx="${cx}" cy="${cy}" rx="${A}" ry="${B}" transform="${rot}"
+           fill="none" stroke="#ffd166" stroke-width="1.6"/>`);
+  // la bande du Boundary IoU, d = 0,08·a : ce que le juge regardera
+  g.push(`<ellipse cx="${cx}" cy="${cy}" rx="${A * 0.92}" ry="${B * 0.92}" transform="${rot}"
+           fill="none" stroke="#ffd166" stroke-width="0.8" stroke-dasharray="4 4" opacity=".55"/>`);
+  const p = poignees();
+  const nom = { C: "#60a5fa", A: "#4ade80", B: "#4ade80" };
+  for (const [k, [x, y]] of Object.entries(p)) {
+    const [X, Y] = versEcran(x, y);
+    g.push(`<circle data-poignee="${k}" cx="${X}" cy="${Y}" r="6"
+             fill="${nom[k]}" stroke="#0b0d10" stroke-width="1.5" style="cursor:pointer"/>`);
+  }
+  svg.innerHTML = g.join("");
+  const dt = (performance.now() - debut) / 1000;
+  $("etat").innerHTML = `a=${ell.a.toFixed(1)} b=${ell.b.toFixed(1)} ` +
+    `b/a=${(ell.b / ell.a).toFixed(3)} θ=${ell.theta.toFixed(1)}° ` +
+    `<span class="doux">· ${dt.toFixed(0)} s</span>`;
+}
+
+/* ─── interaction ────────────────────────────────────────────────────── */
+svg.addEventListener("pointerdown", (e) => {
+  const cible = e.target.dataset && e.target.dataset.poignee;
+  saisie = { type: cible || "pan", x: e.clientX, y: e.clientY };
+  svg.classList.add("saisie");
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener("pointerup", (e) => {
+  saisie = null; svg.classList.remove("saisie");
+  try { svg.releasePointerCapture(e.pointerId); } catch {}
+});
+svg.addEventListener("pointermove", (e) => {
+  if (!saisie) return;
+  const r = svg.getBoundingClientRect();
+  const [ix, iy] = versImage(e.clientX - r.left, e.clientY - r.top);
+  if (saisie.type === "pan") {
+    vue.tx += e.clientX - saisie.x; vue.ty += e.clientY - saisie.y;
+    saisie.x = e.clientX; saisie.y = e.clientY;
+  } else if (saisie.type === "C") {
+    ell.cx = ix; ell.cy = iy;
+  } else if (saisie.type === "A") {
+    const dx = ix - ell.cx, dy = iy - ell.cy;
+    ell.a = Math.max(4, Math.hypot(dx, dy));
+    ell.theta = Math.atan2(dy, dx) * 180 / Math.PI;   // A porte AUSSI la rotation
+    ell.b = Math.min(ell.b, ell.a);
+  } else if (saisie.type === "B") {
+    const t = ell.theta * Math.PI / 180;
+    // projection sur la normale au grand axe : B ne change QUE le petit axe
+    ell.b = Math.min(ell.a, Math.max(3,
+      Math.abs(-(ix - ell.cx) * Math.sin(t) + (iy - ell.cy) * Math.cos(t))));
+  }
+  dessiner();
+});
+svg.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const r = svg.getBoundingClientRect();
+  const X = e.clientX - r.left, Y = e.clientY - r.top;
+  const [ix, iy] = versImage(X, Y);
+  vue.k *= Math.exp(-e.deltaY * 0.0015);
+  vue.tx = X - ix * vue.k; vue.ty = Y - iy * vue.k;
+  dessiner();
+}, { passive: false });
+
+addEventListener("resize", () => dessiner());
+
+addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === "ArrowRight") { valider(); aller(+1); }
+  else if (e.key === "ArrowLeft") { valider(); aller(-1); }
+  else if (e.key === "r") { ell = { ...prefill }; dessiner(); }
+  else if (e.key === "f") { recadrer(); dessiner(); }
+  else if (e.key === "i") { basculerIndecidable(); }
+  else if ("1234".includes(e.key)) { poserStrate(STRATES[+e.key - 1]); }
+  else return;
+  e.preventDefault();
+});
+
+/* ─── annotation ─────────────────────────────────────────────────────── */
+function entree() {
+  const id = courante().asset_id;
+  annotations[id] ||= { asset_id: id, strate_tiree: courante().strate,
+                        strate_confirmee: null, indecidable: false, secondes: 0 };
+  return annotations[id];
+}
+function poserStrate(s) {
+  const a = entree(); a.strate_confirmee = (a.strate_confirmee === s ? null : s);
+  majPanneau(); enregistrer();
+}
+function basculerIndecidable() {
+  const a = entree(); a.indecidable = !a.indecidable; majPanneau(); enregistrer();
+}
+function valider() {
+  const a = entree();
+  a.ellipse = { ...ell };
+  a.prefill_modifie = JSON.stringify(ell) !== JSON.stringify(prefill);
+  a.secondes = +((a.secondes || 0) + (performance.now() - debut) / 1000).toFixed(1);
+  a.passe = passe;
+  a.valide_le = new Date().toISOString();
+  enregistrer();
+}
+function aller(d) {
+  const n = idx + d;
+  if (n < 0 || n >= images.length) { flash("fin du tirage"); majPanneau(); return; }
+  idx = n; charger();
+}
+
+let enCours = null;
+function enregistrer() {
+  clearTimeout(enCours);
+  enCours = setTimeout(async () => {
+    const r = await fetch("/api/save", { method: "POST",
+      body: JSON.stringify({ annotations }) });
+    const j = await r.json();
+    $("ecrit").textContent = j.ok ? `${j.fichier} · ${j.n}` : "échec";
+    if (!j.ok) flash("⚠️ écriture refusée");
+  }, 120);
+}
+
+function flash(txt) {
+  $("flash").textContent = txt; $("flash").style.opacity = 1;
+  setTimeout(() => $("flash").style.opacity = 0, 1400);
+}
+
+function majPanneau() {
+  const a = annotations[courante().asset_id];
+  for (const b of $("strates").children)
+    b.classList.toggle("actif", !!a && a.strate_confirmee === b.dataset.strate);
+  $("btn-indecidable").classList.toggle("actif", !!a && a.indecidable);
+  const faites = Object.values(annotations).filter(x => x.ellipse || x.indecidable);
+  const secs = faites.map(x => x.secondes).filter(Boolean).sort((p, q) => p - q);
+  $("n-faites").textContent = `${faites.length} / ${images.length}`;
+  $("n-indec").textContent = Object.values(annotations).filter(x => x.indecidable).length;
+  $("mediane").textContent = secs.length ? `${secs[secs.length >> 1].toFixed(0)} s` : "—";
+  $("progres").style.width = `${100 * faites.length / images.length}%`;
+}
+
+setInterval(() => { if (img) dessiner(); }, 1000);   // le compteur de secondes
+demarrer();
+</script>
