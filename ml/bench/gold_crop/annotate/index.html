@@ -42,6 +42,10 @@
   .consigne b + * { display:inline; }
   .legende { display:grid; grid-template-columns:auto 1fr; gap:6px 10px; align-items:center; }
   .legende i { width:11px; height:11px; border-radius:50%; display:block; border:1px solid #0b0d10; }
+  .strates-aide { display:grid; grid-template-columns:auto 1fr; gap:3px 10px; margin:9px 0 0;
+                  font-size:12px; }
+  .strates-aide dt { color:var(--texte); font-weight:600; white-space:nowrap; }
+  .strates-aide dd { margin:0; color:var(--doux); }
   #loupes { position:absolute; left:12px; bottom:56px; display:flex; gap:8px; }
   #loupes figure { margin:0; background:rgba(11,13,16,.9); border:1px solid var(--bord);
                    border-radius:8px; padding:4px; }
@@ -97,10 +101,19 @@
   </div>
 
   <div class="bloc">
-    <h2>Confirmer la strate</h2>
+    <h2>Cette image, c'est laquelle des quatre ?</h2>
     <div class="rangee" id="strates"></div>
+    <dl class="strates-aide">
+      <dt>S1 facile</dt><dd>une seule pièce, nette, vue quasi de face, fond simple</dd>
+      <dt>S2 capsule</dt><dd>sous plastique — blister, coffret, slab gradé. Reflets et halo</dd>
+      <dt>S3 multi</dt><dd>plusieurs pièces dans l'image, ou un lot, ou un coffret</dd>
+      <dt>S4 oblique</dt><dd>la pièce est nettement de biais — elle paraît ovale</dd>
+    </dl>
     <div class="doux" style="margin-top:7px">
-      Les strates viennent de proxys textuels. C'est cette confirmation qui les rend honnêtes.
+      Les 60 images ont été tirées 15 par famille, pour qu'une méthode qui marche
+      sur les photos faciles et rate les pièces de biais se voie. Mais le tirage
+      s'est fait sur le <b>texte de l'annonce</b>, qui ment : cette image a été
+      tirée comme <b id="strate-tiree-inline">—</b>. Si ce n'est pas ça, corrige.
     </div>
   </div>
 
@@ -137,8 +150,8 @@
       <b>écrit</b><span id="ecrit">—</span>
     </div>
     <div class="doux" style="margin-top:7px">
-      Au-delà de 90 s/image, c'est le pré-remplissage qui est mauvais sur cette strate —
-      l'information est elle-même utile.
+      Le chrono n'est pas une pression : il sert à repérer une famille d'images
+      où la proposition de départ est mauvaise. Rien à faire de ton côté.
     </div>
   </div>
 </aside>
@@ -200,6 +213,7 @@ function charger() {
     `${r.verdict === "accept" ? "accepté" : "rejeté"}</span>` +
     (r.quality_reason ? ` <span class="doux">${r.quality_reason}</span>` : "");
   $("strate").textContent = r.strate;
+  $("strate-tiree-inline").textContent = r.strate;
   $("asset").textContent = r.asset_id;
   const p = r.prefill;
   $("prefill").innerHTML = !p ? "—" : (p.ok

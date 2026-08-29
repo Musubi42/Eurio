@@ -1,5 +1,8 @@
 # Juge du crop — construire l'instrument avant de choisir la méthode
 
+> 👉 **Nouvelle session ? Commence par [`REPRENDRE-ICI.md`](./REPRENDRE-ICI.md)** —
+> où on en est, et le geste exact qui reste.
+
 > **Ce chantier ne choisit pas une méthode de crop. Il construit le juge qui
 > permettra d'en choisir une.** Le nom reprend celui de
 > [`juge-et-banc/`](../juge-et-banc/SUIVI-MATRICE.md) pour la même raison : ce
