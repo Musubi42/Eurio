@@ -14,9 +14,17 @@ import type { AnnotationOr } from '../composables/useGoldCropApi'
 import { estAnnotee, strateRetenue, useGoldCropApi } from '../composables/useGoldCropApi'
 
 const get = vi.fn()
-vi.mock('@/shared/api/eurio-api', () => ({
-  eurioApi: { get: (...a: unknown[]) => get(...a) },
-}))
+// `importActual` et pas un objet nu : le composable importe désormais les
+// classes d'erreur du client (`EurioApiError`…) pour expliquer un échec
+// d'écriture. Les remplacer par `undefined` ferait lever l'explication elle-même.
+vi.mock('@/shared/api/eurio-api', async () => {
+  const reel =
+    await vi.importActual<typeof import('@/shared/api/eurio-api')>('@/shared/api/eurio-api')
+  return { ...reel, eurioApi: { get: (...a: unknown[]) => get(...a) } }
+})
+
+/** La page porte des liens vers la séance ; sans routeur, on les stube. */
+const globalMount = { stubs: { RouterLink: { template: '<a><slot /></a>' } } }
 
 function ligne(over: Partial<AnnotationOr> = {}): AnnotationOr {
   return {
@@ -71,7 +79,7 @@ describe('la page', () => {
       gold_version: 'v1', version: null, n: annotations.length, annotations,
     })
     const { default: Page } = await import('../pages/GoldCropPage.vue')
-    const w = mount(Page)
+    const w = mount(Page, { global: globalMount })
     montes.push(w)
     await new Promise((r) => setTimeout(r, 0))
     await w.vm.$nextTick()

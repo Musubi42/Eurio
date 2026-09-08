@@ -33,32 +33,41 @@ table vide et la question de D6 — la prod sur-crope-t-elle ou sous-crope-t-ell
 
 ## Ce que le PO doit faire, exactement
 
+**Depuis n'importe quel navigateur, sans terminal** (D12, déployé le 2026-09-08) :
+
+> **https://eurio-admin.musubi.dev/gold-crop/annoter**
+
+La page reprend à la première image sans ellipse. Le geste, par image : traîner
+l'ellipse jaune sur le **bord extérieur de la pièce** (le listel, pas l'anneau
+aux étoiles), confirmer la famille avec <kbd>1</kbd>…<kbd>4</kbd>, puis
+<kbd>Entrée</kbd>. Les 4 vignettes du bas montrent ce bord de près : si le trait
+y colle au métal, c'est bon. Pendant la séance, la ligne **écrit** du panneau
+doit rester **verte** (`canonique · N`) — si elle passe au rouge, la phrase dit
+pourquoi ; rien n'est perdu tant qu'on ne quitte pas l'image.
+
+L'avancement se lit sur **`/gold-crop`** (n / 60, dernière écriture), qui porte
+aussi le bouton d'entrée.
+
+<details>
+<summary>Le repli : l'outil local (même route, même table, <code>editor_version</code> distinct)</summary>
+
 ```bash
 cd ~/Documents/Musubi42/bizz/EurioProject/Eurio/ml
 python -m bench.gold_crop.annotate.serve --out state/gold_crop/v1
 # puis http://127.0.0.1:8765
 ```
 
-Au démarrage, la console doit dire :
+Au démarrage, la console doit dire
+`canonique : https://eurio-api.musubi.dev/crop-gold/v1/annotations`. Si elle
+dit `🔴 EURIO_API_URL / EURIO_API_TOKEN absents`, **s'arrêter** : le devShell
+n'est pas chargé, et l'or n'irait que sur disque.
 
-```
-canonique : https://eurio-api.musubi.dev/crop-gold/v1/annotations
-```
-
-Si elle dit `🔴 EURIO_API_URL / EURIO_API_TOKEN absents`, **s'arrêter** : le
-devShell n'est pas chargé, et l'or n'irait que sur disque. Pendant la séance, la
-ligne `écrit` du panneau doit rester **verte** (`canonique · N`).
-
-Le geste, par image : traîner l'ellipse jaune sur le **bord extérieur de la
-pièce** (le listel, pas l'anneau aux étoiles), confirmer la famille avec
-<kbd>1</kbd>…<kbd>4</kbd>, puis <kbd>Entrée</kbd>. Les 4 vignettes du bas
-montrent ce bord de près : si le trait y colle au métal, c'est bon.
+</details>
 
 **Puis, à ≥ 24 h d'écart**, la seconde passe :
-
-```bash
-python -m bench.gold_crop.annotate.serve --out state/gold_crop/v1 --passe 2 --n-double 10
-```
+**https://eurio-admin.musubi.dev/gold-crop/annoter?passe=2** (le lien apparaît
+sur `/gold-crop` dès que la passe 1 est complète). En repli :
+`python -m bench.gold_crop.annotate.serve --out state/gold_crop/v1 --passe 2 --n-double 10`.
 
 10 images seulement, re-annotées. Elle fixe le **plafond du banc** : aucune
 méthode ne peut être créditée au-dessus du bruit de la main qui a fait l'or.

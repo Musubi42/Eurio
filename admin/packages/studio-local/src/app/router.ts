@@ -215,6 +215,15 @@ const router = createRouter({
           component: () => import('@/features/gold-crop/pages/GoldCropPage.vue'),
         },
         {
+          // La SÉANCE d'annotation (D12). Pas `heavy` non plus, et c'est tout
+          // l'objet : elle n'a besoin que du canonique et d'URLs présignées, donc
+          // le PO annote depuis n'importe quel navigateur — sans devShell, sans
+          // serveur local, sans port. Pas d'item de nav : on y entre depuis
+          // `/gold-crop`, qui montre l'avancement.
+          path: 'gold-crop/annoter',
+          component: () => import('@/features/gold-crop/pages/GoldCropAnnotatePage.vue'),
+        },
+        {
           path: 'denom-gold',
           component: () => import('@/features/denom-gold/pages/DenomGoldValidatePage.vue'),
           meta: heavy,

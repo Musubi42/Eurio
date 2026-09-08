@@ -12,10 +12,12 @@ import { computed, onMounted, ref } from 'vue'
 import VignetteOr from '../components/VignetteOr.vue'
 import {
   type AnnotationOr,
+  TAILLE_TIRAGE,
   estAnnotee,
   strateRetenue,
   useGoldCropApi,
 } from '../composables/useGoldCropApi'
+import { N_DOUBLE } from '../composables/sha256'
 
 const version = ref('v1')
 const { jeu, chargement, erreur, charger } = useGoldCropApi(version.value)
@@ -63,6 +65,27 @@ const bilan = computed(() => {
 
 const gele = computed(() => !!jeu.value?.version?.frozen_at)
 
+/**
+ * L'avancement de la séance, d'un coup d'œil — et le chemin pour la reprendre.
+ *
+ * Il vit sur la page de LECTURE parce que c'est celle qu'on ouvre pour savoir
+ * où on en est. La séance était à l'arrêt depuis dix jours sans que rien ne le
+ * dise : un compteur qu'il faut aller chercher dans une base ne se regarde pas.
+ */
+const seance = computed(() => {
+  const annotees = passe1.value.filter(estAnnotee).length
+  const dates = lignes.value.map((a) => a.updated_at).filter(Boolean).sort()
+  const p2 = new Set(lignes.value.filter((a) => a.passe === 2).map((a) => a.asset_id)).size
+  return {
+    annotees,
+    cible: TAILLE_TIRAGE,
+    derniere: dates.length ? dates[dates.length - 1].slice(0, 10) : null,
+    complete: annotees >= TAILLE_TIRAGE,
+    p2,
+    n_double: N_DOUBLE,
+  }
+})
+
 // `void` et non `() => charger()` : un hook de cycle de vie qui RETOURNE une
 // promesse la confie à la gestion d'erreurs de Vue, laquelle la fait remonter
 // jusqu'au test — alors même que `charger` attrape déjà tout. Le hook ne
@@ -89,6 +112,26 @@ onMounted(() => {
         <span v-else class="pastille ouvert">en cours d'annotation</span>
       </div>
     </header>
+
+    <section v-if="!chargement && !erreur" class="seance">
+      <div class="avance">
+        <b>{{ seance.annotees }} / {{ seance.cible }}</b>
+        <span class="doux">
+          images annotées
+          <template v-if="seance.derniere"> · dernière écriture le {{ seance.derniere }}</template>
+          <template v-else> · la séance n'a pas commencé</template>
+        </span>
+      </div>
+      <RouterLink
+        v-if="!gele" class="bouton" to="/gold-crop/annoter"
+      >Annoter la séance →</RouterLink>
+      <RouterLink
+        v-if="!gele && seance.complete" class="bouton second" to="/gold-crop/annoter?passe=2"
+      >2ᵉ passe ({{ seance.p2 }} / {{ seance.n_double }}) →</RouterLink>
+      <span v-else-if="!gele" class="doux">
+        la 2ᵉ passe s'ouvre quand la 1ʳᵉ est complète — elle fixe le plafond du banc
+      </span>
+    </section>
 
     <p v-if="chargement" class="doux">chargement…</p>
     <p v-else-if="erreur" class="erreur">{{ erreur }}</p>
@@ -170,6 +213,18 @@ h1 { font-size: var(--text-lg); margin: 0 0 0.2rem; font-family: var(--font-disp
             border-radius: 99px; font-size: var(--text-xs); font-weight: 600; }
 .gele { background: var(--indigo-100); color: var(--indigo-700); }
 .ouvert { background: var(--gold-100); color: var(--gold-700); }
+.seance { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;
+          padding: 0.8rem 1rem; border: 1px solid var(--surface-3); border-radius: 10px;
+          background: var(--surface-1); }
+.avance { display: flex; flex-direction: column; margin-right: auto; }
+.avance b { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+.avance .doux { font-size: var(--text-xs); }
+.bouton { text-decoration: none; font-size: var(--text-sm); font-weight: 600;
+          padding: 0.35rem 0.8rem; border-radius: 6px; background: var(--indigo-600);
+          color: #fff; }
+.bouton:hover { background: var(--indigo-700); }
+.bouton.second { background: var(--surface); color: var(--indigo-700);
+                 border: 1px solid var(--indigo-300); }
 .vide { margin-top: 2rem; padding: 1.25rem; border: 1px dashed var(--surface-3);
         border-radius: 10px; background: var(--surface-1); }
 .vide pre { margin: 0.6rem 0 0; padding: 0.6rem 0.75rem; background: var(--surface-3);
