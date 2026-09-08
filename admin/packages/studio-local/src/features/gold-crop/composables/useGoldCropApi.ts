@@ -9,6 +9,7 @@
 
 import { ref, shallowRef } from 'vue'
 
+import { ML_API } from '@/shared/api/ml-api'
 import {
   EurioApiError,
   EurioApiTimeout,
@@ -322,4 +323,211 @@ export function useGoldCropSeance(version = 'v1') {
   }
 
   return { chargerTirage, chargerJeu, envoyerAnnotation }
+}
+
+/* ══ La planche comparative — les RUNS du banc (L3.3) ════════════════════════
+ *
+ * ⚠️ Ici, et ici SEULEMENT, on quitte le canonique pour l'API ML locale
+ * (`:8042`). Les fichiers `state/gold_crop/<v>/run_*.json` n'existent que sur
+ * la machine qui a exécuté le harness : la page qui lit ceci est donc
+ * `meta: { heavy: true }` et se grise toute seule en hébergé.
+ */
+
+/** L'ellipse d'or telle qu'un run la porte — `theta` en RADIANS, pas en degrés. */
+export interface EllipseRun {
+  cx: number
+  cy: number
+  a: number
+  b: number
+  theta: number
+}
+
+/** Ce qu'un bras a proposé : un cercle, toujours — le format de sortie l'impose. */
+export interface CercleRun {
+  cx: number
+  cy: number
+  r: number
+}
+
+/** Un cas jugé. `absent` = le bras n'a rien rendu sur cette image. */
+export interface CasRun {
+  asset_id: string
+  strate: string
+  strate_confirmee?: string | null
+  strate_retenue?: string
+  verdict_humain: string
+  absent?: boolean
+  gold?: EllipseRun
+  pred?: CercleRun
+  ampute?: boolean
+  C1_ok?: boolean
+  C2_ok?: boolean
+  C1_marge_min_frac?: number
+  marge_promise_ok?: boolean
+  arc_coverage?: number
+  boundary_iou?: number
+  mask_iou?: number
+  hausdorff_frac?: number
+  // posés par la route, pas par le harness
+  largeur: number | null
+  hauteur: number | null
+  raw_url: string
+}
+
+export interface ResumeBras {
+  n: number
+  amputation_pct?: number
+  amp_C1_pct?: number
+  amp_C2_pct?: number
+  marge_promise_ko_pct?: number
+  biou_med?: number
+  biou_p10?: number
+  iou_masque_med?: number
+  hausdorff_p90?: number
+}
+
+/** Le verdict RE-4, rendu VERBATIM par le harness — jamais recalculé ici. */
+export interface VerdictRe4 {
+  verdict: string
+  raison?: string
+  n_accept?: number
+  n_reject?: number
+  amputation_pct_accept?: number
+  amputation_pct_reject?: number
+  fisher_p?: number
+  table_2x2?: Record<string, { ampute: number; sain: number }>
+  boundary_iou?: { med_accept: number; med_reject: number; mannwhitney_p: number }
+}
+
+export interface RunBras {
+  bras: string
+  borne: boolean
+  juge_version: number | null
+  execute_le: string | null
+  gold_sha256?: string | null
+  params: {
+    m: number | null
+    d_frac: number | null
+    arc_min: number | null
+    region: string | null
+    c2_compte: boolean
+  }
+  resume: ResumeBras
+  re4: VerdictRe4 | null
+  cas: CasRun[]
+  erreur?: string
+}
+
+export interface RunsBanc {
+  gold_version: string
+  n: number
+  runs: RunBras[]
+}
+
+/** RE-7 — 60 images ne départagent pas moins de 5 points d'amputation. */
+export const ECART_NON_SIGNIFICATIF = 5
+
+/**
+ * Les deux bornes du banc, et ce qu'elles bornent. Elles ne se CLASSENT pas :
+ * `gold_replay` rejoue l'or contre lui-même (plafond du format) et
+ * `human_2nd_pass` mesure le bruit de la main qui a tracé l'or (plancher de
+ * crédit). Les mettre dans le classement ferait « gagner » l'or contre des
+ * méthodes — une comparaison qui n'a aucun sens.
+ */
+export const BORNES: Record<string, string> = {
+  gold_replay: 'plafond',
+  human_2nd_pass: 'plancher',
+}
+
+export interface RangBras {
+  run: RunBras
+  /** `null` pour une borne, et pour un bras sans cas mesuré. */
+  rang: number | null
+  /** Les bras dont RE-7 interdit de le distinguer. */
+  nonDepartages: string[]
+}
+
+/**
+ * Le classement des bras candidats — avec les non-départages nommés.
+ *
+ * Le rang d'un bras est `1 + le nombre de bras qui le battent d'AU MOINS
+ * 5 points`. Deux bras à 3 points d'écart portent donc le même rang et se
+ * citent l'un l'autre : la planche affiche « non départagés » au lieu de
+ * fabriquer un ordre que 60 images ne soutiennent pas. C'est la règle que
+ * `harness.departage` applique en console, mot pour mot.
+ */
+export function classerBras(runs: RunBras[]): RangBras[] {
+  const mesure = (r: RunBras) => r.resume.amputation_pct
+  const candidats = runs.filter(
+    (r) => !r.borne && !BORNES[r.bras] && r.resume.n > 0 && mesure(r) != null,
+  )
+  return runs.map((run) => {
+    if (run.borne || BORNES[run.bras] || run.resume.n === 0 || mesure(run) == null) {
+      return { run, rang: null, nonDepartages: [] }
+    }
+    const moi = mesure(run)!
+    const autres = candidats.filter((r) => r.bras !== run.bras)
+    return {
+      run,
+      rang: 1 + autres.filter((r) => moi - mesure(r)! >= ECART_NON_SIGNIFICATIF).length,
+      nonDepartages: autres
+        .filter((r) => Math.abs(moi - mesure(r)!) < ECART_NON_SIGNIFICATIF)
+        .map((r) => r.bras),
+    }
+  })
+}
+
+/** L'ordre d'affichage du tableau : les bornes d'abord, comme `harness.tableau`. */
+export function ordonnerBras(runs: RunBras[]): RunBras[] {
+  const rang = (r: RunBras) =>
+    r.bras === 'human_2nd_pass' ? 0 : r.bras === 'gold_replay' ? 1 : 2
+  return [...runs].sort(
+    (x, y) => rang(x) - rang(y) || (x.resume.amputation_pct ?? 1e9) - (y.resume.amputation_pct ?? 1e9),
+  )
+}
+
+/**
+ * L'URL affichable d'un raw. La route rend un chemin RELATIF (`/crop-gold/…`) :
+ * il vise l'API ML locale, pas le front. Le résoudre contre `window.location`
+ * afficherait un carré vide sans la moindre erreur en console.
+ */
+export function urlRaw(cas: CasRun): string {
+  return cas.raw_url.startsWith('http') ? cas.raw_url : `${ML_API}${cas.raw_url}`
+}
+
+/**
+ * Les runs du banc, lus sur l'API ML LOCALE.
+ *
+ * Pas de repli silencieux : une planche vide parce que l'API est éteinte et une
+ * planche vide parce que le banc n'a jamais tourné ne se soignent pas de la
+ * même façon, donc elles ne s'affichent pas pareil.
+ */
+export function useGoldCropRuns(version = 'v1') {
+  const banc = shallowRef<RunsBanc | null>(null)
+  const chargement = ref(false)
+  const erreur = ref<string | null>(null)
+  const sansRun = ref(false)
+
+  async function chargerRuns(): Promise<void> {
+    chargement.value = true
+    erreur.value = null
+    sansRun.value = false
+    try {
+      const resp = await fetch(`${ML_API}/crop-gold/${version}/runs`)
+      if (resp.status === 404) {
+        sansRun.value = true
+        banc.value = null
+        return
+      }
+      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
+      banc.value = (await resp.json()) as RunsBanc
+    } catch (e) {
+      erreur.value = e instanceof Error ? e.message : String(e)
+      banc.value = null
+    } finally {
+      chargement.value = false
+    }
+  }
+
+  return { banc, chargement, erreur, sansRun, chargerRuns }
 }

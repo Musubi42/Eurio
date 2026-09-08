@@ -164,5 +164,8 @@ marche aussi depuis le front hébergé.
   C2 (hors critère), `d = 0,08·a` **mesuré et confirmé** ([D4](./DECISIONS.md)).
   Ils sont appliqués par défaut ; la signature reste à poser avant le premier
   bras candidat ;
-* **la planche comparative** (`/gold-crop/planche`) n'est pas écrite : elle
-  attend l'or, sinon elle n'aurait rien à montrer.
+* **la planche comparative** (`/gold-crop/planche`, écrite le 2026-09-08) est
+  **`heavy`** : elle lit les `run_*.json` du harness sur la machine qui l'a
+  lancé, via le ML local `:8042`. Elle montre par image l'or contre le cercle
+  de chaque bras, les bornes hors classement, RE-7 (écart < 5 points = non
+  départagé) et le bloc RE-4 verbatim. Vide tant que le harness n'a pas tourné.

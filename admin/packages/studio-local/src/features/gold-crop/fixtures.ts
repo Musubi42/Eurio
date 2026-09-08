@@ -85,3 +85,98 @@ export const JEU_DEMO: JeuDOr = {
     annotation({ asset_id: 'a2', strate_confirmee: 'S2_capsule', secondes: 0, prefill_modifie: 0 }),
   ],
 }
+
+/* ══ La planche comparative — 2 bras × 3 cas ═════════════════════════════════
+ *
+ * Elle ouvre `/gold-crop/planche?demo=1` sans API ML et sans banc exécuté :
+ * c'est la maquette-dans-le-front que R1 demande pour un écran d'admin. Les
+ * chiffres sont choisis pour montrer ce que la planche doit rendre lisible —
+ * une borne qui ne se classe pas, et deux bras que RE-7 refuse de départager
+ * (33,3 % contre 33,3 %, soit 0 point d'écart).
+ */
+
+import type { CasRun, RunBras, RunsBanc } from './composables/useGoldCropApi'
+
+function cas(over: Partial<CasRun> & { asset_id: string }): CasRun {
+  return {
+    strate: 'S1_facile',
+    strate_confirmee: null,
+    strate_retenue: 'S1_facile',
+    verdict_humain: 'accept',
+    gold: { cx: 450, cy: 450, a: 400, b: 392, theta: 0.36 },
+    pred: { cx: 450, cy: 450, r: 396 },
+    ampute: false,
+    C1_ok: true,
+    C2_ok: true,
+    C1_marge_min_frac: 0.01,
+    marge_promise_ok: true,
+    arc_coverage: 1,
+    boundary_iou: 0.91,
+    mask_iou: 0.99,
+    hausdorff_frac: 0.004,
+    largeur: 900,
+    hauteur: 900,
+    raw_url: 'https://eurio-s3.musubi.dev/raw/exemple.jpg',
+    ...over,
+  }
+}
+
+function bras(over: Partial<RunBras> & { bras: string }): RunBras {
+  return {
+    borne: false,
+    juge_version: 1,
+    execute_le: '2026-09-08T08:30:24+00:00',
+    params: { m: 0, d_frac: 0.08, arc_min: 11 / 12, region: 'retenu', c2_compte: false },
+    resume: { n: 3 },
+    re4: { verdict: 'impossible', raison: 'un des deux groupes est vide' },
+    cas: [],
+    ...over,
+  }
+}
+
+const CAS_DEMO: CasRun[] = [
+  cas({ asset_id: 'a1' }),
+  cas({
+    // Tirée S1 par le texte de l'annonce, CONFIRMÉE S2 par l'œil : c'est le
+    // cas qui rend la stratification honnête, et celui sur lequel un filtre
+    // branché sur la strate du tirage se trahit.
+    asset_id: 'a2', strate: 'S1_facile', strate_confirmee: 'S2_capsule',
+    strate_retenue: 'S2_capsule',
+    verdict_humain: 'reject', ampute: true, C1_ok: false, marge_promise_ok: false,
+    C1_marge_min_frac: -0.023, boundary_iou: 0.68, mask_iou: 0.97,
+    pred: { cx: 448, cy: 452, r: 372 },
+  }),
+  cas({
+    asset_id: 'a3', strate: 'S4_oblique', strate_retenue: 'S4_oblique',
+    gold: { cx: 430, cy: 470, a: 400, b: 300, theta: 0.58 },
+    pred: { cx: 430, cy: 470, r: 305 }, boundary_iou: 0.26,
+  }),
+]
+
+export const RUNS_DEMO: RunsBanc = {
+  gold_version: 'v1',
+  n: 3,
+  runs: [
+    bras({
+      bras: 'gold_replay', borne: true, re4: null,
+      resume: { n: 3, amputation_pct: 0, amp_C1_pct: 0, amp_C2_pct: 0,
+                marge_promise_ko_pct: 0, biou_med: 1, biou_p10: 1,
+                iou_masque_med: 1, hausdorff_p90: 0 },
+      cas: CAS_DEMO.map((c) => ({ ...c, ampute: false, C1_ok: true, boundary_iou: 1 })),
+    }),
+    bras({
+      bras: 'baseline_prod',
+      resume: { n: 3, amputation_pct: 33.3, amp_C1_pct: 33.3, amp_C2_pct: 0,
+                marge_promise_ko_pct: 33.3, biou_med: 0.68, biou_p10: 0.34,
+                iou_masque_med: 0.99, hausdorff_p90: 0.021 },
+      cas: CAS_DEMO,
+    }),
+    bras({
+      bras: 'measure_tilt_ellipse',
+      resume: { n: 3, amputation_pct: 33.3, amp_C1_pct: 33.3, amp_C2_pct: 0,
+                marge_promise_ko_pct: 66.6, biou_med: 0.4, biou_p10: 0.08,
+                iou_masque_med: 0.89, hausdorff_p90: 0.104 },
+      cas: CAS_DEMO.map((c) => ({ ...c, pred: { ...c.pred!, r: c.pred!.r - 12 } })),
+    }),
+  ],
+}

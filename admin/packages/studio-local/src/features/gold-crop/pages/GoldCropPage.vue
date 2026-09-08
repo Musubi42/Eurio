@@ -131,6 +131,12 @@ onMounted(() => {
       <span v-else-if="!gele" class="doux">
         la 2ᵉ passe s'ouvre quand la 1ʳᵉ est complète — elle fixe le plafond du banc
       </span>
+      <!-- Entrée de la PLANCHE. La route est `meta.heavy` : hors du poste du
+           banc, `AppLayout` y rend `LocalOnlyNotice` au lieu d'une page vide —
+           le gating ne se réinvente pas ici. -->
+      <RouterLink class="lien-planche" to="/gold-crop/planche">
+        Planche du banc (local) →
+      </RouterLink>
     </section>
 
     <p v-if="chargement" class="doux">chargement…</p>
@@ -225,6 +231,7 @@ h1 { font-size: var(--text-lg); margin: 0 0 0.2rem; font-family: var(--font-disp
 .bouton:hover { background: var(--indigo-700); }
 .bouton.second { background: var(--surface); color: var(--indigo-700);
                  border: 1px solid var(--indigo-300); }
+.lien-planche { flex-basis: 100%; font-size: var(--text-xs); color: var(--indigo-700); }
 .vide { margin-top: 2rem; padding: 1.25rem; border: 1px dashed var(--surface-3);
         border-radius: 10px; background: var(--surface-1); }
 .vide pre { margin: 0.6rem 0 0; padding: 0.6rem 0.75rem; background: var(--surface-3);

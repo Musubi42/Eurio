@@ -224,6 +224,17 @@ const router = createRouter({
           component: () => import('@/features/gold-crop/pages/GoldCropAnnotatePage.vue'),
         },
         {
+          // La PLANCHE comparative du banc. `heavy`, et c'est la seule des trois
+          // pages du jeu d'or à l'être : elle lit `:8042`, qui lit les
+          // `run_*.json` posés par le harness sur la machine du banc. Ces
+          // fichiers n'existent nulle part ailleurs — en hébergé, `AppLayout`
+          // rend `LocalOnlyNotice` à sa place. Pas d'item de nav : on y entre
+          // depuis `/gold-crop`.
+          path: 'gold-crop/planche',
+          component: () => import('@/features/gold-crop/pages/GoldCropPlanchePage.vue'),
+          meta: heavy,
+        },
+        {
           path: 'denom-gold',
           component: () => import('@/features/denom-gold/pages/DenomGoldValidatePage.vue'),
           meta: heavy,

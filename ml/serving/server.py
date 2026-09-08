@@ -244,6 +244,14 @@ app.include_router(denom_gold_routes.router)
 app.include_router(fragment_audit_routes.router)
 app.include_router(crop_recovery_routes.router)
 
+# Wire /crop-gold/{v}/runs et /crop-gold/{v}/raws/{id} — la planche comparative
+# du banc du crop (`juge-du-crop`). Montées ICI SEULEMENT, jamais sur l'app lean :
+# elles lisent `state/gold_crop/<v>/` sur la machine qui a exécuté le harness,
+# un répertoire qui n'existe pas sur le VPS. Les annoncer dans l'OpenAPI du
+# canonique serait promettre une capacité absente (cf. l'en-tête du module).
+from serving import crop_gold_runs_routes  # noqa: E402
+app.include_router(crop_gold_runs_routes.router)
+
 # Wire /operations — dashboard d'opérations J1/J4 (pulse, readiness, diversity, cohorts).
 app.include_router(operations_routes.router)
 
