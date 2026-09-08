@@ -603,6 +603,86 @@ CREATE INDEX IF NOT EXISTS idx_crop_gold_annotations_asset
 CREATE INDEX IF NOT EXISTS idx_crop_gold_annotations_version_passe
   ON crop_gold_annotations(gold_version, passe);
 
+-- ─── Le TIRAGE du jeu d'or (juge-du-crop, migration 0020) ─────────────────
+-- Miroir de `serving/migrations/0020_crop_gold_tirage.sql`. Le pourquoi (les
+-- quatre raisons de D11 appliquées au tirage, et pourquoi `verdict` n'est
+-- DÉLIBÉRÉMENT pas ici) est dans la migration.
+CREATE TABLE IF NOT EXISTS crop_gold_tirage (
+  gold_version    TEXT NOT NULL
+                  REFERENCES crop_gold_versions(gold_version) ON DELETE CASCADE,
+  asset_id        TEXT NOT NULL
+                  REFERENCES image_assets(id) ON DELETE CASCADE,
+
+  -- 'tirage' = les 15 par strate qu'on annote ; 'reserve' = celles qui
+  -- remplacent un « indécidable » SANS retirer une image du tirage. Le rôle
+  -- doit être en base : le tirer au sort deux fois ne donnerait pas le même
+  -- jeu, et RE-5 exige que le jeu soit reproductible.
+  role            TEXT NOT NULL CHECK (role IN ('tirage','reserve')),
+
+  -- Rang dans la strate, tel que rendu par la requête d'échantillonnage. Il
+  -- fixe l'ORDRE de la séance : deux annotateurs voient la même suite.
+  rn              INTEGER,
+
+  -- La strate TIRÉE (proxy textuel). La strate CONFIRMÉE par l'humain vit dans
+  -- `crop_gold_annotations` — les deux ne se mélangent pas, c'est l'écart entre
+  -- elles qui dit ce que valent les proxys.
+  strate_tiree    TEXT NOT NULL,
+
+  -- Dimensions du RAW, en pixels natifs — la même unité que l'ellipse d'or de
+  -- 0019. Servies avec le tirage pour que le front pose son SVG sans un second
+  -- aller-retour.
+  width           INTEGER,
+  height          INTEGER,
+
+  -- ── Le cercle de PRODUCTION (`hint`) ────────────────────────────────────
+  -- Ce que le pipeline a effectivement cadré. C'est le candidat que le juge
+  -- doit départager : sans lui, le jeu d'or ne mesure rien. NOT NULL parce
+  -- qu'une image sans cercle de production n'a rien à faire dans le tirage.
+  hint_cx         REAL NOT NULL,
+  hint_cy         REAL NOT NULL,
+  hint_r          REAL NOT NULL,
+
+  -- ── Le PRÉ-REMPLISSAGE (`measure_tilt`, cv2) ────────────────────────────
+  -- L'ellipse proposée à l'annotateur, qu'il corrige. Nullable EN GROUPE :
+  -- soit `measure_tilt` a rendu une ellipse, soit il a échoué et l'annotateur
+  -- part du cercle de production. Une ellipse à moitié remplie serait une
+  -- proposition au jugé — le même raisonnement qu'en 0019.
+  prefill_cx      REAL,
+  prefill_cy      REAL,
+  prefill_a       REAL,            -- demi-GRAND axe
+  prefill_b       REAL,            -- demi-PETIT axe
+  prefill_theta_deg REAL,
+
+  -- Pourquoi la proposition n'est pas fiable (`too_circular:0.983`,
+  -- `no_contour`…). Gardée MÊME quand l'ellipse est présente : elle dit à
+  -- l'annotateur de se méfier, et elle dit au banc sur quelles strates
+  -- `measure_tilt` propose mal.
+  prefill_reason  TEXT,
+
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+
+  PRIMARY KEY (gold_version, asset_id),
+
+  -- Tout ou rien : cf. le commentaire du groupe ci-dessus.
+  CHECK ((prefill_cx IS NULL AND prefill_cy IS NULL AND prefill_a IS NULL
+          AND prefill_b IS NULL AND prefill_theta_deg IS NULL)
+         OR (prefill_cx IS NOT NULL AND prefill_cy IS NOT NULL
+             AND prefill_a IS NOT NULL AND prefill_b IS NOT NULL
+             AND prefill_theta_deg IS NOT NULL)),
+  -- `prefill_a` est le demi-GRAND axe. `cv2.fitEllipse` rend (largeur,
+  -- hauteur), PAS (grand, petit) : c'est le piège d'inversion de 0019, et le
+  -- pré-remplissage vient précisément de là. Le laisser entrer inversé
+  -- donnerait à l'annotateur une ellipse tournée de 90°.
+  CHECK (prefill_a IS NULL OR (prefill_a > 0 AND prefill_b > 0
+                               AND prefill_a >= prefill_b)),
+  CHECK (hint_r > 0)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_crop_gold_tirage_asset
+  ON crop_gold_tirage(asset_id);
+CREATE INDEX IF NOT EXISTS idx_crop_gold_tirage_version_role
+  ON crop_gold_tirage(gold_version, role);
+
 CREATE TABLE IF NOT EXISTS crop_edit_observations (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
 

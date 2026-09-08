@@ -23,9 +23,11 @@ from store.crop_gold import (
     assurer_version,
     enregistrer_annotation,
     enregistrer_lot,
+    enregistrer_tirage,
     geler,
     instantane,
     lire,
+    lire_tirage,
 )
 from tests._schema_reel import base_au_schema_reel
 
@@ -197,3 +199,145 @@ def test_le_module_s_importe_sans_les_paquets_lourds():
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert "ok" in r.stdout
+
+
+# ─── le TIRAGE : ce qu'il y a À annoter (D12) ───────────────────────────────
+
+HINT = {"cx": 450.0, "cy": 449.0, "r": 440.0}
+PREFILL = {"cx": 453.5, "cy": 450.3, "a": 401.4, "b": 394.6, "theta_deg": 21.5}
+
+
+def _img(aid, **kw):
+    base = {"asset_id": aid, "role": "tirage", "rn": 1,
+            "strate_tiree": "S1_facile", "width": 900, "height": 900,
+            "hint": dict(HINT), "prefill": dict(PREFILL),
+            "prefill_reason": "too_circular:0.983"}
+    base.update(kw)
+    return base
+
+
+def test_le_tirage_arrive_en_base_avec_ce_qu_il_faut_pour_l_afficher(conn):
+    res = enregistrer_tirage(conn, [_img("ia0")], gold_version="v1",
+                             requete_sha256="req")
+    assert res["n"] == 1 and res["ignorees"] == []
+    (row,) = lire_tirage(conn, "v1")
+    assert (row["role"], row["strate_tiree"], row["rn"]) == ("tirage", "S1_facile", 1)
+    assert (row["hint_cx"], row["hint_r"]) == (450.0, 440.0)
+    assert row["prefill_a"] == 401.4 and row["prefill_reason"] == "too_circular:0.983"
+    # la jointure ramène de quoi fabriquer une URL servable — le front hébergé
+    # n'a pas accès au disque du Mac
+    assert row["raw_path"] == "ebay/x.jpg" and row["source"] == "ebay"
+    assert row["source_image_id"] == "si"
+
+
+def test_publier_deux_fois_met_a_jour_au_lieu_de_doubler(conn):
+    enregistrer_tirage(conn, [_img("ia0")], gold_version="v1")
+    enregistrer_tirage(conn, [_img("ia0", role="reserve", rn=3)],
+                       gold_version="v1")
+    lignes = lire_tirage(conn, "v1")
+    assert len(lignes) == 1 and (lignes[0]["role"], lignes[0]["rn"]) == ("reserve", 3)
+
+
+def test_un_asset_inconnu_est_ignore_sans_faire_tomber_le_tirage(conn):
+    """Même doctrine que les annotations : perdre 83 images parce que la 84ᵉ
+    pointe un asset purgé serait le pire échec possible ici."""
+    res = enregistrer_tirage(conn, [_img("ia0"), _img("fantome"), _img("ia1")],
+                             gold_version="v1")
+    assert res["n"] == 2 and res["ignorees"] == ["fantome"]
+    assert {l["asset_id"] for l in lire_tirage(conn, "v1")} == {"ia0", "ia1"}
+
+
+def test_le_tirage_cree_la_version_avec_sa_requete(conn):
+    enregistrer_tirage(conn, [_img("ia0")], gold_version="v1",
+                       requete_sha256="req-a")
+    assert conn.execute("SELECT requete_sha256 FROM crop_gold_versions"
+                        " WHERE gold_version='v1'").fetchone()[0] == "req-a"
+
+
+def test_un_tirage_d_une_autre_requete_est_refuse(conn):
+    """Un tirage et sa version sortent de la MÊME requête d'échantillonnage.
+    Les découpler rendrait le jeu irreproductible EN LE LAISSANT CROIRE
+    reproductible — ce qui est pire que pas de requête du tout (RE-5)."""
+    enregistrer_tirage(conn, [_img("ia0")], gold_version="v1",
+                       requete_sha256="req-a")
+    with pytest.raises(ValueError, match="MÊME requête"):
+        enregistrer_tirage(conn, [_img("ia1")], gold_version="v1",
+                           requete_sha256="req-b")
+    assert len(lire_tirage(conn, "v1")) == 1
+
+
+def test_republier_la_meme_requete_passe(conn):
+    enregistrer_tirage(conn, [_img("ia0")], gold_version="v1",
+                       requete_sha256="req-a")
+    assert enregistrer_tirage(conn, [_img("ia1")], gold_version="v1",
+                              requete_sha256="req-a")["n"] == 1
+
+
+def test_une_version_gelee_refuse_le_tirage(conn):
+    """Le tirage fixe la POPULATION mesurée : le changer après le gel change ce
+    que le banc mesure, exactement ce que RE-5 interdit."""
+    enregistrer_tirage(conn, [_img("ia0")], gold_version="v1")
+    enregistrer_lot(conn, [_ann("ia0")], actor="po", gold_version="v1")
+    geler(conn, "v1", snapshot_sha256="a" * 64)
+    with pytest.raises(OrGele, match="NOUVELLE version"):
+        enregistrer_tirage(conn, [_img("ia1")], gold_version="v1")
+    assert len(lire_tirage(conn, "v1")) == 1
+
+
+def test_le_prefill_est_remis_dans_le_bon_ordre(conn):
+    """`cv2.fitEllipse` rend (largeur, hauteur), PAS (grand, petit) — et le
+    pré-remplissage vient précisément de là. Inversé, il donnerait à
+    l'annotateur une ellipse tournée de 90°."""
+    enregistrer_tirage(conn, [_img("ia0", prefill={**PREFILL, "a": 300.0,
+                                                  "b": 400.0, "theta_deg": 12.0})],
+                       gold_version="v1")
+    row = lire_tirage(conn, "v1")[0]
+    assert (row["prefill_a"], row["prefill_b"]) == (400.0, 300.0)
+    assert row["prefill_theta_deg"] == pytest.approx(102.0)
+
+
+def test_un_prefill_absent_entre_en_bloc_a_null(conn):
+    """`measure_tilt` peut échouer : l'annotateur part alors du cercle de
+    production. La RAISON, elle, reste — elle dit sur quelles strates le
+    pré-remplissage propose mal."""
+    enregistrer_tirage(conn, [_img("ia0", prefill=None,
+                                   prefill_reason="no_contour")],
+                       gold_version="v1")
+    row = lire_tirage(conn, "v1")[0]
+    assert row["prefill_cx"] is None and row["prefill_theta_deg"] is None
+    assert row["prefill_reason"] == "no_contour"
+
+
+def test_un_prefill_a_moitie_rempli_ne_passe_pas_en_base(conn):
+    """Tout ou rien : une proposition à moitié remplie serait une proposition
+    au jugé. Le store le range à NULL AVANT que la contrainte ne morde."""
+    enregistrer_tirage(conn, [_img("ia0", prefill={"cx": 1.0, "cy": 2.0})],
+                       gold_version="v1")
+    assert lire_tirage(conn, "v1")[0]["prefill_cx"] is None
+
+
+def test_le_filtre_de_role_ne_rend_que_ce_qu_on_demande(conn):
+    """La réserve remplace un « indécidable » ; elle n'est pas dans la séance.
+    Servir les deux en vrac ferait annoter 84 images au lieu de 60."""
+    enregistrer_tirage(conn, [_img("ia0"), _img("ia1", role="reserve")],
+                       gold_version="v1")
+    assert [l["asset_id"] for l in lire_tirage(conn, "v1", "tirage")] == ["ia0"]
+    assert [l["asset_id"] for l in lire_tirage(conn, "v1", "reserve")] == ["ia1"]
+    assert len(lire_tirage(conn, "v1")) == 2
+
+
+def test_l_ordre_de_la_seance_est_le_meme_pour_deux_annotateurs(conn):
+    """'tirage' avant 'reserve', puis strate, puis rang. Un ordre instable
+    ferait dériver le temps par image entre deux passes, qui est la mesure du
+    plafond du banc."""
+    enregistrer_tirage(conn, [
+        _img("ia0", role="tirage", strate_tiree="S1_facile", rn=2),
+        _img("ia1", role="reserve", strate_tiree="S1_facile", rn=1),
+        _img("ia2", role="tirage", strate_tiree="S2_capsule", rn=1),
+    ], gold_version="v1")
+    # ni l'ordre d'insertion ni un tri par `asset_id` ne donnent cette suite :
+    # sinon le test passerait aussi sans ORDER BY, et ne garderait rien.
+    assert [l["asset_id"] for l in lire_tirage(conn, "v1")] == ["ia0", "ia2", "ia1"]
+    assert [(l["role"], l["strate_tiree"], l["rn"]) for l in lire_tirage(conn, "v1")] == [
+        ("tirage", "S1_facile", 2), ("tirage", "S2_capsule", 1),
+        ("reserve", "S1_facile", 1)]

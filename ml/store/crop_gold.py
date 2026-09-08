@@ -40,6 +40,19 @@ def _champ(obs, nom, defaut=None):
     return getattr(obs, nom, defaut)
 
 
+def ordonner_demi_axes(a, b, theta):
+    """`(a, b, theta)` avec `a` = demi-GRAND axe, quoi qu'on ait reçu.
+
+    `cv2.fitEllipse` rend (largeur, hauteur), PAS (grand, petit). Laisser entrer
+    l'inversion rendrait tout `d = 0,08·a` faux d'un facteur b/a — et côté
+    tirage, elle donnerait à l'annotateur une ellipse tournée de 90°. Un seul
+    endroit pour la remettre d'aplomb : deux normalisations divergeraient.
+    """
+    if a is not None and b is not None and b > a:
+        return b, a, (theta or 0.0) + 90.0
+    return a, b, theta
+
+
 def assurer_version(conn: sqlite3.Connection, gold_version: str,
                     requete_sha256: str | None = None,
                     note: str | None = None) -> dict:
@@ -93,11 +106,7 @@ def enregistrer_annotation(conn: sqlite3.Connection, obs, *, actor: str,
     if not indecidable and None in (cx, cy, a, b, theta):
         return {"statut": "invalide", "asset_id": asset_id,
                 "raison": "ellipse incomplète et cas non déclaré indécidable"}
-    if a is not None and b is not None and b > a:
-        # `cv2.fitEllipse` rend (largeur, hauteur), PAS (grand, petit). Laisser
-        # entrer l'inversion rendrait tout `d = 0,08·a` faux d'un facteur b/a.
-        a, b = b, a
-        theta = (theta or 0.0) + 90.0
+    a, b, theta = ordonner_demi_axes(a, b, theta)
 
     passe = int(_champ(obs, "passe", 1) or 1)
     if passe < 1:
@@ -169,6 +178,120 @@ def lire(conn: sqlite3.Connection, gold_version: str,
         sql += " AND g.passe = ?"
         params.append(passe)
     sql += " ORDER BY g.passe, g.asset_id"
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
+# ─── Le TIRAGE : ce qu'il y a À annoter (D12, migration 0020) ───────────────
+
+def enregistrer_tirage(conn: sqlite3.Connection, images, *, gold_version: str,
+                       requete_sha256: str | None = None) -> dict:
+    """Publie (ou republie) le tirage d'une version. Idempotent par asset.
+
+    Trois refus, et un non-refus :
+
+    * la version est GELÉE → `OrGele`. Le tirage fait partie de l'or : le
+      changer après le gel changerait la population mesurée, ce que RE-5
+      interdit exactement comme il interdit de corriger une annotation ;
+    * la version existe déjà avec une AUTRE `requete_sha256` → `ValueError`.
+      Un tirage et sa version viennent de la même requête d'échantillonnage ;
+      les découpler rendrait le jeu irreproductible en le laissant croire
+      reproductible, ce qui est pire (RE-5) ;
+    * un `asset_id` absent d'`image_assets` → compté dans `ignorees`, JAMAIS un
+      404 global. Perdre 83 images parce que la 84ᵉ pointe un asset purgé
+      serait ici le pire échec possible — même doctrine que
+      `enregistrer_annotation`.
+    """
+    _refuser_si_gele(conn, gold_version)
+
+    row = conn.execute(
+        "SELECT requete_sha256 FROM crop_gold_versions WHERE gold_version = ?",
+        (gold_version,)).fetchone()
+    if row is None:
+        assurer_version(conn, gold_version, requete_sha256)
+    else:
+        connue = row[0]
+        if connue and requete_sha256 and connue != requete_sha256:
+            raise ValueError(
+                f"la version {gold_version} a été créée sur la requête "
+                f"{connue[:12]}… ; ce tirage vient de {requete_sha256[:12]}… — "
+                f"un tirage et sa version sortent de la MÊME requête, sinon le "
+                f"jeu n'est pas reproductible (RE-5). Publie-le sous une "
+                f"nouvelle version.")
+
+    n = 0
+    ignorees: list[str] = []
+    for img in images:
+        asset_id = _champ(img, "asset_id")
+        if not asset_id or conn.execute(
+                "SELECT 1 FROM image_assets WHERE id = ?",
+                (asset_id,)).fetchone() is None:
+            ignorees.append(asset_id or "(asset_id absent)")
+            continue
+
+        hint = _champ(img, "hint") or {}
+        pre = _champ(img, "prefill") or {}
+        pcx, pcy = _champ(pre, "cx"), _champ(pre, "cy")
+        pa, pb = _champ(pre, "a"), _champ(pre, "b")
+        ptheta = _champ(pre, "theta_deg")
+        if None in (pcx, pcy, pa, pb, ptheta):
+            # Tout ou rien : un pré-remplissage à moitié rempli serait une
+            # proposition au jugé, et la contrainte de 0020 le refuserait de
+            # toute façon — autant que ce soit lisible ici.
+            pcx = pcy = pa = pb = ptheta = None
+        else:
+            pa, pb, ptheta = ordonner_demi_axes(pa, pb, ptheta)
+
+        conn.execute(
+            "INSERT INTO crop_gold_tirage"
+            " (gold_version, asset_id, role, rn, strate_tiree, width, height,"
+            "  hint_cx, hint_cy, hint_r, prefill_cx, prefill_cy, prefill_a,"
+            "  prefill_b, prefill_theta_deg, prefill_reason)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(gold_version, asset_id) DO UPDATE SET"
+            "   role = excluded.role, rn = excluded.rn,"
+            "   strate_tiree = excluded.strate_tiree,"
+            "   width = excluded.width, height = excluded.height,"
+            "   hint_cx = excluded.hint_cx, hint_cy = excluded.hint_cy,"
+            "   hint_r = excluded.hint_r,"
+            "   prefill_cx = excluded.prefill_cx,"
+            "   prefill_cy = excluded.prefill_cy,"
+            "   prefill_a = excluded.prefill_a, prefill_b = excluded.prefill_b,"
+            "   prefill_theta_deg = excluded.prefill_theta_deg,"
+            "   prefill_reason = excluded.prefill_reason",
+            (gold_version, asset_id, _champ(img, "role", "tirage"),
+             _champ(img, "rn"), _champ(img, "strate_tiree"),
+             _champ(img, "width"), _champ(img, "height"),
+             _champ(hint, "cx"), _champ(hint, "cy"), _champ(hint, "r"),
+             pcx, pcy, pa, pb, ptheta, _champ(img, "prefill_reason")))
+        n += 1
+    return {"gold_version": gold_version, "n": n, "ignorees": ignorees}
+
+
+def lire_tirage(conn: sqlite3.Connection, gold_version: str,
+                role: str | None = None) -> list[dict]:
+    """Le tirage d'une version, joint à ce qu'il faut pour l'AFFICHER.
+
+    Même jointure que `lire()` : le front hébergé n'a pas accès au disque du
+    Mac, il lui faut `source` / `source_image_id` / `raw_path` pour qu'une URL
+    servable soit fabriquée. Sans eux la galerie est aveugle hors de la machine
+    du ML.
+
+    Ordre : 'tirage' avant 'reserve', puis strate, puis rang — c'est l'ordre de
+    la séance, et il doit être le même pour deux annotateurs.
+    """
+    sql = (
+        "SELECT t.*, si.id AS source_image_id, si.source,"
+        "       si.storage_path AS raw_path"
+        "  FROM crop_gold_tirage t"
+        "  JOIN image_assets ia ON ia.id = t.asset_id"
+        "  JOIN source_images si ON si.id = ia.source_image_id"
+        " WHERE t.gold_version = ?")
+    params: list = [gold_version]
+    if role is not None:
+        sql += " AND t.role = ?"
+        params.append(role)
+    sql += (" ORDER BY CASE t.role WHEN 'tirage' THEN 0 ELSE 1 END,"
+            " t.strate_tiree, t.rn, t.asset_id")
     return [dict(r) for r in conn.execute(sql, params)]
 
 

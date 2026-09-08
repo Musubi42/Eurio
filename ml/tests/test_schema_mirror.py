@@ -66,6 +66,9 @@ MIROIR_ATTENDU = [
     # 0019 crée deux tables NEUVES (`crop_gold_versions`,
     # `crop_gold_annotations`), rejouables telles quelles sur une base vide.
     "0019_crop_gold_annotations.sql",
+    # 0020 crée une table NEUVE (`crop_gold_tirage`), rejouable telle quelle
+    # sur une base vide — même cas que 0019.
+    "0020_crop_gold_tirage.sql",
 ]
 
 #: Les objets qu'une migration a DÉCLARÉS puis qu'une suivante a remplacés.

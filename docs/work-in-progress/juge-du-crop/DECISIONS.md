@@ -311,3 +311,44 @@ réel d'environ 4 %** : mesuré à **0,975** du demi-côté sur la banque et **0
 sur le corpus d'éval. Les deux anneaux ρ du `bimetal_score` sont donc dessinés
 trop loin. Défaut réel et silencieux, **indépendant de ce chantier** — à corriger
 là où il vit.
+
+## D12 — Le tirage vit dans le canonique, et la séance s'annote depuis le front hébergé · 2026-09-08 · 🟡 PROPOSÉ
+
+**Ce qui l'a motivé, mesuré le jour même.** Dix jours après l'ouverture de la
+séance, `SELECT COUNT(*) FROM crop_gold_annotations` rend **2**, et la dernière
+ligne date du 29/08 08:54 UTC. L'outil d'annotation local a déjà cassé deux
+fois pour des raisons d'environnement, jamais de géométrie : l'UA d'urllib
+refusé par Cloudflare (28/08), une session d'essai dans le répertoire de la
+vraie séance (29/08). Et il exige `cd ml`, le devShell chargé, un port libre
+et une console qu'il faut lire — quatre conditions pour un geste de 40 min.
+
+**Ce qui est décidé.**
+
+1. **Le tirage rejoint l'or dans le canonique** — migration `0020`,
+   table `crop_gold_tirage` (`role`, `strate_tiree`, `rn`, `hint`, `prefill`
+   `measure_tilt` calculé une fois en local et poussé). Les quatre raisons de
+   [D11](#d11) s'appliquent à l'identique : joignable, servable au front
+   hébergé, capturée par `VACUUM INTO`, même nature que l'annotation. Le
+   **verdict humain n'y est pas** : il reste joignable depuis `image_assets`,
+   et l'annotateur ne doit pas le voir. `PUT /crop-gold/{v}/tirage` refuse une
+   version gelée (409) et un `requete_sha256` différent de celui de la version
+   (409) — un tirage et une version viennent de la même requête, ou ce n'est
+   pas RE-5.
+2. **La page `/gold-crop/annoter`** porte le même geste que l'outil local,
+   comportement pour comportement (reprise sur « annotée » et non « touchée »,
+   loupes, chrono, passe 2 par ordre de hachage), et écrit par la même route.
+   Elle n'est pas `heavy` : canonique + URLs présignées.
+3. **`editor_version = 'gold_web_v1'`**, distinct de celui de l'outil local.
+   Même leçon que [D5](#d5) : deux instruments qui produisent la même grandeur
+   doivent rester distinguables, sinon on ne saura jamais lequel a un biais.
+4. **L'outil local n'est pas retiré.** Il écrit dans la même table par la même
+   route ; il reste le repli si le front hébergé tombe. Il n'est plus le
+   chemin documenté.
+
+**Ce que ça ne change pas.** Le protocole (60 images, 15 par strate, seconde
+passe à ≥ 24 h sur 10), le gel, l'empreinte serveur, le juge. Aucun seuil.
+
+**Ce qui attend le PO.** Confirmer que le geste passe mieux au navigateur qu'au
+terminal — c'est une hypothèse sur la cause de l'arrêt, pas une mesure. Si la
+séance reprend, l'hypothèse tient ; sinon la cause est ailleurs et il faudra
+la lui demander.
