@@ -129,7 +129,37 @@ function charger() {
 
 function mesurer() {
   const el = scene.value
-  if (el && el.clientWidth > 0) taille.value = { w: el.clientWidth, h: el.clientHeight }
+  if (!el || el.clientWidth <= 0) return
+  const avant = taille.value
+  const apres = { w: el.clientWidth, h: el.clientHeight }
+  if (avant.w === apres.w && avant.h === apres.h) return
+  taille.value = apres
+  // La scène vient de changer de taille SANS que la fenêtre bouge — menu
+  // replié, panneau qui s'ouvre. Le viewBox suit, sinon le SVG est remis à
+  // l'échelle par `preserveAspectRatio` (bandes en haut et en bas) et 1 px du
+  // pointeur ne vaut plus 1 unité. Le contenu reste centré plutôt que collé en
+  // haut à gauche : on n'a pas à re-cadrer, donc on ne perd ni zoom ni pan.
+  vue.value = {
+    ...vue.value,
+    tx: vue.value.tx + (apres.w - avant.w) / 2,
+    ty: vue.value.ty + (apres.h - avant.h) / 2,
+  }
+}
+
+/**
+ * Point client → unités du viewBox, par la matrice RÉELLE du SVG.
+ *
+ * Le viewBox est censé valoir la taille de la scène, mais entre un changement
+ * de mise en page et l'observateur qui le rattrape il y a une frame — et sur
+ * cette frame le SVG est mis à l'échelle. Un glisser qui supposerait
+ * « 1 px = 1 unité » y ferait sauter la poignée loin du pointeur (mesuré le
+ * 2026-09-09 : 3 px de souris → 63 px de demi-axe). La matrice ne se trompe pas.
+ */
+function versToile(el: SVGSVGElement, X: number, Y: number): [number, number] {
+  const m = typeof el.getScreenCTM === 'function' ? el.getScreenCTM() : null
+  if (m && m.a && m.d) return [(X - m.e) / m.a, (Y - m.f) / m.d]
+  const r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }
+  return [X - r.left, Y - r.top]
 }
 
 function recadrer() {
@@ -179,23 +209,20 @@ const trace = computed(() => {
 
 /** Les trois poignées, en coordonnées image. `A` porte AUSSI la rotation. */
 const poignees = computed(() => {
-  const t = (ell.value.theta * Math.PI) / 180
-  const ux = Math.cos(t)
-  const uy = Math.sin(t)
   const e = ell.value
   return [
-    { id: 'C', couleur: '#60a5fa', titre: 'centre — déplacer', p: versEcran(e.cx, e.cy) },
+    { id: 'C', couleur: '#60a5fa', titre: 'centre — déplacer', p: versEcran(...pointPoignee(e, 'C')) },
     {
       id: 'A',
       couleur: '#4ade80',
       titre: 'grand axe — taille et rotation',
-      p: versEcran(e.cx + e.a * ux, e.cy + e.a * uy),
+      p: versEcran(...pointPoignee(e, 'A')),
     },
     {
       id: 'B',
       couleur: '#34d399',
       titre: 'petit axe — aplatir',
-      p: versEcran(e.cx - e.b * uy, e.cy + e.b * ux),
+      p: versEcran(...pointPoignee(e, 'B')),
     },
   ]
 })
@@ -252,12 +279,33 @@ const secondesEcoulees = computed(() => {
 
 /* ─── interaction ────────────────────────────────────────────────────────── */
 
-let saisie: { type: string; x: number; y: number } | null = null
+/** Où est une poignée, en coordonnées IMAGE. `A` porte aussi la rotation. */
+function pointPoignee(e: EllipseEdition, id: string): [number, number] {
+  const t = (e.theta * Math.PI) / 180
+  if (id === 'A') return [e.cx + e.a * Math.cos(t), e.cy + e.a * Math.sin(t)]
+  if (id === 'B') return [e.cx - e.b * Math.sin(t), e.cy + e.b * Math.cos(t)]
+  return [e.cx, e.cy]
+}
+
+// `x, y` : le pointeur en unités du viewBox (pour le pan). `dx, dy` : l'écart
+// entre la poignée et l'endroit où on l'a saisie, en pixels image — on tient
+// une poignée par son bord aussi bien que par son centre, et l'ellipse ne
+// doit pas sauter de cet écart au premier mouvement.
+let saisie: { type: string; x: number; y: number; dx: number; dy: number } | null = null
 
 function surPointerDown(ev: PointerEvent) {
   const cible = (ev.target as HTMLElement | null)?.dataset?.poignee
-  saisie = { type: cible || 'pan', x: ev.clientX, y: ev.clientY }
   const el = ev.currentTarget as SVGSVGElement
+  const [X, Y] = versToile(el, ev.clientX, ev.clientY)
+  let dx = 0
+  let dy = 0
+  if (cible) {
+    const [ix, iy] = versImage(X, Y)
+    const [px, py] = pointPoignee(ell.value, cible)
+    dx = px - ix
+    dy = py - iy
+  }
+  saisie = { type: cible || 'pan', x: X, y: Y, dx, dy }
   try {
     el.setPointerCapture(ev.pointerId)
   } catch {
@@ -277,17 +325,19 @@ function surPointerUp(ev: PointerEvent) {
 function surPointerMove(ev: PointerEvent) {
   if (!saisie) return
   const el = ev.currentTarget as SVGSVGElement
-  const r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }
-  const [ix, iy] = versImage(ev.clientX - r.left, ev.clientY - r.top)
+  const [X, Y] = versToile(el, ev.clientX, ev.clientY)
+  const [ix0, iy0] = versImage(X, Y)
+  const ix = ix0 + saisie.dx
+  const iy = iy0 + saisie.dy
   const e = { ...ell.value }
   if (saisie.type === 'pan') {
     vue.value = {
       ...vue.value,
-      tx: vue.value.tx + (ev.clientX - saisie.x),
-      ty: vue.value.ty + (ev.clientY - saisie.y),
+      tx: vue.value.tx + (X - saisie.x),
+      ty: vue.value.ty + (Y - saisie.y),
     }
-    saisie.x = ev.clientX
-    saisie.y = ev.clientY
+    saisie.x = X
+    saisie.y = Y
     return
   }
   if (saisie.type === 'C') {
@@ -316,9 +366,7 @@ function surPointerMove(ev: PointerEvent) {
 function surMolette(ev: WheelEvent) {
   ev.preventDefault()
   const el = ev.currentTarget as SVGSVGElement
-  const r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }
-  const X = ev.clientX - r.left
-  const Y = ev.clientY - r.top
+  const [X, Y] = versToile(el, ev.clientX, ev.clientY)
   const [ix, iy] = versImage(X, Y)
   const k = vue.value.k * Math.exp(-ev.deltaY * 0.0015)
   vue.value = { k, tx: X - ix * k, ty: Y - iy * k }
@@ -483,9 +531,17 @@ const prefillTexte = computed(() => {
   return `cercle du crop${r.prefill_reason ? ` · ${r.prefill_reason}` : ''}`
 })
 
+let observateur: ResizeObserver | null = null
+
 onMounted(() => {
   window.addEventListener('keydown', surClavier)
   window.addEventListener('resize', recadrer)
+  // Un `resize` de fenêtre ne dit rien d'un menu replié ni d'un panneau qui
+  // s'ouvre : c'est la scène qu'il faut observer, pas la fenêtre.
+  if (typeof ResizeObserver !== 'undefined' && scene.value) {
+    observateur = new ResizeObserver(() => mesurer())
+    observateur.observe(scene.value)
+  }
   horloge = setInterval(() => (tic.value += 1), 1000)
   void demarrer()
 })
@@ -493,6 +549,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', surClavier)
   window.removeEventListener('resize', recadrer)
+  observateur?.disconnect()
   if (horloge) clearInterval(horloge)
   if (enAttente) clearTimeout(enAttente)
   if (minuteurFlash) clearTimeout(minuteurFlash)

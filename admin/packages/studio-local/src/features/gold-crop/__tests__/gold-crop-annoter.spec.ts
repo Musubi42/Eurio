@@ -191,6 +191,75 @@ describe('la page d’annotation', () => {
     expect(w.find('.ecrit').text()).toContain('canonique · 1')
   })
 
+  // Les trois tests qui suivent verrouillent la panne du 2026-09-09 : menu
+  // replié après le chargement → viewBox en retard sur la taille réelle du SVG
+  // → bandes en haut et en bas, et 3 px de souris faisaient 63 px de demi-axe.
+  const pointeurNatif = (type: string, x: number, y: number) =>
+    new MouseEvent(type, { clientX: x, clientY: y, bubbles: true })
+
+  it('la scène change de taille sans que la fenêtre bouge : le viewBox suit, le contenu reste centré', async () => {
+    const rappels: Array<() => void> = []
+    class Observateur {
+      constructor(cb: () => void) {
+        rappels.push(cb)
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', Observateur)
+    try {
+      servir(TIRAGE_DEMO.images, [])
+      const w = await monter()
+      const scene = w.find('.scene').element as HTMLElement
+      // jsdom ne mesure rien : sans observateur, le viewBox garde sa valeur de repli
+      expect(w.find('svg.toile').attributes('viewBox')).toBe('0 0 900 700')
+      const avant = Number(w.find('ellipse').attributes('cy'))
+      Object.defineProperty(scene, 'clientWidth', { value: 890, configurable: true })
+      Object.defineProperty(scene, 'clientHeight', { value: 844, configurable: true })
+      rappels.forEach((cb) => cb())
+      await w.vm.$nextTick()
+      expect(w.find('svg.toile').attributes('viewBox')).toBe('0 0 890 844')
+      // 144 px de plus en hauteur : le centre descend de 72, il ne reste pas collé en haut
+      expect(Number(w.find('ellipse').attributes('cy')) - avant).toBeCloseTo(72, 6)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('le pointeur est projeté par la matrice réelle du SVG, pas par « 1 px = 1 unité »', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    const w = await monter()
+    const toile = w.find('svg.toile').element as unknown as { getScreenCTM: () => unknown } & Element
+    // le SVG est rendu à moitié de son viewBox (le menu vient de s'ouvrir)
+    toile.getScreenCTM = () => ({ a: 0.5, b: 0, c: 0, d: 0.5, e: 0, f: 0 })
+    const centre = w.find('[data-poignee="C"]')
+    const avant = Number(w.find('ellipse').attributes('cx'))
+    const x = Number(centre.attributes('cx')) * 0.5
+    const y = Number(centre.attributes('cy')) * 0.5
+    centre.element.dispatchEvent(pointeurNatif('pointerdown', x, y))
+    toile.dispatchEvent(pointeurNatif('pointermove', x + 10, y))
+    toile.dispatchEvent(pointeurNatif('pointerup', x + 10, y))
+    await w.vm.$nextTick()
+    // 10 px client à l'échelle ½ = 20 unités du viewBox — pas 10
+    expect(Number(w.find('ellipse').attributes('cx')) - avant).toBeCloseTo(20, 6)
+  })
+
+  it('saisir une poignée à côté de son centre ne fait pas sauter l’ellipse', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    const w = await monter()
+    const toile = w.find('svg.toile').element
+    const grandAxe = w.find('[data-poignee="A"]')
+    const rxAvant = Number(w.find('ellipse').attributes('rx'))
+    // la poignée fait 7 px de rayon : on la tient par son bord, à 6 px du centre
+    const x = Number(grandAxe.attributes('cx')) + 6
+    const y = Number(grandAxe.attributes('cy'))
+    grandAxe.element.dispatchEvent(pointeurNatif('pointerdown', x, y))
+    toile.dispatchEvent(pointeurNatif('pointermove', x, y))
+    toile.dispatchEvent(pointeurNatif('pointerup', x, y))
+    await w.vm.$nextTick()
+    expect(Number(w.find('ellipse').attributes('rx'))).toBeCloseTo(rxAvant, 6)
+  })
+
   it('une ellipse déplacée se déclare modifiée', async () => {
     servir(TIRAGE_DEMO.images, [])
     put.mockResolvedValue({ n: 1 })
