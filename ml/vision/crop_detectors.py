@@ -328,6 +328,18 @@ _TILT_R_RATIO_HI    = 1.40
 _TILT_TRIVIAL       = 0.97    # axis_ratio ≥ seuil → quasi-cercle, angle indéterminé
 
 
+def _sector_indices(angles_deg: np.ndarray, n_sectors: int) -> set:
+    """Indices de secteurs occupés par une liste d'angles en degrés.
+
+    `angles_deg` est déjà réduit à [0, 360[ par un `% 360.0`, mais ce modulo
+    flottant peut rendre EXACTEMENT 360.0 pour un angle négatif infinitésimal
+    (ex. -1e-12°) : `int(360.0 / sector_size)` sort alors de `range(n_sectors)`.
+    Le `% n_sectors` sur l'indice entier referme ce 13ᵉ secteur fantôme.
+    """
+    sector_size = 360.0 / n_sectors
+    return {int(a / sector_size) % n_sectors for a in angles_deg}
+
+
 def measure_tilt(bgr: np.ndarray, hint: dict) -> dict:
     """Mesure l'inclinaison d'une pièce par Canny + fitEllipseAMS sur l'anneau
     de bords autour du hint (même ROI que ``detect_bbox_refine``).
@@ -412,8 +424,7 @@ def measure_tilt(bgr: np.ndarray, hint: dict) -> dict:
         np.arctan2(ring_ys - roi_cy_w, ring_xs - roi_cx_w)
     ) % 360.0
     n_sectors   = 12
-    sector_size = 360.0 / n_sectors
-    occupied    = len(set(int(a / sector_size) for a in angles_deg))
+    occupied    = len(_sector_indices(angles_deg, n_sectors))
     arc_coverage = occupied / n_sectors  # fraction [0, 1]
 
     if arc_coverage < _TILT_ARC_COV_MIN:
