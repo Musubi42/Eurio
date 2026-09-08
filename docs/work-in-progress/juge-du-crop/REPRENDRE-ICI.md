@@ -12,19 +12,24 @@ et produit des crops que la review humaine jette. Celui-ci construit d'abord la
 **vérité terrain** (60 ellipses tracées à la main), *puis* le juge — et il
 s'arrête si le juge ne prédit pas le verdict humain (RE-4).
 
-## ⏱️ État au 2026-08-29
+## ⏱️ État au 2026-09-08
 
 | lot | état |
 |---|---|
-| **L1** — le recadrage manuel devient une mesure | ✅ livré et déployé (27/08), la collecte tourne |
+| **L1** — le recadrage manuel devient une mesure | ✅ déployé (27/08) — mais **0 ligne collectée** : aucune review humaine n'a eu lieu depuis le 27/08 01:42 UTC, *avant* le déploiement. L'instrument n'a jamais rien vu passer |
 | **L2** — jeu d'or : tirage, outil, persistance | ✅ livré et déployé (28/08) |
-| **L2.3** — **la séance d'annotation du PO** | 🟡 **EN COURS — 1 image sur 60** |
-| **L3.1/L3.2** — juge + harness | ✅ écrits et testés (28/08) |
+| **L2.3** — **la séance d'annotation du PO** | 🔴 **À L'ARRÊT — 2 images sur 60**, inchangé depuis le 29/08 08:54 UTC |
+| **L3.1/L3.2** — juge + harness | ✅ écrits, testés, **re-vérifiés le 08/09** sur les 2 annotations réelles (le banc tourne, RE-4 répond « impossible : un groupe vide » — c'est le bon verdict) |
+| **L3.2bis** — le banc lit le canonique (`fetch`, `geler`) | ✅ écrit et testé le 08/09 (25 tests, 7 mutations rouges), smoke lecture seule contre la prod |
 | **L3.3 — RE-4, le point d'arrêt** | 🔴 attend l'or |
 | **L4/L5** — bornes, méthodes candidates | 🔴 |
 
-**Le chemin critique passe par une seule chose : les 59 images restantes.**
-Tout le reste est prêt et vérifié en production.
+**Le chemin critique passe par une seule chose : les 58 images restantes.**
+Tout le code est prêt et vérifié ; rien de ce qui reste n'est du code. Deux
+gestes humains, et eux seuls, font avancer le chantier : **la séance
+d'annotation** (L2.3) et **une séance de review** (sans elle, L1 reste une
+table vide et la question de D6 — la prod sur-crope-t-elle ou sous-crope-t-elle ?
+— reste sans réponse ; la file porte 9 715 items `open`).
 
 ## Ce que le PO doit faire, exactement
 
@@ -116,14 +121,23 @@ marche aussi depuis le front hébergé.
 
 ## Ce qui se passe quand la séance est finie
 
-1. **Geler la `v1`** — `POST /crop-gold/v1/geler`, puis publier l'instantané
+1. **Geler la `v1`** — `cd ml && python -m bench.gold_crop.geler --version v1`.
+   Il refuse tant que la passe 1 n'a pas 60 annotations (`--force` pour passer
+   outre, et le dire au journal), gèle, relit l'instantané, **re-calcule son
+   empreinte et la compare au `snapshot_sha256` du serveur**, puis le publie
    dans `model-artifacts` ;
-2. **Exécuter RE-4** — `cd ml && python -m bench.gold_crop.harness --out state/gold_crop/v1`.
+2. **Rapatrier l'or gelé** — `python -m bench.gold_crop.fetch --out state/gold_crop/v1`
+   (sur la machine du banc, qui peut être le PC : `fetch` complète `sample`,
+   il n'apporte que les annotations). Sur une version gelée il re-vérifie
+   l'empreinte et échoue bruyamment si elle diverge — c'est RE-5 tenu par
+   l'outil, pas par la confiance. Il refuse d'écraser un `gold.json` local
+   qui porterait des annotations absentes du canonique (un envoi raté) ;
+3. **Exécuter RE-4** — `python -m bench.gold_crop.harness --out state/gold_crop/v1`.
    Il publie la corrélation entre `amputation_rate(baseline_prod)` et le verdict
    humain sur les 60. **Si le juge ne sépare pas les acceptés des rejetés, le
    juge est faux et le banc s'arrête là** — c'est tout l'intérêt du dispositif.
    Test de référence : `quality_score` y échoue à 0,0008 près ;
-3. seulement ensuite : L4 (bornes) puis L5 (méthodes candidates).
+4. seulement ensuite : L4 (bornes) puis L5 (méthodes candidates).
 
 ## Les pièges de cette phase, appris à la dure
 
