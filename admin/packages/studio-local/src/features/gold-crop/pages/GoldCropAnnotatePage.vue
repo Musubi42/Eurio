@@ -13,6 +13,13 @@
 // Ce qui écrit, écrit AU CANONIQUE et à chaque validation. Il n'y a plus de
 // filet fichier ici — donc la ligne « écrit » du panneau est le seul témoin, et
 // elle doit dire ce qui a échoué, jamais un code nu.
+//
+// ⚠️ Le geste a changé le 2026-09-09. Trois poignées (centre, grand axe, petit
+// axe) demandaient de penser en demi-axes : pour corriger UN bord, il fallait
+// bouger le centre PUIS l'axe, et les deux se battaient. Ce qu'on veut dire est
+// « ce bord-là est à côté » — donc quatre poignées de BORD, chacune tire son
+// bord pendant que l'opposé ne bouge pas. Et les loupes, qui masquaient la
+// pièce, sont sorties de la scène et se tirent elles aussi (4× plus fin).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -120,6 +127,7 @@ function charger() {
   prefill.value = ellipseDepuisPrefill(r)
   const e = etats.value[r.asset_id]
   ell.value = e?.ellipse ? { ...e.ellipse } : { ...prefill.value }
+  loupeActive.value = null
   debut = performance.now()
   mesurer()
   recadrer()
@@ -167,8 +175,13 @@ function recadrer() {
   if (!r) return
   mesurer()
   const { w: W, h: H } = taille.value
-  // on cadre sur l'ellipse, pas sur le raw : c'est le listel qu'on vient juger
-  const rayon = Math.max(ell.value.a, ell.value.b, r.hint.r) * 1.35
+  // on cadre sur l'ellipse, pas sur le raw : c'est le listel qu'on vient juger.
+  // 1,12 et pas 1,35 : les loupes ne sont plus dans la scène, la pièce peut
+  // enfin la remplir — le reste n'était que des bandes noires.
+  // × 1,22 : assez serré pour que la pièce remplisse la scène, assez large pour
+  // que les poignées de bord (rayon de prise 14 px) ne soient pas coupées par
+  // le cadre — à × 1,12 le haut et le bas tombaient pile sur le bord (vu le 09/09)
+  const rayon = Math.max(ell.value.a, ell.value.b, r.hint.r) * 1.22
   const k = Math.min(W, H) / (2 * rayon)
   vue.value = { k, tx: W / 2 - ell.value.cx * k, ty: H / 2 - ell.value.cy * k }
 }
@@ -181,6 +194,77 @@ const versImage = (X: number, Y: number): [number, number] => [
   (X - vue.value.tx) / vue.value.k,
   (Y - vue.value.ty) / vue.value.k,
 ]
+
+/* ─── géométrie de l'ellipse ─────────────────────────────────────────────── */
+
+/** Le repère propre de l'ellipse : `u` le long du grand axe, `v` la normale. */
+function axes(e: EllipseEdition): { u: [number, number]; v: [number, number] } {
+  const t = (e.theta * Math.PI) / 180
+  return { u: [Math.cos(t), Math.sin(t)], v: [-Math.sin(t), Math.cos(t)] }
+}
+
+/** L'anneau de rotation se pose au-delà du bord E, hors du tracé. */
+const RAYON_ANNEAU = 1.18
+
+/** Le bord d'en face — celui qui NE BOUGE PAS quand on tire. */
+const OPPOSE: Record<string, string> = { E: 'W', W: 'E', N: 'S', S: 'N' }
+
+/** Où est une poignée, en coordonnées IMAGE. */
+function pointPoignee(e: EllipseEdition, id: string): [number, number] {
+  const { u, v } = axes(e)
+  if (id === 'E') return [e.cx + e.a * u[0], e.cy + e.a * u[1]]
+  if (id === 'W') return [e.cx - e.a * u[0], e.cy - e.a * u[1]]
+  if (id === 'S') return [e.cx + e.b * v[0], e.cy + e.b * v[1]]
+  if (id === 'N') return [e.cx - e.b * v[0], e.cy - e.b * v[1]]
+  if (id === 'R') {
+    return [e.cx + RAYON_ANNEAU * e.a * u[0], e.cy + RAYON_ANNEAU * e.a * u[1]]
+  }
+  return [e.cx, e.cy]
+}
+
+/** La direction qui SORT de l'ellipse au droit d'un bord. */
+function sortante(e: EllipseEdition, id: string): [number, number] {
+  const { u, v } = axes(e)
+  if (id === 'E') return [u[0], u[1]]
+  if (id === 'W') return [-u[0], -u[1]]
+  if (id === 'S') return [v[0], v[1]]
+  return [-v[0], -v[1]]
+}
+
+/**
+ * Tirer UN bord vers un point, l'opposé restant cloué.
+ *
+ * Le pointeur est projeté sur la droite de l'axe passant par le bord fixe : on
+ * ne demande à personne de viser une droite au pixel près. Le demi-axe devient
+ * la moitié de la distance au bord fixe, et le centre se place au milieu — donc
+ * tirer N vers le haut grandit `b` ET remonte le centre de la moitié.
+ *
+ * ⚠️ Aucune borne `b ≤ a` ici : pendant le glisser, un petit axe qui dépasse le
+ * grand est une ellipse parfaitement légitime, seulement tournée d'un quart de
+ * tour. La ramener de force ferait coller le bord au pointeur puis décrocher.
+ * `normaliserEllipse` échange les axes À LA VALIDATION, là où le nombre part.
+ */
+function tirerBord(e: EllipseEdition, id: string, ix: number, iy: number): EllipseEdition {
+  const { u, v } = axes(e)
+  const d = id === 'E' || id === 'W' ? u : v
+  const [fx, fy] = pointPoignee(e, OPPOSE[id])
+  const s = (ix - fx) * d[0] + (iy - fy) * d[1]
+  const signe = s < 0 ? -1 : 1
+  const long = Math.max(8, Math.abs(s)) // demi-axe minimal : 4 px image
+  const px = fx + signe * long * d[0]
+  const py = fy + signe * long * d[1]
+  const n: EllipseEdition = { ...e, cx: (fx + px) / 2, cy: (fy + py) / 2 }
+  if (id === 'E' || id === 'W') n.a = long / 2
+  else n.b = long / 2
+  return n
+}
+
+/** Pousser un bord de `delta` pixels image vers l'extérieur (négatif = dedans). */
+function deplacerBord(e: EllipseEdition, id: string, delta: number): EllipseEdition {
+  const [px, py] = pointPoignee(e, id)
+  const [ox, oy] = sortante(e, id)
+  return tirerBord(e, id, px + delta * ox, py + delta * oy)
+}
 
 /* ─── rendu ──────────────────────────────────────────────────────────────── */
 
@@ -207,57 +291,50 @@ const trace = computed(() => {
   }
 })
 
-/** Les trois poignées, en coordonnées image. `A` porte AUSSI la rotation. */
+/** Les six poignées, à l'écran. Quatre bords, un centre, un anneau. */
 const poignees = computed(() => {
   const e = ell.value
+  const p = (id: string) => versEcran(...pointPoignee(e, id))
   return [
-    { id: 'C', couleur: '#60a5fa', titre: 'centre — déplacer', p: versEcran(...pointPoignee(e, 'C')) },
-    {
-      id: 'A',
-      couleur: '#4ade80',
-      titre: 'grand axe — taille et rotation',
-      p: versEcran(...pointPoignee(e, 'A')),
-    },
-    {
-      id: 'B',
-      couleur: '#34d399',
-      titre: 'petit axe — aplatir',
-      p: versEcran(...pointPoignee(e, 'B')),
-    },
+    { id: 'C', couleur: '#60a5fa', creuse: false, titre: 'centre — déplacer tout', p: p('C') },
+    { id: 'E', couleur: '#4ade80', creuse: false, titre: 'bord droit — l’opposé ne bouge pas', p: p('E') },
+    { id: 'W', couleur: '#4ade80', creuse: false, titre: 'bord gauche — l’opposé ne bouge pas', p: p('W') },
+    { id: 'N', couleur: '#4ade80', creuse: false, titre: 'bord haut — l’opposé ne bouge pas', p: p('N') },
+    { id: 'S', couleur: '#4ade80', creuse: false, titre: 'bord bas — l’opposé ne bouge pas', p: p('S') },
+    { id: 'R', couleur: '#f0abfc', creuse: true, titre: 'anneau — tourner seulement', p: p('R') },
   ]
 })
 
 // Les quatre loupes du bord. « Mon ellipse est-elle SUR le bord ? » ne se répond
 // pas à la vue d'ensemble : à l'échelle où la pièce tient à l'écran, 2 % du
-// rayon font 4 pixels. On montre donc le contour de près, aux 4 points
-// cardinaux, avec le trait dessus.
-const LOUPE = 104
+// rayon font 4 pixels. On montre donc le contour de près, aux 4 bords, avec le
+// trait dessus — et SOUS la scène, plus par-dessus la pièce.
+const LOUPE = 128
 const ZOOM = 4
+
+/** Chaque loupe regarde un bord : c'est aussi par elle qu'on le tire. */
+const VUES: { nom: string; id: string }[] = [
+  { nom: 'haut', id: 'N' },
+  { nom: 'droite', id: 'E' },
+  { nom: 'bas', id: 'S' },
+  { nom: 'gauche', id: 'W' },
+]
+
+const loupeActive = ref<string | null>(null)
 
 const loupes = computed(() => {
   const r = courante.value
   if (!r) return []
   const e = ell.value
-  const t = (e.theta * Math.PI) / 180
-  const ct = Math.cos(t)
-  const st = Math.sin(t)
-  const vues: [string, number][] = [
-    ['haut', -Math.PI / 2],
-    ['droite', 0],
-    ['bas', Math.PI / 2],
-    ['gauche', Math.PI],
-  ]
-  return vues.map(([nom, phi]) => {
-    const u = e.a * Math.cos(phi)
-    const v = e.b * Math.sin(phi)
-    const px = e.cx + u * ct - v * st
-    const py = e.cy + u * st + v * ct
+  return VUES.map(({ nom, id }) => {
+    const [px, py] = pointPoignee(e, id)
     const tx = LOUPE / 2 - px * ZOOM
     const ty = LOUPE / 2 - py * ZOOM
     const cx = e.cx * ZOOM + tx
     const cy = e.cy * ZOOM + ty
     return {
       nom,
+      id,
       url: r.raw_url,
       tx,
       ty,
@@ -272,20 +349,19 @@ const loupes = computed(() => {
   })
 })
 
+/** La tige qui relie le bord E à l'anneau — sinon l'anneau flotte sans lien. */
+const tige = computed(() => {
+  const [x1, y1] = versEcran(...pointPoignee(ell.value, 'E'))
+  const [x2, y2] = versEcran(...pointPoignee(ell.value, 'R'))
+  return { x1, y1, x2, y2 }
+})
+
 const secondesEcoulees = computed(() => {
   void tic.value
   return (performance.now() - debut) / 1000
 })
 
-/* ─── interaction ────────────────────────────────────────────────────────── */
-
-/** Où est une poignée, en coordonnées IMAGE. `A` porte aussi la rotation. */
-function pointPoignee(e: EllipseEdition, id: string): [number, number] {
-  const t = (e.theta * Math.PI) / 180
-  if (id === 'A') return [e.cx + e.a * Math.cos(t), e.cy + e.a * Math.sin(t)]
-  if (id === 'B') return [e.cx - e.b * Math.sin(t), e.cy + e.b * Math.cos(t)]
-  return [e.cx, e.cy]
-}
+/* ─── interaction : la scène ─────────────────────────────────────────────── */
 
 // `x, y` : le pointeur en unités du viewBox (pour le pan). `dx, dy` : l'écart
 // entre la poignée et l'endroit où on l'a saisie, en pixels image — on tient
@@ -343,24 +419,17 @@ function surPointerMove(ev: PointerEvent) {
   if (saisie.type === 'C') {
     e.cx = ix
     e.cy = iy
-  } else if (saisie.type === 'A') {
-    const dx = ix - e.cx
-    const dy = iy - e.cy
-    e.a = Math.max(4, Math.hypot(dx, dy))
-    e.theta = (Math.atan2(dy, dx) * 180) / Math.PI // A porte AUSSI la rotation
-    e.b = Math.min(e.b, e.a)
-  } else if (saisie.type === 'B') {
-    const t = (e.theta * Math.PI) / 180
-    // projection sur la normale au grand axe : B ne change QUE le petit axe
-    e.b = Math.min(
-      e.a,
-      Math.max(3, Math.abs(-(ix - e.cx) * Math.sin(t) + (iy - e.cy) * Math.cos(t))),
-    )
+    ell.value = e
+  } else if (saisie.type === 'R') {
+    // l'anneau ne fait QUE tourner : ni taille ni centre
+    e.theta = (Math.atan2(iy - e.cy, ix - e.cx) * 180) / Math.PI
+    ell.value = e
+  } else if (OPPOSE[saisie.type]) {
+    ell.value = tirerBord(e, saisie.type, ix, iy)
   }
   // Pas de normalisation ICI : ramener θ dans [0, 180) en plein glisser ferait
-  // sauter la poignée A à l'opposé dès qu'on passe à gauche du centre. On
-  // normalise à la validation, là où le nombre part au canonique.
-  ell.value = e
+  // sauter l'anneau à l'opposé dès qu'on passe à gauche du centre. On normalise
+  // à la validation, là où le nombre part au canonique.
 }
 
 function surMolette(ev: WheelEvent) {
@@ -372,8 +441,75 @@ function surMolette(ev: WheelEvent) {
   vue.value = { k, tx: X - ix * k, ty: Y - iy * k }
 }
 
+/* ─── interaction : les loupes ───────────────────────────────────────────── */
+
+// Une loupe n'est pas qu'un témoin : c'est la surface d'édition FINE. Elle
+// montre le bord à ×4, donc un pixel de souris y vaut un quart de pixel image —
+// c'est là qu'on gagne les deux derniers pixels de listel.
+let saisieLoupe: { nom: string; id: string; x: number; y: number } | null = null
+
+function surLoupeDown(ev: PointerEvent, l: { nom: string; id: string }) {
+  loupeActive.value = l.nom
+  saisieLoupe = { nom: l.nom, id: l.id, x: ev.clientX, y: ev.clientY }
+  try {
+    ;(ev.currentTarget as SVGSVGElement).setPointerCapture(ev.pointerId)
+  } catch {
+    /* idem : jsdom */
+  }
+}
+
+function surLoupeUp(ev: PointerEvent) {
+  saisieLoupe = null
+  try {
+    ;(ev.currentTarget as SVGSVGElement).releasePointerCapture(ev.pointerId)
+  } catch {
+    /* idem */
+  }
+}
+
+function surLoupeMove(ev: PointerEvent) {
+  const s = saisieLoupe
+  if (!s) return
+  const [ox, oy] = sortante(ell.value, s.id)
+  // le déplacement du pointeur, projeté sur la sortante, ramené en pixels image
+  const delta = ((ev.clientX - s.x) * ox + (ev.clientY - s.y) * oy) / ZOOM
+  s.x = ev.clientX
+  s.y = ev.clientY
+  if (delta) ell.value = deplacerBord(ell.value, s.id, delta)
+}
+
+function surLoupeMolette(ev: WheelEvent, l: { nom: string; id: string }) {
+  ev.preventDefault()
+  loupeActive.value = l.nom
+  ell.value = deplacerBord(ell.value, l.id, ev.deltaY < 0 ? 0.25 : -0.25)
+}
+
+/** Les flèches, en direction d'écran. */
+const FLECHES: Record<string, [number, number]> = {
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+}
+
+function pousserBord(nom: string, fleche: [number, number], pas: number) {
+  const l = VUES.find((v) => v.nom === nom)
+  if (!l) return
+  const [ox, oy] = sortante(ell.value, l.id)
+  const signe = Math.sign(fleche[0] * ox + fleche[1] * oy)
+  if (!signe) return
+  ell.value = deplacerBord(ell.value, l.id, signe * pas)
+}
+
 function surClavier(ev: KeyboardEvent) {
-  if (ev.key === 'Enter' || ev.key === 'ArrowRight') {
+  const fleche = FLECHES[ev.key]
+  if (ev.key === 'Escape') {
+    loupeActive.value = null
+  } else if (fleche && loupeActive.value) {
+    // Une loupe choisie confisque les flèches : elles poussent son bord au lieu
+    // de changer d'image. Échap rend la navigation.
+    pousserBord(loupeActive.value, fleche, ev.shiftKey ? 2 : 0.5)
+  } else if (ev.key === 'Enter' || ev.key === 'ArrowRight') {
     valider()
     aller(+1)
   } else if (ev.key === 'ArrowLeft') {
@@ -558,82 +694,111 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="annoter">
-    <div ref="scene" class="scene">
-      <svg
-        v-if="courante"
-        class="toile"
-        :viewBox="boite"
-        @pointerdown="surPointerDown"
-        @pointerup="surPointerUp"
-        @pointercancel="surPointerUp"
-        @pointermove="surPointerMove"
-        @wheel="surMolette"
-      >
-        <image
-          :href="courante.raw_url" :x="cadre.x" :y="cadre.y"
-          :width="cadre.w" :height="cadre.h"
-        />
-        <ellipse
-          :cx="trace.cx" :cy="trace.cy" :rx="trace.rx" :ry="trace.ry"
-          :transform="trace.rot" fill="none" stroke="#ffd166" stroke-width="1.6"
-        />
-        <!-- la bande du Boundary IoU, d = 0,08·a : ce que le juge regardera -->
-        <ellipse
-          :cx="trace.cx" :cy="trace.cy" :rx="trace.rx * 0.92" :ry="trace.ry * 0.92"
-          :transform="trace.rot" fill="none" stroke="#ffd166" stroke-width="0.8"
-          stroke-dasharray="4 4" opacity="0.55"
-        />
-        <template v-for="h in poignees" :key="h.id">
-          <!-- halo sombre : sur un listel clair, un disque plein seul disparaît -->
-          <circle
-            :cx="h.p[0]" :cy="h.p[1]" r="9" fill="none" stroke="#0b0d10"
-            stroke-width="2.5" opacity="0.7" pointer-events="none"
+    <div class="colonne">
+      <div ref="scene" class="scene">
+        <svg
+          v-if="courante"
+          class="toile"
+          :viewBox="boite"
+          @pointerdown="surPointerDown"
+          @pointerup="surPointerUp"
+          @pointercancel="surPointerUp"
+          @pointermove="surPointerMove"
+          @wheel="surMolette"
+        >
+          <image
+            :href="courante.raw_url" :x="cadre.x" :y="cadre.y"
+            :width="cadre.w" :height="cadre.h"
           />
-          <circle
-            :data-poignee="h.id" :cx="h.p[0]" :cy="h.p[1]" r="7" :fill="h.couleur"
-            stroke="#0b0d10" stroke-width="1.5" class="poignee"
-          >
-            <title>{{ h.titre }}</title>
-          </circle>
-        </template>
-      </svg>
+          <ellipse
+            :cx="trace.cx" :cy="trace.cy" :rx="trace.rx" :ry="trace.ry"
+            :transform="trace.rot" fill="none" stroke="#ffd166" stroke-width="1.6"
+          />
+          <!-- la bande du Boundary IoU, d = 0,08·a : ce que le juge regardera -->
+          <ellipse
+            :cx="trace.cx" :cy="trace.cy" :rx="trace.rx * 0.92" :ry="trace.ry * 0.92"
+            :transform="trace.rot" fill="none" stroke="#ffd166" stroke-width="0.8"
+            stroke-dasharray="4 4" opacity="0.55"
+          />
+          <!-- la tige de l'anneau : sans elle, il flotte sans dire d'où il vient -->
+          <line
+            :x1="tige.x1" :y1="tige.y1" :x2="tige.x2" :y2="tige.y2"
+            stroke="#f0abfc" stroke-width="1" opacity="0.5" pointer-events="none"
+          />
+          <template v-for="h in poignees" :key="h.id">
+            <!-- halo sombre : sur un listel clair, un disque plein seul disparaît -->
+            <circle
+              :cx="h.p[0]" :cy="h.p[1]" r="9" fill="none" stroke="#0b0d10"
+              stroke-width="2.5" opacity="0.7" pointer-events="none"
+            />
+            <circle
+              :cx="h.p[0]" :cy="h.p[1]" r="7" :fill="h.creuse ? 'none' : h.couleur"
+              :stroke="h.creuse ? h.couleur : '#0b0d10'" :stroke-width="h.creuse ? 2.5 : 1.5"
+              pointer-events="none"
+            />
+            <!-- la cible du doigt fait le double du disque : on vise un bord,
+                 pas un pixel -->
+            <circle
+              :data-poignee="h.id" :cx="h.p[0]" :cy="h.p[1]" r="14"
+              fill="transparent" class="poignee"
+            >
+              <title>{{ h.titre }}</title>
+            </circle>
+          </template>
+        </svg>
 
+        <div v-if="courante" class="incrust gauche">
+          a={{ ell.a.toFixed(1) }} b={{ ell.b.toFixed(1) }}
+          b/a={{ (ell.b / ell.a).toFixed(3) }} θ={{ ell.theta.toFixed(1) }}°
+          <span class="doux">· {{ secondesEcoulees.toFixed(0) }} s</span>
+        </div>
+        <div v-if="courante" class="incrust droite">
+          <span class="pastille" :class="etatImage.classe">{{ etatImage.texte }}</span>
+        </div>
+        <div v-if="flash" class="flash">{{ flash }}</div>
+
+        <div v-if="chargement" class="vide">chargement…</div>
+        <div v-else-if="erreur" class="vide erreur">{{ erreur }}</div>
+        <div v-else-if="!images.length" class="vide">
+          <b>Le tirage n'est pas encore publié au canonique.</b>
+          <p class="doux">
+            Ce n'est pas une panne : il n'y a rien à annoter tant que les 60 images
+            n'ont pas été tirées et publiées. Depuis la machine du ML :
+          </p>
+          <pre>python -m bench.gold_crop.publier_tirage --out state/gold_crop/{{ version }}</pre>
+        </div>
+      </div>
+
+      <!-- Les loupes vivent SOUS la scène, jamais dessus : elles montraient le
+           bord en cachant la pièce. -->
       <div class="loupes">
-        <figure v-for="l in loupes" :key="l.nom">
-          <svg :width="LOUPE" :height="LOUPE" :viewBox="`0 0 ${LOUPE} ${LOUPE}`">
+        <figure v-for="l in loupes" :key="l.nom" :class="{ actif: loupeActive === l.nom }">
+          <svg
+            :data-loupe="l.nom" :width="LOUPE" :height="LOUPE"
+            :viewBox="`0 0 ${LOUPE} ${LOUPE}`"
+            @pointerdown="surLoupeDown($event, l)"
+            @pointermove="surLoupeMove"
+            @pointerup="surLoupeUp"
+            @pointercancel="surLoupeUp"
+            @wheel="surLoupeMolette($event, l)"
+          >
             <image :href="l.url" :x="l.tx" :y="l.ty" :width="l.w" :height="l.h" />
             <ellipse
               :cx="l.cx" :cy="l.cy" :rx="l.rx" :ry="l.ry" :transform="l.rot"
               fill="none" stroke="#ffd166" stroke-width="1.2"
             />
-            <circle
-              :cx="LOUPE / 2" :cy="LOUPE / 2" r="2" fill="none" stroke="#ffd166"
-              stroke-width="1" opacity="0.8"
+            <!-- la croisée dit où est le bord exactement, au pixel de la loupe -->
+            <line
+              :x1="LOUPE / 2 - 9" :y1="LOUPE / 2" :x2="LOUPE / 2 + 9" :y2="LOUPE / 2"
+              stroke="#ffd166" stroke-width="0.8" opacity="0.9"
+            />
+            <line
+              :x1="LOUPE / 2" :y1="LOUPE / 2 - 9" :x2="LOUPE / 2" :y2="LOUPE / 2 + 9"
+              stroke="#ffd166" stroke-width="0.8" opacity="0.9"
             />
           </svg>
           <figcaption>{{ l.nom }}</figcaption>
         </figure>
-      </div>
-
-      <div v-if="courante" class="incrust gauche">
-        a={{ ell.a.toFixed(1) }} b={{ ell.b.toFixed(1) }}
-        b/a={{ (ell.b / ell.a).toFixed(3) }} θ={{ ell.theta.toFixed(1) }}°
-        <span class="doux">· {{ secondesEcoulees.toFixed(0) }} s</span>
-      </div>
-      <div v-if="courante" class="incrust droite">
-        <span class="pastille" :class="etatImage.classe">{{ etatImage.texte }}</span>
-      </div>
-      <div v-if="flash" class="flash">{{ flash }}</div>
-
-      <div v-if="chargement" class="vide">chargement…</div>
-      <div v-else-if="erreur" class="vide erreur">{{ erreur }}</div>
-      <div v-else-if="!images.length" class="vide">
-        <b>Le tirage n'est pas encore publié au canonique.</b>
-        <p class="doux">
-          Ce n'est pas une panne : il n'y a rien à annoter tant que les 60 images
-          n'ont pas été tirées et publiées. Depuis la machine du ML :
-        </p>
-        <pre>python -m bench.gold_crop.publier_tirage --out state/gold_crop/{{ version }}</pre>
       </div>
     </div>
 
@@ -656,18 +821,21 @@ onBeforeUnmount(() => {
         Fais coïncider l'ellipse jaune avec le <b>bord extérieur de la pièce</b> —
         le listel, pas l'anneau aux étoiles. Puis <kbd>Entrée</kbd>.
         <p class="doux">
-          Les 4 vignettes du bas montrent ce bord de près, aux 4 points cardinaux.
-          Si le trait jaune y colle au métal, c'est bon.
+          Les 4 loupes sous l'image montrent ce bord de près. Si le trait jaune y
+          colle au métal, c'est bon.
         </p>
       </div>
 
       <section class="bloc">
-        <h2>Les trois poignées</h2>
+        <h2>Les gestes</h2>
         <div class="legende">
-          <i style="background: #60a5fa"></i><span><b>centre</b> — déplacer l'ellipse</span>
-          <i style="background: #4ade80"></i><span><b>grand axe</b> — taille <em>et</em> rotation</span>
-          <i style="background: #34d399"></i><span><b>petit axe</b> — aplatir seulement</span>
+          <i style="background: #4ade80"></i><span><b>bord</b> — tire un bord, l'opposé ne bouge pas</span>
+          <i style="background: #60a5fa"></i><span><b>centre</b> — déplace tout</span>
+          <i style="background: #f0abfc"></i><span><b>anneau</b> — tourne</span>
         </div>
+        <p class="doux">
+          Les loupes se tirent aussi : 4× plus fin, flèches ±0,5 px.
+        </p>
       </section>
 
       <section class="bloc">
@@ -727,12 +895,16 @@ onBeforeUnmount(() => {
         <h2>Clavier</h2>
         <div class="aide">
           <kbd>Entrée</kbd><span>valider et suivante</span>
-          <kbd>← →</kbd><span>naviguer</span>
+          <kbd>← →</kbd><span>naviguer — <em>sauf</em> si une loupe est choisie</span>
+          <kbd>flèches</kbd><span>loupe choisie : pousser le bord ±0,5 px</span>
+          <kbd>Maj + flèche</kbd><span>±2 px</span>
+          <kbd>molette</kbd><span>sur une loupe : ±0,25 px</span>
+          <kbd>Échap</kbd><span>lâcher la loupe et rendre les flèches</span>
           <kbd>1…4</kbd><span>confirmer la strate</span>
           <kbd>i</kbd><span>indécidable</span>
           <kbd>r</kbd><span>revenir au pré-remplissage</span>
           <kbd>f</kbd><span>recadrer la vue</span>
-          <kbd>molette</kbd><span>zoom · glisser = déplacer</span>
+          <kbd>molette</kbd><span>sur la scène : zoom · glisser = déplacer</span>
         </div>
       </section>
 
@@ -762,6 +934,7 @@ onBeforeUnmount(() => {
    (R2). Seul le fond de scène est sombre — un trait d'or sur du blanc ne se voit
    pas, et c'est le trait qu'on vient juger. */
 .annoter { display: flex; height: calc(100vh - 3.5rem); color: var(--ink-700); }
+.colonne { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .scene { flex: 1; position: relative; overflow: hidden; background: var(--ink); }
 .toile { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .poignee { cursor: grab; }
@@ -820,11 +993,17 @@ kbd { background: var(--surface-2); border: 1px solid var(--surface-3);
 .strates-aide dt { font-weight: 600; white-space: nowrap; }
 .strates-aide dd { margin: 0; color: var(--ink-500); }
 
-.loupes { position: absolute; left: 0.75rem; bottom: 3.5rem; display: flex; gap: 0.5rem; }
-.loupes figure { margin: 0; background: var(--surface); border: 1px solid var(--surface-3);
-                 border-radius: var(--radius-md); padding: 0.25rem; }
+/* La bande des loupes : sous la scène, jamais dessus. */
+.loupes { flex: none; display: flex; gap: var(--space-3); justify-content: center;
+          padding: 0.5rem var(--space-3); background: var(--surface);
+          border-top: 1px solid var(--surface-3); }
+.loupes figure { margin: 0; background: var(--ink); border: 1px solid var(--surface-3);
+                 border-radius: var(--radius-md); padding: 0.2rem; cursor: ns-resize; }
+.loupes figure.actif { border-color: var(--gold-500);
+                       box-shadow: 0 0 0 2px var(--gold-300); }
+.loupes svg { display: block; touch-action: none; }
 .loupes figcaption { text-align: center; font-size: 0.65rem; color: var(--ink-500);
-                     letter-spacing: 0.06em; }
+                     letter-spacing: 0.06em; padding-top: 0.1rem; }
 
 .incrust { position: absolute; bottom: 0.75rem; background: var(--surface);
            border: 1px solid var(--surface-3); border-radius: var(--radius-sm);

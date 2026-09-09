@@ -248,16 +248,164 @@ describe('la page d’annotation', () => {
     servir(TIRAGE_DEMO.images, [])
     const w = await monter()
     const toile = w.find('svg.toile').element
-    const grandAxe = w.find('[data-poignee="A"]')
+    const bordE = w.find('[data-poignee="E"]')
     const rxAvant = Number(w.find('ellipse').attributes('rx'))
-    // la poignée fait 7 px de rayon : on la tient par son bord, à 6 px du centre
-    const x = Number(grandAxe.attributes('cx')) + 6
-    const y = Number(grandAxe.attributes('cy'))
-    grandAxe.element.dispatchEvent(pointeurNatif('pointerdown', x, y))
+    // la cible du doigt fait 14 px de rayon : on la tient par son bord, à 12 px
+    // du centre — l'ellipse ne doit pas sauter de cet écart
+    const x = Number(bordE.attributes('cx')) + 12
+    const y = Number(bordE.attributes('cy'))
+    bordE.element.dispatchEvent(pointeurNatif('pointerdown', x, y))
     toile.dispatchEvent(pointeurNatif('pointermove', x, y))
     toile.dispatchEvent(pointeurNatif('pointerup', x, y))
     await w.vm.$nextTick()
     expect(Number(w.find('ellipse').attributes('rx'))).toBeCloseTo(rxAvant, 6)
+  })
+
+  /* ── le geste refondu du 2026-09-09 : on tire un BORD ─────────────────── */
+  //
+  // `a1` part du pré-remplissage cx=452 cy=448 a=372 b=361 θ=12. L'échelle `k`
+  // ne se devine pas en jsdom : on la relit sur le tracé (`rx = a·k`).
+  const T12 = (12 * Math.PI) / 180
+  const U: [number, number] = [Math.cos(T12), Math.sin(T12)] // le long du grand axe
+  const SORTANTE_N: [number, number] = [Math.sin(T12), -Math.cos(T12)] // vers le haut
+
+  const echelle = (w: ReturnType<typeof mount>) =>
+    Number(w.find('ellipse').attributes('rx')) / 372
+
+  function tirer(
+    w: ReturnType<typeof mount>,
+    id: string,
+    dir: [number, number],
+    dEcran: number,
+  ) {
+    const toile = w.find('svg.toile').element
+    const p = w.find(`[data-poignee="${id}"]`)
+    const x = Number(p.attributes('cx'))
+    const y = Number(p.attributes('cy'))
+    p.element.dispatchEvent(pointeurNatif('pointerdown', x, y))
+    toile.dispatchEvent(pointeurNatif('pointermove', x + dir[0] * dEcran, y + dir[1] * dEcran))
+    toile.dispatchEvent(pointeurNatif('pointerup', x + dir[0] * dEcran, y + dir[1] * dEcran))
+  }
+
+  it('tirer le bord E cloue le bord W et ne déplace le centre que de la moitié', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    const w = await monter()
+    const W = w.find('[data-poignee="W"]')
+    const wx = Number(W.attributes('cx'))
+    const wy = Number(W.attributes('cy'))
+    const cxAvant = Number(w.find('ellipse').attributes('cx'))
+    const cyAvant = Number(w.find('ellipse').attributes('cy'))
+    const rxAvant = Number(w.find('ellipse').attributes('rx'))
+
+    tirer(w, 'E', U, 40)
+    await w.vm.$nextTick()
+
+    // le bord d'en face n'a pas bougé d'un pixel — c'est TOUT le geste
+    expect(Number(w.find('[data-poignee="W"]').attributes('cx'))).toBeCloseTo(wx, 6)
+    expect(Number(w.find('[data-poignee="W"]').attributes('cy'))).toBeCloseTo(wy, 6)
+    // …donc le demi-axe et le centre prennent chacun la moitié des 40 px
+    expect(Number(w.find('ellipse').attributes('rx')) - rxAvant).toBeCloseTo(20, 6)
+    expect(Number(w.find('ellipse').attributes('cx')) - cxAvant).toBeCloseTo(20 * U[0], 6)
+    expect(Number(w.find('ellipse').attributes('cy')) - cyAvant).toBeCloseTo(20 * U[1], 6)
+  })
+
+  it('tirer N au-delà de a est permis : c’est la VALIDATION qui échange les axes', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    put.mockResolvedValue({ n: 1 })
+    const w = await monter()
+    // 100 px image vers le haut : b passe de 361 à 411, donc au-dessus de a=372.
+    // Rien ne doit brider le glisser — sinon le bord décroche du pointeur.
+    tirer(w, 'N', SORTANTE_N, 100 * echelle(w))
+    await w.vm.$nextTick()
+    expect(w.find('.incrust.gauche').text()).toContain('b=411.0')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    await dodo()
+    const a = (put.mock.calls[0][1] as { annotations: Record<string, unknown>[] }).annotations[0]
+    const e = a.ellipse as { a: number; b: number; theta: number }
+    expect(e.a).toBeCloseTo(411, 6)
+    expect(e.b).toBeCloseTo(372, 6)
+    expect(e.a).toBeGreaterThanOrEqual(e.b)
+    expect(e.theta).toBeCloseTo(102, 6) // 12 + 90 : θ reste l'angle du GRAND axe
+  })
+
+  it('la loupe est une surface d’édition : 8 px de souris = 2 px image', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    const w = await monter()
+    const S = w.find('[data-poignee="S"]')
+    const sx = Number(S.attributes('cx'))
+    const sy = Number(S.attributes('cy'))
+    const loupe = w.find('[data-loupe="haut"]')
+    loupe.element.dispatchEvent(pointeurNatif('pointerdown', 0, 0))
+    loupe.element.dispatchEvent(
+      pointeurNatif('pointermove', 8 * SORTANTE_N[0], 8 * SORTANTE_N[1]),
+    )
+    loupe.element.dispatchEvent(pointeurNatif('pointerup', 8 * SORTANTE_N[0], 8 * SORTANTE_N[1]))
+    await w.vm.$nextTick()
+    // ×4 : le bord monte de 2 px image, donc b prend 1 et le centre l'autre
+    expect(w.find('.incrust.gauche').text()).toContain('b=362.0')
+    expect(w.find('.incrust.gauche').text()).toContain('a=372.0')
+    // le bord opposé reste cloué, comme dans la scène
+    expect(Number(w.find('[data-poignee="S"]').attributes('cx'))).toBeCloseTo(sx, 6)
+    expect(Number(w.find('[data-poignee="S"]').attributes('cy'))).toBeCloseTo(sy, 6)
+  })
+
+  it('une loupe choisie confisque les flèches ; Échap les rend à la navigation', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    put.mockResolvedValue({ n: 1 })
+    const w = await monter()
+    const k = echelle(w)
+    const ry = () => Number(w.find('ellipse').attributes('ry'))
+
+    w.find('[data-loupe="haut"]').element.dispatchEvent(pointeurNatif('pointerdown', 0, 0))
+    await w.vm.$nextTick()
+    expect(w.find('.loupes figure').classes()).toContain('actif')
+
+    const avant = ry()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
+    await w.vm.$nextTick()
+    // 0,5 px de bord = 0,25 px de demi-axe (l'opposé ne bouge pas)
+    expect((ry() - avant) / k).toBeCloseTo(0.25, 6)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true }))
+    await w.vm.$nextTick()
+    expect((ry() - avant) / k).toBeCloseTo(1.25, 6) // 0,25 + 2/2
+    // et surtout : on n'a PAS changé d'image
+    expect(w.text()).toContain('a1')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await w.vm.$nextTick()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+    await dodo()
+    expect(w.text()).toContain('a2')
+  })
+
+  it('la molette sur une loupe pousse le bord DEHORS, et ne fait pas défiler la page', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    const w = await monter()
+    const k = echelle(w)
+    const ry = () => Number(w.find('ellipse').attributes('ry'))
+    const avant = ry()
+    const loupe = w.find('[data-loupe="haut"]').element
+
+    // vers le haut = vers l'extérieur. Le sens n'est pas indifférent : une
+    // sortante retournée ferait rentrer le bord quand on croit l'élargir.
+    const dehors = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })
+    loupe.dispatchEvent(dehors)
+    await w.vm.$nextTick()
+    expect((ry() - avant) / k).toBeCloseTo(0.125, 6) // 0,25 px de bord
+    expect(dehors.defaultPrevented).toBe(true) // sinon la page défile sous la loupe
+
+    loupe.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }))
+    await w.vm.$nextTick()
+    expect((ry() - avant) / k).toBeCloseTo(0, 6)
+  })
+
+  it('les loupes ne sont PAS dans la scène — elles masquaient la pièce', async () => {
+    servir(TIRAGE_DEMO.images, [])
+    const w = await monter()
+    expect(w.find('.loupes').exists()).toBe(true)
+    expect(w.find('.scene').findAll('.loupes')).toHaveLength(0)
+    expect(w.find('.colonne > .loupes').exists()).toBe(true)
   })
 
   it('une ellipse déplacée se déclare modifiée', async () => {
