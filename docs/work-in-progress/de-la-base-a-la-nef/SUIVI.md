@@ -75,3 +75,17 @@ Succession : « rien ne manquait ».
 Le FAIL transitoire de 0.4 est réel et instructif : un commit poussé après la chaîne VPS suffit à désaligner le sol. C'est l'argument de l'étape 1, une machine qui regarde à chaque push. La 9e ref `archive/*` locale est `vps-main` (D9), volontairement absente de github.
 
 **Étape 1 ouverte** : le fil à plomb. Préalable connu : `pytest` absent du devShell.
+
+## Étape 1 — Le fil à plomb
+
+### Contrat · 2026-09-10
+
+**Faits établis avant de lancer** :
+- `ml/.venv/bin/python -m pytest -q` → **2 795 passed, 40 warnings, 136 s**, depuis le shell du Mac (direnv chargé, secrets exportés). Ce qui reste à prouver : le même vert **sans** les secrets et sans la réplique, sur un runner neuf.
+- `pytest` n'est ni dans le flake ni dans `pyproject.toml` (D11). La venv se bâtit par `go-task ml:setup` (uv, `--system-site-packages`, torch par plateforme).
+- Dépôt public ; pas de job Android (D10). `Taskfile.yml` est **modifié par un autre chantier** : ne pas y toucher ; la CI appelle `go-task tokens:check` qui existe déjà, et les commandes de test directement.
+- `gh` est authentifié (`Musubi42`).
+
+**Entrées** : `PLAN.md` §Étape 1, D2, D10, D11. **Sorties** : `.github/workflows/ci.yml`, le devShell `ci` dans `flake.nix`, `pytest` dans `pythonEnv`, un run vert sur `main`, la falsification jouée, la liste des tests rouges sans secrets s'il y en a.
+
+**Interdits** : désactiver ou marquer `skip` un test ; secret dans le workflow ; toucher `Taskfile.yml`, `ml/tasks.yml`, ou tout fichier modifié de l'autre chantier ; `git add -A` ; relancer une commande longue sans ordre de l'architecte ; plus d'un push par itération.

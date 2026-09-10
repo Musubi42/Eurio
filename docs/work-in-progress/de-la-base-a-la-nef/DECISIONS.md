@@ -76,3 +76,19 @@ Geste : le tag reste sur le Mac et sur le VPS ; un bundle `../archives/eurio-vps
 **Pourquoi** : ADR-004, les artefacts binaires sont hors de git. Pousser ce tag aurait gravé 1,3 Go de sauvegardes SQLite dans le dépôt de référence pour toujours. Rien n'est perdu : deux copies sur deux machines plus un bundle vérifié.
 
 **Reste à faire, BACKLOG** : déposer le bundle sur MinIO pour qu'il entre dans les anneaux de sauvegarde.
+
+## D10 — La CI de l'étape 1 porte trois jobs ; Android attend l'étape 4 · 2026-09-10 · ✅ architecte, amende D2
+
+Mesuré avant de lancer : le `preBuild` Gradle fetch les modèles depuis MinIO avec des identifiants (ADR-004), exige `matc` installé par `go-task filament:install-matc`, et le SDK Android par `androidenv` pèse plusieurs Go. Le dépôt github est **public** (`gh repo view` → `PUBLIC`) : un secret MinIO dans Actions serait exposé aux forks.
+
+Geste : `ci.yml` = `ml` (pytest), `admin` (vitest, typecheck si < 3 min), `tokens` (`go-task tokens:check`). Le job Android est un critère de l'**étape 4**, où la signature et ses secrets sont posés de toute façon.
+
+**Pourquoi** : trois jobs qui crient aujourd'hui valent plus qu'un quatrième qui attend un chantier de secrets. Le fil à plomb se pose sur la pierre qu'on a.
+
+## D11 — `pytest` entre dans le flake, pas dans la venv par accident · 2026-09-10 · ✅ architecte
+
+Mesuré : `nix develop .#mac --command python -m pytest --version` → « No module named pytest » ; `ml/.venv/bin/python -m pytest --version` → `pytest 9.0.3`, non déclaré dans `pyproject.toml` (il arrive par une dépendance transitive). La suite complète passe pourtant : **2 795 passed en 136 s** (`ml/.venv/bin/python -m pytest -q`, 2026-09-10).
+
+Geste : `pytest` s'ajoute à `pythonEnv` dans `flake.nix` (la venv hérite par `--system-site-packages`, comme numpy et fastapi). Le devShell `ci` est un `mkShell` léger : `pythonEnv`, `uv`, `nodejs_22`, `pnpm`, `go-task` ; ni JDK ni SDK Android.
+
+**Pourquoi** : un outil de vérification qui n'est pas déclaré disparaît au premier rebuild de venv. ADR-002 : tout par le flake.

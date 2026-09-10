@@ -68,7 +68,7 @@ Pendant ce chantier, **aucun commit n'entre dans `ml/`, `studio-local/` ou `docs
 
 ## Étape 1 — Le fil à plomb : une CI qui crie
 
-**Objectif.** Chaque push sur `main` fait tourner ce qui peut casser en silence : `pytest` (ml), `vitest` (studio-local), `go-task tokens:check`, et la compilation Android debug. Une casse volontaire la met au rouge.
+**Objectif.** Chaque push sur `main` fait tourner ce qui peut casser en silence : `pytest` (ml), `vitest` (studio-local), `go-task tokens:check`. La compilation Android rejoint la CI à l'étape 4 (D10). Une casse volontaire la met au rouge.
 
 **Ce qui est tranché** (D2) : GitHub Actions, puisque github est le dépôt de référence. Le job entre par `nix develop .#ci`, un devShell léger à créer dans `flake.nix`, pour que la CI et le poste de dev partagent le même toolchain (ADR-002). Pas de `pip install` ni de `brew` dans le workflow.
 
@@ -78,7 +78,7 @@ Pendant ce chantier, **aucun commit n'entre dans `ml/`, `studio-local/` ou `docs
 |---|---|---|---|
 | 1.1 | Le workflow existe et cible `main` | `cat .github/workflows/ci.yml \| grep -n 'branches'` | `main` |
 | 1.2 | Le dernier run sur `main` est vert | `gh run list --branch main --limit 1 --json conclusion` | `success` |
-| 1.3 | Les quatre jobs y sont | `gh run view --json jobs -q '.jobs[].name'` | `ml`, `admin`, `tokens`, `android` |
+| 1.3 | Les trois jobs y sont (D10 : Android attend l'étape 4) | `gh run view --json jobs -q '.jobs[].name'` | `ml`, `admin`, `tokens` |
 | 1.4 | Le devShell `ci` fournit pytest | `nix develop .#ci --command python -m pytest --version` | une version |
 | 1.5 | Durée raisonnable | `gh run view --json jobs -q '.jobs[] \| .name+" "+.conclusion'` et l'horodatage | < 20 min total, sinon D2 rouvert |
 
