@@ -286,3 +286,15 @@ Passe finale, lecture disque forcée, contrôle `149` / `2` en tête : **10 rép
 Deux faits pour la suite : (1) le hook du flake ressuscitait `codeberg`, corrigé ; **un état vérifié une fois n'est pas un état tenu**, les critères d'état se rejouent après un passage dans l'outil qui pourrait les défaire. (2) Le harnais injecte un `CLAUDE.md` périmé dans les sous-agents : tout test sur ce fichier lit le disque.
 
 **Étape 4 en attente du PO** : D4 (la nef s'ouvre avec ce qui existe) et D5 (comment compter un scan venu d'ailleurs) sont encore 🟡 / ⏳. L'étape commence par un scan bout en bout du PO sur son téléphone avec le build de `main`.
+
+## Étape 4 — La nef
+
+### Contrat · 2026-09-11 · feu vert PO sur D4 et D5 (compteur local)
+
+**Partage des gestes.** L'exécutant prépare la signature release depuis SOPS, `versionCode 2 / 0.2.0`, `go-task android:release` et `android:bundle`, la trace horodatée d'un scan abouti en Room (D5, sans aucune UI : R1), et `PLAY-INTERNE.md`, la fiche et la liste des cases. Le PO fait le scan bout en bout sur son téléphone avec le build de `main`, la mise en ligne sur la piste interne, le choix des cinq testeurs.
+
+**Ce que D5 ne couvre pas encore** : l'export du compte par un testeur exige un geste dans l'app, donc une scène proto (R1). En attendant, le compte se lit en debug par `adb`. Le PO tranche le geste d'export ; ce n'est pas un bloqueur de la mise en ligne.
+
+**Interdits** : feature, écran, bouton, modèle nouveau (D4) ; un secret en clair hors SOPS ; toucher `secrets/dev.env` au-delà d'un ajout, et le rapporter tel quel (l'arbre le porte déjà modifié par une autre session) ; `git add -A`.
+
+**En parallèle, hors de ce chantier** : `juge-du-crop` reprend (D12) — RE-4 préliminaire sur 41 images, sans gel, décision D14 dans son propre `DECISIONS.md`.
