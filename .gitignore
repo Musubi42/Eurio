@@ -312,3 +312,12 @@ ml/state/**/*.html
 # projet qui en a besoin pointe vers l'instance déjà lancée. Garde anti-réintroduction
 # (un `services/ccproxy` copié en local est apparu côté PC — incident 2026-07-05).
 /services/
+
+# Keystore de signature RELEASE Android — jamais dans git (ADR-015 : la source
+# unique des secrets est `secrets/dev.env`, chiffré SOPS+age). Le fichier est
+# régénéré au build par la tâche Gradle `materializeReleaseKeystore` à partir de
+# ANDROID_RELEASE_KEYSTORE_B64. `debug.keystore` reste tracké : c'est la clé
+# debug standard (password "android"), pas un secret.
+app-android/keys/*.jks
+app-android/keys/*.keystore
+!app-android/keys/debug.keystore

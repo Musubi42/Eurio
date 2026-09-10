@@ -31,6 +31,53 @@ tasks:
       - task: install
       - task: start
 
+  release:
+    desc: Assemble the SIGNED release APK (piste interne Play Store) and print its certificate
+    summary: |
+      Build de publication (étape 4 « la nef », D4). La clé vient de
+      secrets/dev.env (SOPS+age, ADR-015) exporté par direnv — donc cette tâche
+      se lance depuis le devShell, jamais avec un `./gradlew` nu.
+
+      Si une des quatre variables ANDROID_RELEASE_* manque, le build s'arrête
+      avec la marche à suivre au lieu de produire un APK non signé.
+
+      L'APK sert à installer sur un téléphone (adb install). Pour la Play
+      Console, c'est `go-task android:bundle` qu'il faut (AAB).
+    dir: '{{.TASKFILE_DIR}}/..'
+    cmds:
+      - ./gradlew :app-android:assembleFullRelease
+      - |
+        set -e
+        APK="app-android/build/outputs/apk/full/release/app-android-full-release.apk"
+        if [ ! -f "$APK" ]; then
+          echo "✗ APK introuvable : $APK" >&2
+          exit 1
+        fi
+        echo ""
+        echo "→ APK signé : $APK ($(du -h "$APK" | cut -f1))"
+        echo ""
+        "$ANDROID_SDK_ROOT"/build-tools/36.0.0/apksigner verify --print-certs "$APK"
+
+  bundle:
+    desc: Build the SIGNED release AAB — le format exigé par la Play Console
+    summary: |
+      L'Android App Bundle est ce que la Play Console accepte pour une piste
+      interne ; l'APK ne sert qu'à l'installation directe par adb. Même clé,
+      même garde-fou que `android:release`.
+    dir: '{{.TASKFILE_DIR}}/..'
+    cmds:
+      - ./gradlew :app-android:bundleFullRelease
+      - |
+        set -e
+        AAB="app-android/build/outputs/bundle/fullRelease/app-android-full-release.aab"
+        if [ ! -f "$AAB" ]; then
+          echo "✗ AAB introuvable : $AAB" >&2
+          exit 1
+        fi
+        echo ""
+        echo "→ AAB signé, à téléverser dans la Play Console :"
+        echo "  $AAB ($(du -h "$AAB" | cut -f1))"
+
   build-qa:
     desc: Assemble the QA APK (with parity state injection)
     dir: '{{.TASKFILE_DIR}}/..'

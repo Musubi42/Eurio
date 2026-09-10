@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -13,6 +14,49 @@ val envProps = Properties().apply {
     if (envFile.exists()) envFile.inputStream().use { load(it) }
 }
 
+// ── Signature RELEASE (étape 4 « la nef », D4) ───────────────────────────────
+// La clé de signature du Play Store vit dans `secrets/dev.env` (SOPS + age,
+// ADR-015), jamais sur disque en clair et jamais dans git. `.envrc` la
+// déchiffre et l'exporte ; le build matérialise le keystore sous `build/`
+// (gitignoré, effacé par `clean`) à partir du base64, le temps de signer.
+//
+// Quatre variables sont requises :
+//   ANDROID_RELEASE_KEYSTORE_B64   le PKCS12 encodé base64
+//   ANDROID_RELEASE_STORE_PASSWORD le mot de passe du keystore
+//   ANDROID_RELEASE_KEY_ALIAS      `eurio-release`
+//   ANDROID_RELEASE_KEY_PASSWORD   le mot de passe de la clé
+//
+// Si l'une manque, un build release **échoue bruyamment** (cf. le
+// `gradle.taskGraph.whenReady` en bas de ce fichier) au lieu de produire un
+// APK non signé — une panne muette de plus n'entrerait pas dans ce dépôt.
+val releaseSigningVarNames = listOf(
+    "ANDROID_RELEASE_KEYSTORE_B64",
+    "ANDROID_RELEASE_STORE_PASSWORD",
+    "ANDROID_RELEASE_KEY_ALIAS",
+    "ANDROID_RELEASE_KEY_PASSWORD",
+)
+val releaseSigningMissing: List<String> =
+    releaseSigningVarNames.filter { (System.getenv(it) ?: "").isBlank() }
+val releaseSigningAvailable: Boolean = releaseSigningMissing.isEmpty()
+
+// Matérialisé sous `build/` (gitignoré) : le fichier ne survit pas à un clean,
+// et il n'existe que sur une machine dont l'environnement porte déjà la clé.
+val releaseKeystoreFile: File =
+    layout.buildDirectory.file("release-signing/release.jks").get().asFile
+
+if (releaseSigningAvailable) {
+    releaseKeystoreFile.parentFile.mkdirs()
+    releaseKeystoreFile.writeBytes(
+        Base64.getDecoder().decode(
+            System.getenv("ANDROID_RELEASE_KEYSTORE_B64").trim()
+        )
+    )
+    releaseKeystoreFile.setReadable(false, false)
+    releaseKeystoreFile.setReadable(true, true)
+    releaseKeystoreFile.setWritable(false, false)
+    releaseKeystoreFile.setWritable(true, true)
+}
+
 android {
     namespace = "com.musubi.eurio"
     compileSdk = 36
@@ -21,8 +65,8 @@ android {
         applicationId = "com.musubi.eurio"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -50,6 +94,18 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+
+        // Clé du Play Store. Renseignée seulement quand l'environnement porte
+        // les quatre variables (cf. en-tête). Sinon la config reste vide et le
+        // garde-fou `whenReady` en bas de fichier arrête tout build release.
+        create("release") {
+            if (releaseSigningAvailable) {
+                storeFile = releaseKeystoreFile
+                storePassword = System.getenv("ANDROID_RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -63,6 +119,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
             buildConfigField("Boolean", "IS_QA", "false")
         }
         create("qa") {
@@ -290,3 +347,29 @@ val fetchModelAssets by tasks.registering(Exec::class) {
     )
 }
 tasks.named("preBuild") { dependsOn(fetchModelAssets) }
+// ── Garde-fou : pas de build release non signé ───────────────────────────────
+// Sans signingConfig renseignée, AGP produit un APK/AAB *non signé* sans le
+// dire. Ici les pannes sont muettes (cf. skill `eurio-verify`) : on refuse le
+// build au lieu de livrer un artefact inutilisable. La règle ne se déclenche
+// que si une tâche release est réellement demandée — `assembleDebug` et les
+// tests unitaires restent jouables sans la clé.
+gradle.taskGraph.whenReady {
+    val releaseTaskPattern = Regex("^(assemble|bundle|install|package)[A-Za-z]*Release$")
+    val wantsRelease = allTasks.any {
+        it.project.path == project.path && releaseTaskPattern.matches(it.name)
+    }
+    if (wantsRelease && !releaseSigningAvailable) {
+        throw GradleException(
+            buildString {
+                appendLine("Build release impossible : la clé de signature n'est pas dans l'environnement.")
+                appendLine("Variable(s) manquante(s) : ${releaseSigningMissing.joinToString(", ")}")
+                appendLine()
+                appendLine("Elles vivent dans secrets/dev.env (SOPS + age, ADR-015) et sont exportées")
+                appendLine("par direnv. Trois vérifications, dans l'ordre :")
+                appendLine("  1. go-task secrets:check      # le fichier est déchiffrable sur cette machine")
+                appendLine("  2. direnv reload              # le shell recharge secrets/dev.env")
+                appendLine("  3. go-task android:release    # jamais ./gradlew nu : direnv ne s'applique pas")
+            }
+        )
+    }
+}
