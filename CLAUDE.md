@@ -354,22 +354,19 @@ classe nouvelle (1 h 45 ici) là où DINO n'a rien à réentraîner.
 | **Corpus de scan : où sont les photos, comment ne pas les perdre** | `docs/work-in-progress/scan-quality/DURABILITE-CORPUS.md`, puis `docs/work-in-progress/scan-sans-retrain/PROTOCOLE-CAPTURE.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
 
-### Dépôts git — github d'abord, codeberg abandonné
+### Dépôts git — `github`, tronc `main`, rien d'autre
 
-**`github` est le dépôt de référence.** Pousse là en premier ; c'est de là que
-le VPS doit tirer (`git pull --ff-only github repo-cleanup`).
+**`github` est le seul remote, `main` la seule branche.** Pousse là ; c'est de là
+que le VPS tire (`git fetch github main && git merge --ff-only github/main` — un
+`--ff-only` explicite refuse au lieu de fabriquer un merge). Tranché le 2026-09-10
+(chantier `de-la-base-a-la-nef`, D1) : les anciennes branches de travail
+(`repo-cleanup`, `matrice-dino`, …) sont des **tags `archive/*`**, pas des branches.
 
-⚠️ **Le remote `codeberg` n'est plus alimenté.** Le compte et les dépôts restent
-en place, on ne les supprime pas — on ne s'en sert plus. Deux conséquences
-immédiates, mesurées le 2026-08-20 :
-
-- le push HTTPS vers codeberg **pend puis expire** depuis le Mac (`exit 124`,
-  aucun message) — ne perds pas de temps à le débloquer ;
-- ✅ **le clone du VPS (`/opt/eurio`) suit `github` depuis le 2026-08-25**
-  (`branch.*.remote`, `remote.pushDefault`, `checkout.defaultRemote`). Le piège était
-  réel : `codeberg/repo-cleanup` avait **90 commits de retard**. Déploie quand même
-  avec `git fetch github repo-cleanup && git merge --ff-only github/repo-cleanup` —
-  un `--ff-only` explicite refuse au lieu de fabriquer un merge.
+Le remote `codeberg` a été **retiré du clone local et des instructions** le
+2026-09-10. Le compte reste en place, on ne s'en sert plus (historique : le 2026-08-20
+son push HTTPS pendait puis expirait depuis le Mac ; le 2026-08-25 sa branche
+`repo-cleanup` avait 90 commits de retard sur github). Le clone du VPS (`/opt/eurio`)
+suit `github/main` (`branch.main.remote`, `remote.pushDefault`).
 
 📌 **À faire (non planifié) : passer à GitLab en dépôt principal, github en
 miroir**, et repointer le remote du VPS. Tant que ce n'est pas fait, la règle

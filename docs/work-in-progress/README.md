@@ -22,9 +22,9 @@ file sert** (Σ « à portée » 840 → 557), ce qui s'annonce au PO avant, pas
 défaut ([ADR-009](../adr/009-direction-a-writer-canonique-unique.md)). C'est le piège
 n°1 du dépôt.
 
-⚠️ **Le clone du VPS suit encore `codeberg`.** Un `git pull` nu y ramène un arbre en
-retard. Déployer avec `git fetch github repo-cleanup && git merge --ff-only
-github/repo-cleanup`.
+Le tronc est `main` sur `github`, seul remote (depuis le 2026-09-10, D1 de
+`de-la-base-a-la-nef/`). Déployer avec `git fetch github main && git merge --ff-only
+github/main`.
 
 ## Les chantiers
 
