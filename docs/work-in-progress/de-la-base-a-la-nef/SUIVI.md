@@ -89,3 +89,29 @@ Le FAIL transitoire de 0.4 est réel et instructif : un commit poussé après la
 **Entrées** : `PLAN.md` §Étape 1, D2, D10, D11. **Sorties** : `.github/workflows/ci.yml`, le devShell `ci` dans `flake.nix`, `pytest` dans `pythonEnv`, un run vert sur `main`, la falsification jouée, la liste des tests rouges sans secrets s'il y en a.
 
 **Interdits** : désactiver ou marquer `skip` un test ; secret dans le workflow ; toucher `Taskfile.yml`, `ml/tasks.yml`, ou tout fichier modifié de l'autre chantier ; `git add -A` ; relancer une commande longue sans ordre de l'architecte ; plus d'un push par itération.
+
+### Rapport de l'exécutant · 2026-09-10
+
+Deux commits sur `main` : `422d1534` (workflow, devShell `ci`, `pytest` dans `pythonEnv`) puis `dcc3f08a` (le devShell `ci` expose la `libstdc++` du stdenv sur Linux : les wheels `torch+cu126` la cherchaient sur l'Ubuntu du runner, même rôle que `nvidiaHook` sur le PC). `flake.lock` inchangé. `go-task ml:setup` appelé tel quel dans le job `ml`, pour ne pas créer une seconde source de vérité.
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 1.1 | `13:    branches: [main]` | PASS |
+| 1.2 | run 34493861491 → `failure` : job `ml` rouge sur **15 tests**, non désactivés | **FAIL** |
+| 1.3 | `admin`, `ml`, `tokens` | PASS |
+| 1.4 | `pytest 9.0.2` dans `.#ci` et `.#mac` | PASS |
+| 1.5 | 4 min 50 total : `tokens` 52 s, `admin` 1 min 28 (vitest + typecheck), `ml` 4 min 46 | PASS |
+
+Falsification : PR #2 draft, run 34494617526 → `ml` failure (`test_ci_must_scream`), `tokens` failure (`✗ DÉRIVE Color.kt`, exit 2), `admin` success. `cancel-in-progress` vérifié (run 34494578374 annulé par le push suivant). Branche et PR supprimées.
+
+**Les 15 rouges** (`15 failed, 2699 passed, 79 skipped in 185 s`) : aucun n'attend un secret, **tous lisent un fichier gitignoré** :
+- `test_lab_api.py` ×5 : `sources_routes.py:1978` et `coin_assets_routes.py:323` ouvrent `_DB_PATH` en `mode=ro` sur le vrai `eurio.db`, pas sur le `tmp_path` du test. **Ce n'est pas un défaut de test, c'est un couplage caché dans la route.**
+- `test_numista_transforms.py` ×2 : `ml/state/numista_cache/10069/prices_*.json`.
+- `test_orchestrator.py` ×5, `test_orchestrator_push_c4c.py` ×2 : `MockAdapter` lit `ml/datasets/{64,80,88,96,104}/obverse.jpg`.
+- `test_refetch_numista_2eur.py::test_parse_real_cohort_file` : `ml/state/cohort_validation_19.txt`.
+
+Choix rapportés : pas de `magic-nix-cache-action` (backend GitHub arrêté en février 2025), `cache.nixos.org` suffit, shell `.#ci` en ~40 s. Cache Actions `ml/.venv` jamais rempli (service en `400` pendant les runs), sans effet sur la durée. `ml/.venv` du Mac devenue périmée par le changement de `pythonEnv` → `go-task ml:venv-rebuild` lancé par l'architecte.
+
+### Verdict de l'architecte · 2026-09-10 · **étape 1 ouverte sur 1.2 seul**
+
+Le fil à plomb est posé et il crie. Il a d'abord crié sur ceci : 2 795 tests « verts » sur le Mac dont 15 ne l'étaient que par la présence de données hors dépôt. Le critère 1.2 se fermera quand l'étape 2 aura rendu ces 15 tests honnêtes ; les autres critères de l'étape 1 sont soumis au contre-relecteur.
