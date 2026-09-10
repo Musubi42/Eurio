@@ -1,166 +1,60 @@
-# CLAUDE.md — Eurio repo-level guidance
+# CLAUDE.md — les préceptes d'Eurio
 
-> Instructions durables pour Claude Code dans ce dépôt. Lis ce fichier avant de toucher le code ou les docs.
+> Règles intemporelles et pointeurs, rien d'autre. Ce qui porte une date, une mesure ou un état
+> de chantier vit dans [`docs/architecture/ETAT.md`](docs/architecture/ETAT.md) ; le *pourquoi*
+> des règles dans [`docs/adr/README.md`](docs/adr/README.md). Lis ce fichier avant de toucher au dépôt.
 
-## Mission produit
+## Mission
 
-Eurio est une app Android de collection de pièces euro. L'acte central de l'app est le **scan** : l'utilisateur ouvre l'app, pointe sa caméra sur une pièce, et l'app l'identifie + lui propose de l'ajouter à son coffre. Tout le reste de l'UX tourne autour de cet acte — comme TikTok tourne autour de la création de contenu.
-
-Voir `docs/app-implem-phases/README.md` pour le plan détaillé en 6 phases (0 à 5), et `docs/app-implem-phases/phase-*.md` pour chaque phase individuellement.
+Eurio est une app Android de collection de pièces euro. L'acte central est le **scan** : l'utilisateur
+pointe sa caméra sur une pièce, l'app l'identifie et propose de l'ajouter à son coffre. Tout le reste
+de l'UX tourne autour de cet acte. Plan : `docs/app-implem-phases/README.md`.
 
 ## Monorepo
 
 ```
-Eurio/
-├── app-android/                       # App Kotlin/Compose (Material 3)
-├── admin/                             # pnpm workspace
-│   ├── packages/studio-local/         # Front UNIQUE (R1) : local (PAT, :5173, ML lourd) + hébergé (cookie OIDC, lourd grisé), piloté par VITE_DEPLOY_TARGET
-│   ├── packages/proto/                # Prototype design = Vue+Pinia PWA (SOURCE DE VÉRITÉ du design)
-│   └── packages/parity/               # Tooling QA local-only (Playwright, Maestro flows, screenshots)
-├── ml/                                # Python standalone : FastAPI, entraînement, fetch (Numista/Wiki/eBay)
-├── supabase/                          # Migrations SQL + types générés (legacy, en cours de retrait)
-├── shared/                            # Package workspace `@eurio/shared` : tokens.css (R2) + fixtures/
-├── scripts/                           # Générateurs et utilitaires cross-module (Node)
-├── infra/
-│   ├── eurio-api/                     # FastAPI léger sur VPS (eurio-api.musubi.dev)
-│   ├── eurio-admin/                   # Nginx static sur VPS (eurio-admin.musubi.dev)
-│   ├── minio/                         # MinIO assets (eurio-s3.musubi.dev)
-│   └── backup/                        # Chaîne de sauvegarde — VPS UNIQUEMENT (cf. §Sauvegarde)
-├── docs/
-│   ├── adr/                           # 16 ADR — le SEUL journal de décisions
-│   ├── architecture/                  # état réel : par stockage, par geste, par artefact
-│   ├── work-in-progress/              # 13 chantiers VIVANTS (index dans son README.md)
-│   ├── archive/                       # livré ou abandonné — traçabilité, jamais pilotage
-│   ├── BACKLOG.md                     # le reste-à-faire des chantiers archivés
-│   ├── app-implem-phases/             # Plan des 6 phases d'implémentation Android
-│   ├── design/                        # Design docs
-│   │   └── _shared/                   # parity-rules, components-parity, scene-parity, data-contracts, etc.
-│   └── research/                      # Recherche et décisions techniques
-└── Taskfile.yml                       # Point d'entrée des commandes (go-task)
+app-android/        App Kotlin/Compose (Material 3) — le produit
+admin/              pnpm workspace : studio-local/ (le SEUL front admin), proto/ (source de vérité du design), parity/ (QA)
+ml/                 Python standalone (hors pnpm) : FastAPI, entraînement, fetch Numista/Wiki/eBay
+shared/             package `@eurio/shared` : tokens.css (R2) + fixtures/ ; scripts/ = générateurs cross-module (Node)
+infra/              eurio-api/, eurio-admin/, minio/ (VPS) ; backup/ (VPS uniquement) ; supabase/ = migrations SQL legacy
+docs/               adr/ (le SEUL journal de décisions) · architecture/ (état réel) · work-in-progress/ · archive/ · BACKLOG.md · design/_shared/ · research/
+Taskfile.yml        point d'entrée des commandes (go-task)
 ```
-
-### Architecture frontend (CRITIQUE — à graver)
-
-> ✅ **Fusion faite (R1, 2026-06-30).** **UN seul front** = `admin/packages/studio-local`,
-> servi à deux endroits via **un seul réglage de build** `VITE_DEPLOY_TARGET` (cf.
-> `studio-local/src/shared/config/deploy-target.ts`). `admin-vps` **supprimé**.
-
-**Un seul codebase, un seul backend** `eurio-api.musubi.dev`, deux modes :
-
-| | **local** (`VITE_DEPLOY_TARGET=local`, défaut) | **hébergé** (`=hosted`) |
-|---|---|---|
-| **Où** | Mac/PC, `pnpm dev` sur `localhost:5173` | VPS, `https://eurio-admin.musubi.dev` |
-| **Auth** | Bearer PAT depuis `.env.local` (gitignored) | Cookie OIDC posé par eurio-api après Authentik |
-| **Heavy ML `:8042`** | actif (crops, scrape, training, lab, bench…) | **grisé + notice** (`hasLocalMlApi`=false ; mixed-content interdit) |
-| **Features légères** | toutes | toutes (review consultation, users, tokens, KPIs, édition métadonnées) |
-| **Mobile** | non | oui |
-
-- **Auth-adapter** : `studio-local/src/shared/api/eurio-api.ts` choisit Bearer (pat) vs
-  cookie (`credentials:'include'`) selon `AUTH_MODE` dérivé de `VITE_DEPLOY_TARGET`.
-- **Capacité `hasLocalMlApi`** : `stores/capabilities.ts` (baseline `deploy-target` + ping
-  `:8042/health` en local). Les **routes lourdes** sont marquées `meta.heavy` (`app/router.ts`) ;
-  `AppLayout` grise la nav et rend `LocalOnlyNotice` à leur place quand `hasLocalMlApi` est faux.
-- **Ajouter une feature lourde** (tape `:8042`) : marque sa route `meta: { heavy: true }` +
-  l'item nav `heavy: true`. Pas besoin de gérer le gating ailleurs. Aucune feature n'est
-  « interdite » par mode — le lourd se grise tout seul en hébergé.
-
-Décision et alternatives écartées : [`docs/adr/011-front-admin-unique.md`](docs/adr/011-front-admin-unique.md).
-
-### Déploiement admin
-
-- **Front hébergé** (`studio-local` mode hosted) : déployé sur le VPS via `infra/eurio-admin/`
-  (nginx static derrière Traefik). Rebuild = `cd /opt/eurio/infra/eurio-admin && direnv exec
-  /opt/eurio docker compose up -d --build` (les build args Supabase publics viennent de l'env SOPS).
-  Servi à `https://eurio-admin.musubi.dev`. Pas de Vercel.
-- **Front local** (`studio-local` mode local) : `pnpm dev` sur Mac/PC, jamais déployé — c'est
-  le même codebase, juste lancé avec PAT + ML local.
-- **Vercel** : seul `packages/proto/` y est déployé (prototype design en prebuilt, cf.
-  `go-task proto:deploy`).
-- `ml/` est un projet Python standalone, **pas** dans le workspace pnpm.
 
 ## Règles non-négociables
 
-### R0. Pas de dette technique
-Jamais de shortcut qui crée de la dette. Construire proprement depuis le POC. Si une solution propre n'est pas claire, on discute avant d'implémenter, pas après.
+**R0. Pas de dette technique.** Jamais de raccourci qui crée de la dette. Si la solution propre
+n'est pas claire, on discute avant d'implémenter, pas après — en ADR si c'est structurant
+(`docs/adr/README.md` §Écrire une ADR). La dette qui reste est écrite dans `docs/BACKLOG.md`, jamais enfouie dans le code.
 
-### R0bis. Front unique — gater le lourd, pas le séparer
+**R0bis. Un seul front admin, le lourd se grise.** `admin/packages/studio-local` est le seul front
+à faire vivre, servi en local (PAT, ML `:8042` actif) et hébergé (cookie OIDC, ML grisé) par
+`VITE_DEPLOY_TARGET`. Une feature qui tape `:8042` marque sa route `meta: { heavy: true }` et son item
+nav `heavy: true` ; le gating est fait ailleurs. Pas de second package front. Décision : ADR-011 ; état : `ETAT.md` §Front admin.
 
-Il n'y a **qu'un** front à faire vivre : `admin/packages/studio-local`. *(`admin/packages/review/` existe encore, est tracké et buildé par `infra/review/` — c'est la pile en doublon que le **lot 9** de `review-collaborative-v2` fait tomber. N'y ajoute rien.)* Avant d'ajouter une feature qui
-appelle le ML API local (`http://127.0.0.1:8042`) : marque sa **route** `meta: { heavy: true }`
-et son **item nav** `heavy: true`. Elle marche en local et se grise automatiquement en hébergé
-(`hasLocalMlApi` faux) — `AppLayout` rend `LocalOnlyNotice`. Ne réintroduis **pas** un second
-package front. Décision : [`docs/adr/011-front-admin-unique.md`](docs/adr/011-front-admin-unique.md).
+**R1. Proto-first, pour l'app Android et elle seule.** Tout nouveau design de `app-android/` (scène,
+composant, layout, état empty/loading/error) existe d'abord dans le proto `admin/packages/proto/`
+avant d'être implémenté en Compose. Si tu inventes un rendu côté Android sans équivalent proto,
+**arrête-toi et demande**. R1 ne porte ni sur les fronts admin ni sur les outils de recette : pour un
+écran d'admin, maquette d'abord dans le front où il vivra (fixtures, états vides/erreur). Spec : `docs/design/_shared/parity-rules.md`.
 
-### R1. Proto-first design (STRICT) — **pour l'app Android, et elle seule**
+**R2. Tokens générés, jamais édités.** `shared/tokens.css` est la source des couleurs, espacements,
+rayons, durées. `Color.kt`, `Shape.kt`, `Spacing.kt` sont générés (`AUTO-GENERATED — DO NOT EDIT`) :
+éditer `tokens.css` → `go-task tokens:generate` → committer les deux dans le même commit. `Type.kt` et
+`Theme.kt` restent manuels. Côté JS, `shared/` se consomme comme un package (`@eurio/shared/tokens.css`,
+`@eurio/shared/fixtures/<nom>.json`), jamais en chemin relatif. Contrat : `parity-rules.md` §Générateur ; la CI joue `tokens:check`.
 
-⚠️ **Portée, avant tout le reste.** R1 ne s'applique qu'à **l'app finale**, celle
-qui part sur le Play Store (`app-android/`). Elle ne s'applique **ni aux fronts
-admin** (`admin/packages/studio-local`), **ni aux outils de test ou de recette**.
-Le proto est la PWA du *collectionneur* — ses scènes sont `scan/`, `vault/`,
-`profile/`, `onboarding/` — et `scene-parity.md` mappe chacune vers une
-destination Compose. Y faire entrer un écran d'admin polluerait la source de
-vérité du design de l'app avec une scène qui ne mappe vers rien, et donnerait à
-cet écran le langage visuel du mauvais produit.
+**R3. Parité proto ↔ Android trackée en tables.** Avant un écran ou un composant, lis `docs/design/_shared/scene-parity.md`
+et `components-parity.md`. Une entrée `❌ à proto'er` **bloque** le code Android ; une entrée sans delta documenté est du drift à corriger.
 
-Pour un écran d'admin, la discipline est **maquette d'abord dans le front où il
-vivra** (fixtures, états vides/erreur, validé à l'œil avant d'être branché) —
-c'est l'intention de R1, sans le détour par le proto.
+## Trois machines, trois stockages
 
-**Tout nouveau design de l'app Android doit d'abord exister dans le prototype**
-(`admin/packages/proto/`, Vue+Pinia PWA — source de vérité du design de l'app)
-avant d'être implémenté en Compose. _(L'ancien proto HTML
-`docs/design/prototype/` est archivé sous `docs/archive/design/prototype/`.)_
-
-- Cela inclut : nouvelles scènes, nouveaux composants visuels, nouveaux layouts, nouveaux états (empty/loading/error).
-- Cela n'inclut pas : adaptations techniques Android (back gesture, permission dialog), ni les deltas systémiques documentés dans `docs/design/_shared/parity-rules.md` §R6.
-- Si Claude se retrouve à inventer un rendu visuel **côté Android** sans équivalent proto, il **doit s'arrêter et demander** à ajouter d'abord la scène proto.
-
-Spec complète : `docs/design/_shared/parity-rules.md`.
-
-### R2. Tokens auto-générés, jamais édités à la main
-
-`shared/tokens.css` est la source canonique des couleurs, espacements, rayons, durées.
-
-Les fichiers Kotlin suivants sont **auto-générés** et commencent par un header `AUTO-GENERATED — DO NOT EDIT` :
-
-- `app-android/src/main/java/com/musubi/eurio/ui/theme/Color.kt`
-- `app-android/src/main/java/com/musubi/eurio/ui/theme/Shape.kt`
-- `app-android/src/main/java/com/musubi/eurio/ui/theme/Spacing.kt`
-
-Pour modifier un token :
-1. Éditer `shared/tokens.css`
-2. Lancer `go-task tokens:generate`
-3. Committer les deux fichiers dans le même commit
-
-**Jamais d'édition manuelle de Color.kt / Shape.kt / Spacing.kt.** Les fichiers Type.kt et Theme.kt restent hand-written (dépendent de ressources Android et de slots M3 sémantiques).
-
-Le générateur (`scripts/generate_tokens.mjs`) est **multi-cible** depuis 2026-08-14 :
-`android` est la seule cible aujourd'hui, en ajouter une (iOS…) = une entrée dans son
-registre `TARGETS`. `go-task tokens:check` ne dépend plus de git — il compare le contenu
-généré au contenu sur disque et sort en 2 sur dérive. Contrat détaillé :
-`docs/design/_shared/parity-rules.md` §Générateur.
-
-**Côté JS, `shared/` se consomme comme un package** : `@eurio/shared/tokens.css` et
-`@eurio/shared/fixtures/<nom>.json` — jamais en chemin relatif remontant la racine.
-Côté Android QA, les fixtures sont copiées au build par la tâche Gradle `syncQaFixtures`
-(l'ancien symlink `src/qa/assets/fixtures` a été retiré : il cassait au clone).
-
-### R3. Parité proto ↔ Android trackée en tables
-
-Avant de créer un écran ou un composant, vérifier :
-
-- `docs/design/_shared/scene-parity.md` — table des scènes proto ↔ destinations Android
-- `docs/design/_shared/components-parity.md` — table des classes CSS ↔ composables
-
-Une entrée `❌ à proto'er` **bloque** le démarrage du code Android correspondant. Une entrée sans delta documenté est considérée comme du drift à corriger.
-
-## L'infra en gros — trois machines, trois stockages
-
-| Machine | Rôle | À savoir |
-|---|---|---|
-| **Mac** (`Musubi42s-MacBook-Air-Oim`) | dev, admin, scraping, crop, review | pas de GPU (MPS) |
-| **PC** (`desktop`, NixOS, 1080 Ti) | entraînement | seule machine à GPU |
-| **VPS** (`nixos`) | **writer canonique**, MinIO, API, fronts | devShell allégé |
+| Machine | Rôle |
+|---|---|
+| **Mac** (`Musubi42s-MacBook-Air-Oim`) | dev, admin, scraping, crop, review — pas de GPU |
+| **PC** (`desktop`, NixOS) | entraînement — la seule machine à GPU |
+| **VPS** (`nixos`) | **writer canonique** de la donnée, MinIO, API, fronts — devShell allégé |
 
 | Stockage | Rôle |
 |---|---|
@@ -168,224 +62,89 @@ Une entrée `❌ à proto'er` **bloque** le démarrage du code Android correspon
 | MinIO (`eurio-s3.musubi.dev`) | images : raws, crops, canoniques, artefacts de modèle |
 | Supabase | projection read-only pour l'app en prod |
 
-Mac et PC lisent une **réplique read-only** du canonique et écrivent par HTTP
-(`lab_writes` pour les dimensions, `/ingest/*` pour crops et assets). Le calcul
-— bake, entraînement, artefacts — reste **local à la machine qui calcule** et ne
-voyage pas.
+Mac et PC lisent une **réplique read-only** du canonique et écrivent par HTTP (Direction A, ADR-009).
+Le calcul — bake, entraînement, artefacts — reste local à la machine qui calcule. Un `503
+canonical_readonly` n'est jamais une panne : lis la skill `eurio-data-writes` avant de contourner ;
+résiduels connus dans `ETAT.md` §Écritures. Détail : `docs/architecture/README.md`, `parcours.md`, `artifacts.md`.
 
-⚠️ Le rerouting n'est **pas terminé**, mais un `503 canonical_readonly` ne dit
-pas lequel des deux cas tu as. Vérifié le 2026-08-17 : `requalify` / `move-lane`
-/ `correct-listing` **ont leur jumeau au VPS et le front les y envoie déjà** —
-leur 503 sur `:8042` signale un appelant qui tape la mauvaise adresse, pas un
-rerouting manquant. Les vrais résiduels mesurés : `POST
-/review-queue/requalify-lot/batch` et `POST /coins/assets/reflag-needs-review`.
-Trancher = lire l'OpenAPI du canonique. Un 503 n'est jamais une panne — lire
-`eurio-data-writes` avant de contourner. Détail et mesures : [`docs/architecture/README.md`](docs/architecture/README.md)
-(par stockage), [`parcours.md`](docs/architecture/parcours.md) (par geste),
-[`artifacts.md`](docs/architecture/artifacts.md) (par artefact).
-
-## Skills du repo (`.claude/skills/`) — lis-les AVANT d'agir
-
-Connaissance compilée, chacune existe parce qu'on a payé le prix de son absence.
-Elles se chaînent : chaque skill dit vers laquelle aller ensuite.
-
-**Le flux métier, dans l'ordre où on le parcourt :**
-
-| Skill | Se déclenche quand |
-|---|---|
-| `eurio-enrichment` | une classe est trop pauvre pour entraîner — scrape eBay, crop, **ancres DINO** |
-| `eurio-banque` | **avant de toucher à la banque d'ancres, aux seuils DINO, ou de comparer deux encodeurs** — la maille `class_id`, la courbe références/classe, les rebuilds |
-| `eurio-review` | trancher des crops, décider ce qui entre en training |
-| `eurio-cohort` | composer une cohorte, passer le préflight, comprendre l'expansion `design_group` |
-| `eurio-run-local` | lancer la stack, dérouler le lab (bake → entraînement) |
-| `eurio-promote` | mettre un modèle dans l'APK — **la promotion remplace, elle n'accumule pas** |
-
-**Les transverses, à charger dès qu'on touche au sujet :**
-
+## Skills (`.claude/skills/`) — lis-les AVANT d'agir
 | Skill | Quand |
 |---|---|
-| `eurio-backup` | Sauvegarde et restauration — avant de toucher `infra/backup/`, avant de répondre « est-ce qu'on est sauvegardés ? », et le jour J |
-| `eurio-data-writes` | Avant de toucher une route qui écrit ; devant un `readonly database` / 503 `canonical_readonly`. **Le devShell pose le flip Direction A** — c'est le piège n°1 du repo |
-| `eurio-verify` | Avant de déclarer qu'un correctif marche. **Ici les pannes sont muettes** |
-| `eurio-vps-deploy` | Tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
-| `eurio-driver` | Actions méta exposées à musu-os (`actions.yml`) |
+| `eurio-enrichment` | une classe est trop pauvre pour entraîner — scrape eBay, crop, ancres DINO |
+| `eurio-banque` | avant de toucher à la banque d'ancres, aux seuils DINO, ou de comparer deux encodeurs |
+| `eurio-review` | trancher des crops, décider ce qui entre en training |
+| `eurio-cohort` | composer une cohorte, passer le préflight, comprendre l'expansion `design_group` |
+| `eurio-run-local` | lancer la stack locale, dérouler le lab (bake → entraînement) |
+| `eurio-promote` | mettre un modèle dans l'APK — la promotion remplace, elle n'accumule pas |
+| `eurio-backup` | sauvegarde et restauration — avant de toucher `infra/backup/`, et le jour J |
+| `eurio-data-writes` | avant de toucher une route qui écrit ; devant un `readonly database` / 503 `canonical_readonly` |
+| `eurio-verify` | avant de déclarer qu'un correctif marche — ici les pannes sont muettes |
+| `eurio-vps-deploy` | tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
+| `eurio-driver` | actions méta exposées à musu-os (`actions.yml`) |
 
-⚠️ **Si tu t'apprêtes à improviser un outil ou une procédure, c'est le signe
-qu'une skill manque.** Cherche d'abord ; si rien ne couvre le geste, écris la
-skill à la fin — c'est ainsi que cette liste s'est constituée.
+Chacune existe parce qu'on a payé le prix de son absence. Si tu t'apprêtes à improviser un outil ou une
+procédure, une skill manque : cherche, puis écris-la à la fin. Méthode : `docs/skills/comment-tester-une-skill.md`.
 
-📐 **Écrire ou corriger une skill : la méthode est écrite, et elle a été
-observée** — [`docs/skills/comment-tester-une-skill.md`](docs/skills/comment-tester-une-skill.md).
-Deux règles s'appliquent dès la première ligne : *ne l'écris pas de mémoire juste
-après avoir vécu la chose* (relance les commandes, colle leur sortie), et *tout
-chiffre porte sa requête, pas seulement sa date* — sinon il est irreproductible,
-donc inutilisable.
+## Commandes, devShell, secrets
 
-## Conventions de travail
+- **Tout passe par `go-task`** (jamais `task`, jamais l'outil direct) : `android:build` · `android:install` · `android:run` ·
+  `android:logs` · `ml:build-app-core` (catalogue `app_core.db` packagé) · `tokens:generate` · `tokens:check` · `secrets:edit`.
+- **DevShell Nix + direnv** (ADR-002) : `flake.nix` expose `mac`, `pc`, `vps`, `ci` (`default` = `mac`) ; `.envrc`
+  dispatche sur `hostname -s`. Jamais de `use flake` nu en plus du `case`. Hostname inconnu = ajouter au `case` ou `.envrc.local`.
+- **Secrets** (ADR-015) : `secrets/dev.env`, chiffré SOPS + age, est la **source unique** ;
+  `.envrc` le déchiffre et exporte les vars. Éditer : `go-task secrets:edit`, puis
+  `direnv reload`. Le code lit `os.environ` (`shared.env.load_env()` / `require()`), jamais
+  un fichier. Clés age dans `~/.config/sops/age/keys.txt`, jamais committées. Sur le VPS,
+  même schéma via `sops exec-env` (skill `eurio-vps-deploy`). Bootstrap : `README.md` §Secrets.
+- **Supabase** : accès Postgrest pour l'admin et l'export ; l'app est **offline-first** avec le
+  catalogue packagé dans l'APK. Schéma de vérité : `ml/state/schema.sql`.
+- **Sauvegarde** : `go-task backup:*` ne tourne **que sur le VPS** (skill `eurio-backup`, ADR-014).
+  `infra/backup/staging/` y contient des données gitignorées : pas de `git clean -xdf`.
 
-### Commandes
+## Git — un tronc, un remote, le VPS tire
 
-Toutes les commandes de build, install, sync passent par **`go-task`** (jamais `task` ni invocation directe).
+`main` est le seul tronc ; `github` le seul remote de référence. Pousse là ; le VPS **ne pousse jamais**, le
+code n'entre que par le Mac. Les branches mortes sont des tags `archive/*`. Historique et pièges : `ETAT.md` §Git.
 
-Commandes fréquentes :
+**Redéployer `eurio-api` (ou `eurio-admin`) sur le VPS**, en trois commandes : `ssh serverOimNixDontpanic` ;
+`cd /opt/eurio && git fetch github main && git merge --ff-only github/main` (le `--ff-only` refuse au lieu de
+fabriquer un merge) ; `cd infra/eurio-api && sops exec-env ../../secrets/dev.env "docker compose up -d --build"`.
+Puis vérifie comme le dit la skill `eurio-vps-deploy` (routeurs montés, OpenAPI) — une panne y est muette.
 
-```bash
-go-task android:build            # Assemble debug APK
-go-task android:install          # Build + push APK sur device
-go-task android:run              # install + start
-go-task android:logs             # tail logcat filtré Eurio
-go-task ml:build-app-core        # Regen l'asset catalogue packagé (app_core.db) — remplace catalog_snapshot.json (P6)
-go-task tokens:generate          # Regen Color/Shape/Spacing depuis tokens.css
-go-task tokens:check             # Vérifier que la génération est à jour (CI)
-```
+## La CI juge
 
-### Dev shell (Nix + direnv)
-
-`flake.nix` expose 4 devShells :
-
-- `mac` — full stack (Android + ML CPU + admin web + maestro)
-- `pc` — idem `mac` + `LD_LIBRARY_PATH` NVIDIA pour CUDA/OpenCV
-- `vps` — léger : `go-task` + `minio-client` (`mc`) uniquement (Minio tourne en docker natif côté système)
-- `default` — alias de `mac`, fallback pour `nix develop` hors direnv
-
-Le `.envrc` dispatche automatiquement via `hostname -s` :
-
-| Hostname | Profil |
-|---|---|
-| `Musubi42s-MacBook-Air-Oim` | `mac` |
-| `desktop` | `pc` |
-| `nixos` | `vps` |
-
-Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant les options (ajouter au `case`, ou créer un `.envrc.local` avec `use flake .#<profil>`).
-
-**Ne jamais avoir un `use flake` nu dans `.envrc`** en plus du `case` — sinon les deux shells se chargent en séquence et le premier est gaspillé.
-
-### Secrets (SOPS + age)
-
-**`secrets/dev.env` (chiffré SOPS+age) est la SOURCE UNIQUE de tous les secrets.** Pas de `.env` en clair, pas de second store. Chaque machine perso a sa propre clé age ; les pubkeys sont listées dans `.sops.yaml`.
-
-- `.envrc` (committé, template `.envrc.example`) déchiffre `secrets/dev.env` au chargement du shell via `sops -d` et **exporte** les vars dans l'environnement.
-- Clés privées : `~/.config/sops/age/keys.txt` sur chaque machine, jamais committées. Backup dans le password manager perso.
-- **Éditer un secret : `go-task secrets:edit`** (ouvre déchiffré dans `$EDITOR`, re-chiffre à la sauvegarde). `go-task secrets:list` (noms) · `go-task secrets:check` (déchiffrable). Après édition : `direnv reload`.
-- **Côté code** : le Python lit les secrets via `shared.env.load_env()` / `require()` / `numista_api_key()` (lecture `os.environ` uniquement, peuplé par `.envrc`). Jamais de parsing de `.env` à la main. Les clés Numista (8, en rotation) passent par `referential.numista_keys.KeyManager` — il n'existe **pas** de `NUMISTA_API_KEY` au singulier.
-- Frontières hors-SOPS (runtimes distants) :
-  - **Vercel** : `loan` (sorti du monorepo le 2026-08-14, cf. [ADR-006](docs/adr/006-extraction-loan.md)) gère ses secrets via le dashboard Vercel. Il vit maintenant dans `../loan`, dépôt séparé.
-  - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026). `infra/review/` reste **en service** (`eurio-review.musubi.dev`) : le C9 qui devait le supprimer n'existe plus — K2 est **tranché** (2026-08-23, cf. [ADR-012](docs/adr/012-review-collaborative-ecriture-directe.md)) : les amis passent par `studio-local` hébergé en rôle `reviewer`. L'exécution est le **lot 9** de `docs/work-in-progress/review-collaborative-v2/`, non joué.
-- Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
-
-### Sauvegarde — tourne sur le VPS, jamais sur Mac/PC
-
-Chantier `backup-pipeline` : lots 0 à 4 livrés, **lot 5 🟡** (code fait, monitors à créer), lot 6 clos. Synthèse : [ADR-014](docs/adr/014-sauvegarde-duplicati-et-anneaux.md). **Hub :
-`docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md`** (état, pièges, chiffres
-de référence) ; les décisions et ce qu'elles écartent sont dans `DECISIONS.md` (32
-entrées) ; leur synthèse est [ADR-014](docs/adr/014-sauvegarde-duplicati-et-anneaux.md).
-
-`go-task backup:stage` · `backup:verify` · `backup:test` **ne fonctionnent que sur le
-VPS** : ils dépendent de conteneurs Docker locaux (`eurio-api`, `eurio-review`, MinIO),
-d'un staging de 6,6 Go et de `infra/backup/notify.conf` — tous **gitignorés**, donc
-absents sur Mac/PC. Ne pas tenter de les lancer ailleurs ni de « réparer » leur absence.
-
-⚠️ **`infra/backup/staging/` contient 6,6 Go de DONNÉES** gitignorées sur le VPS. Un
-`git clean -xdf` les détruit.
-
-### Supabase
-
-- Accès via clé API (Postgrest) pour l'admin et l'export snapshot
-- L'app Android est **offline-first** avec un catalogue packagé dans l'APK
-  (`app-android/src/main/assets/app_core.db`, généré par `go-task ml:build-app-core`)
-- Pas d'auth utilisateur pour v1 (le vault est 100% local côté Room)
-- Schéma de vérité : `ml/state/schema.sql` (le canonique SQLite). ⚠️ `supabase/types/database.ts` n'est **ni généré ni importé** par quoi que ce soit — c'est de la doc de schéma historique, pas une source
-
-### Stack technique Android
-
-- Kotlin + Jetpack Compose + Material 3
-- Navigation Compose (2.8.x)
-- Room 2.6.1 (KSP, pas Kapt)
-- Supabase-kt (postgrest-kt)
-- Coil (chargement images)
-- CameraX + LiteRT (ML on-device)
-- OpenCV 4.10 (Hough circle detection)
-- Koin (DI, pas encore câblé, à activer si besoin)
-- minSdk 26, target 36
-
-### ML pipeline
-
-Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : **YOLOv8-nano** (`ml/training/train_detector.py:46` : `YOLO("yolov8n.pt")` — le « YOLO11 » écrit ici depuis avril était faux) + OpenCV Hough en parallèle → merge IoU → rerank ArcFace spread-based → consensus buffer 5/3 sticky.
-
-### ArcFace ou DINO — mesuré le 2026-08-26, ArcFace gagne
-
-Le départage est **fait**. 260 frames eBay jamais vues à l'entraînement,
-52 classes, la même banque de 1 813 ancres pour les quatre bras, McNemar
-apparié. Détail et réserves : [`docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md`](docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md).
-
-| Modèle | M params | **r@1** | ms/img | McNemar vs ArcFace |
-|---|---:|---:|---:|---|
-| **ArcFace** `392205b7f725` (40 ep) | **1,1** | **99,2 %** | **4** | — |
-| `dinov2_vitl14` | 304,4 | 98,1 % | 113 | p = 0,375 — indistinguable |
-| `dinov2_vitb14` | 86,6 | 96,9 % | 31 | p = 0,070 — indistinguable |
-| `dinov2_vits14` | 22,1 | 94,2 % | 12 | **p = 0,00098 — ArcFace meilleur** |
-
-**À justesse égale ou supérieure, ArcFace est 276× plus petit et 28× plus
-rapide.** Ne relance pas ce départage sans lire les deux réserves : (1) ArcFace
-a été **entraîné sur les crops de la banque** (perte → 0,0000), son avantage
-sur les *références* n'est pas partagé par DINO ; (2) la mesure porte sur
-**52 classes, le produit en aura 671+** — et ArcFace se réentraîne à chaque
-classe nouvelle (1 h 45 ici) là où DINO n'a rien à réentraîner.
-
-## Documents à lire avant d'attaquer un changement
-
-| Tu touches à… | Lis d'abord… |
-|---|---|
-| **N'importe quoi de structurant** | [`docs/adr/README.md`](docs/adr/README.md) — 16 ADR, une ligne chacune. Tu lis l'index, puis **une seule** |
-| **« Qu'est-ce qui reste à faire ? »** | [`docs/BACKLOG.md`](docs/BACKLOG.md) (chantiers archivés) et [`docs/work-in-progress/README.md`](docs/work-in-progress/README.md) (chantiers vivants) |
-| Nav shell / FAB / bottom bar | `docs/app-implem-phases/research-02-nav-patterns.md` |
-| UX décisions produit | `docs/app-implem-phases/README.md` (14 décisions) |
-| Pipeline ML scan | `docs/research/detection-pipeline-unified.md` |
-| Sets (DSL, criteria, types) | `docs/design/_shared/sets-architecture.md` |
-| Schéma local Room | `docs/design/_shared/data-contracts.md` |
-| Stratégie offline/sync | `docs/design/_shared/offline-first.md` |
-| Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
-| **Sauvegarde / restauration** | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
-| **File de review scopée par la prédiction (« pêche »)** | `docs/work-in-progress/peche-dino/CONSTAT.md` |
-| **Le départage ArcFace ↔ DINO, la matrice d'encodeurs, le corpus d'éval** | [`docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md`](docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md) — le document de pilotage. Puis [`CORPUS-EVAL-EBAY.md`](docs/work-in-progress/juge-et-banc/CORPUS-EVAL-EBAY.md) pour ce que vaut le jeu d'éval |
-| **Banque d'ancres DINO, seuils, choix d'encodeur** | la skill `eurio-banque` d'abord ; puis la **note d'état en tête de `docs/work-in-progress/scan-sans-retrain/PREREQUIS.md`** (où on en est, ce qui attend le PO, dans quel ordre) et `docs/work-in-progress/banque-dino/CONSTAT.md` |
-| **Le crop : détection, recadrage, normalisation** | [`docs/work-in-progress/juge-du-crop/README.md`](docs/work-in-progress/juge-du-crop/README.md) **avant d'écrire une ligne**, puis [ADR-017](docs/adr/017-le-crop-d-enrichissement-est-decouple-du-scan.md). Sept chantiers ont échoué en définissant leur propre oracle |
-| **Auto-validation de la review / temps humain de review** | `docs/work-in-progress/review-autovalidation/` — **`MESURE-2026-08-25.md` d'abord** (le geste zéro est joué, et il dément deux prémisses de `PROBLEME.md`), puis `REPRENDRE-ICI.md` (ce qui est déployé), puis `PROBLEME.md` |
-| **Corpus de scan : où sont les photos, comment ne pas les perdre** | `docs/work-in-progress/scan-quality/DURABILITE-CORPUS.md`, puis `docs/work-in-progress/scan-sans-retrain/PROTOCOLE-CAPTURE.md` |
-| Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
-
-### Dépôts git — `github`, tronc `main`, rien d'autre
-
-**`github` est le seul remote, `main` la seule branche.** Pousse là ; c'est de là
-que le VPS tire (`git fetch github main && git merge --ff-only github/main` — un
-`--ff-only` explicite refuse au lieu de fabriquer un merge). Tranché le 2026-09-10
-(chantier `de-la-base-a-la-nef`, D1) : les anciennes branches de travail
-(`repo-cleanup`, `matrice-dino`, …) sont des **tags `archive/*`**, pas des branches.
-
-Le remote `codeberg` a été **retiré du clone local et des instructions** le
-2026-09-10. Le compte reste en place, on ne s'en sert plus (historique : le 2026-08-20
-son push HTTPS pendait puis expirait depuis le Mac ; le 2026-08-25 sa branche
-`repo-cleanup` avait 90 commits de retard sur github). Le clone du VPS (`/opt/eurio`)
-suit `github/main` (`branch.main.remote`, `remote.pushDefault`).
-
-📌 **À faire (non planifié) : passer à GitLab en dépôt principal, github en
-miroir**, et repointer le remote du VPS. Tant que ce n'est pas fait, la règle
-ci-dessus s'applique.
+`.github/workflows/ci.yml` tourne à chaque push sur `main` et sur chaque PR : `pytest` (`ml`),
+`vitest` + typecheck (`admin`), `go-task tokens:check` (`tokens`), chacun par `nix develop .#ci
+--command …` — même toolchain que le poste. Suivre un run : `gh run watch --exit-status`. Rejouer un
+job en local : `nix develop .#ci --command <commande du job>`. **Un test rouge ne se masque pas** : ni
+`skip` sans `reason=`, ni seuil élargi, ni assert retiré — on corrige ce que le test dénonce. Ce qu'elle ne couvre pas encore : `ETAT.md` §CI.
 
 ## Interdictions
 
-- ❌ Éditer `Color.kt`, `Shape.kt`, `Spacing.kt` à la main
-- ❌ Coder un écran **de l'app Android** sans scène proto correspondante (R1 ne porte pas sur les fronts admin)
-- ❌ Hardcoder des couleurs dans du Compose (toujours passer par `MaterialTheme.colorScheme.*` ou les vals générées)
-- ❌ Créer des `TODO:` dans le code (la dette est explicite via docs ou tasks, pas enfouie dans le code)
-- ❌ Utiliser `git add -A` ou `git add .` (staging explicite par fichier pour éviter les fuites de secrets)
-- ❌ Éditer `secrets/dev.env` directement ou créer un `.env` en clair (fichier chiffré — utiliser `go-task secrets:edit`)
-- ❌ Utiliser `task` au lieu de `go-task` dans les commandes ou les docs
-- ❌ **Proposer, relancer ou planifier des séances de CAPTURE DEVICE.** Décision du
-  PO, 2026-08-26 : on n'en fait plus. Ne suggère pas de « compléter le corpus »,
-  de « refaire une session de prises de vue », ni de brancher l'app de capture.
-  Les **451 captures existantes sont conservées** (archivées, répliquées sur
-  MinIO) et restent lisibles comme témoin — mais **le jeu d'évaluation vient
-  désormais des crops eBay**. Suivi : [`docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md`](docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md).
-  *(Le PO juge par ailleurs que l'app de capture est inadaptée — elle prend une
-  photo là où il faudrait un scan. Sujet distinct, à rouvrir par lui seul.)*
+- ❌ Éditer `Color.kt`, `Shape.kt`, `Spacing.kt` à la main (R2)
+- ❌ Coder un écran de l'app Android sans scène proto correspondante (R1)
+- ❌ Hardcoder des couleurs dans du Compose — `MaterialTheme.colorScheme.*` ou les vals générées (R2)
+- ❌ Créer des `TODO:` dans le code — la dette va dans `docs/BACKLOG.md` ou une task (R0)
+- ❌ `git add -A` / `git add .` — staging explicite par fichier, contre les fuites de secrets (ADR-015)
+- ❌ Éditer `secrets/dev.env` directement ou créer un `.env` en clair — `go-task secrets:edit` (ADR-015)
+- ❌ Écrire `task` au lieu de `go-task` dans les commandes ou les docs
+- ❌ Proposer, relancer ou planifier des séances de **capture device** — décision du PO ;
+  le jeu d'évaluation vient des crops eBay (`ETAT.md` §Capture device, `juge-et-banc/SUIVI-MATRICE.md`)
+- ❌ Ajouter quoi que ce soit à `admin/packages/review/` — pile en doublon en attente de chute (ADR-012)
+
+## Lis d'abord
+
+| Tu touches à… | Lis… |
+|---|---|
+| N'importe quoi de structurant | `docs/adr/README.md` — l'index, puis **une seule** ADR |
+| L'état courant, un chiffre, un « où en est-on » | `docs/architecture/ETAT.md` |
+| « Qu'est-ce qui reste à faire ? » | `docs/BACKLOG.md` (archivés) et `docs/work-in-progress/README.md` (vivants) |
+| Où vit la donnée, où part une écriture | `docs/architecture/README.md`, `parcours.md`, `artifacts.md` ; skill `eurio-data-writes` |
+| Déployer sur le VPS, une route KO en prod | skill `eurio-vps-deploy` |
+| UX, nav shell / FAB / bottom bar, phase N | `docs/app-implem-phases/README.md`, `research-02-nav-patterns.md`, `phase-N-*.md` |
+| Pipeline ML du scan ; ArcFace ↔ DINO, encodeurs, corpus d'éval | `docs/research/detection-pipeline-unified.md` ; `docs/work-in-progress/juge-et-banc/SUIVI-MATRICE.md` puis `CORPUS-EVAL-EBAY.md` ; état : `ETAT.md` |
+| Banque d'ancres DINO, seuils | skill `eurio-banque`, puis `ETAT.md` §Chantiers vivants |
+| Le crop : détection, recadrage | `docs/work-in-progress/juge-du-crop/README.md` avant d'écrire une ligne, puis ADR-017 |
+| Review : file « pêche », auto-validation | `docs/work-in-progress/peche-dino/CONSTAT.md` ; `ETAT.md` §Chantiers vivants |
+| Sets, schéma Room, offline/sync, parité | `docs/design/_shared/` : `sets-architecture.md`, `data-contracts.md`, `offline-first.md`, `parity-rules.md` |
+| Sauvegarde / restauration | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
