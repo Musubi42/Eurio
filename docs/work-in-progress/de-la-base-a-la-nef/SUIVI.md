@@ -260,3 +260,29 @@ Table de destination : 38 sections de l'ancien fichier, chacune avec sa destinat
 Trois agents neufs ont répondu « MANQUE » à la question 4 en citant des titres de l'**ancien** `CLAUDE.md` (« Déploiement admin », « 16 ADR ») alors que le fichier sur disque porte « Déployer sur le VPS » à la ligne 106 (`grep -n 'Déployer sur le VPS' CLAUDE.md`). Cause : le harnais injecte dans le contexte des sous-agents le `CLAUDE.md` lu **en début de session**, et un agent qui le trouve déjà dans son contexte ne relit pas le disque.
 
 Conséquence pour la méthode : tout test de succession qui porte sur `CLAUDE.md` doit **forcer la lecture disque** (`cat`) et commencer par un contrôle de version (`wc -l`, un `grep` sur un titre nouveau). Ajouté au protocole du critère 3.5.
+
+### Contre-rapport · 2026-09-10 · relecteur neuf (sonnet), critères seuls
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 3.1 | `150` (puis 149 après les correctifs) | PASS |
+| 3.2 | `0` | PASS |
+| 3.3 | 13/14 règles et interdictions avec pointeur existant ; exception : « `task` au lieu de `go-task` », aucune ADR ne porte ce choix | PASS, exception consignée |
+| 3.4 | `ETAT.md` existe, 24 dates, les deux index y pointent | PASS |
+| 3.6 (ajouté) | les 13 mots-clés de l'ancien fichier se retrouvent dans `CLAUDE.md` ou `ETAT.md` | PASS |
+| 0.5 bis | `nix develop .#ci --command git remote` → `github` seul, après le correctif du flake | PASS |
+| 3.5 | consigne stricte, première passe : 3 MANQUE (Q3, Q4, Q10) | FAIL |
+
+Falsification : paragraphe de redéploiement retiré → le sous-agent répond MANQUE à Q4 ; restauré, `git diff --quiet` ok.
+
+**Ce que les trois MANQUE ont donné.** Q3 et Q10 étaient réels : la ligne `eurio-verify` ne disait pas le geste, la section CI ne disait pas le déclencheur ; corrigés en une ligne chacun (`7df5fb32`). Q4 était double : le paragraphe vivait sous le titre « Git » et deux lecteurs ont cherché « déployer » ailleurs → titre propre « Déployer sur le VPS » (`de5a0d06`) ; **et** les sous-agents lisaient une copie périmée injectée par le harnais (cf. « Piège de méthode » ci-dessus).
+
+Passe finale, lecture disque forcée, contrôle `149` / `2` en tête : **10 réponses, MANQUE : 0**, chacune avec fichier et titre de section.
+
+### Verdict de l'architecte · 2026-09-10 · **étape 3 fermée**
+
+`CLAUDE.md` : 149 lignes, zéro date, chaque règle a son pointeur sauf `go-task` (à porter en ADR ou à laisser en convention nue, au PO). L'état daté vit dans `docs/architecture/ETAT.md`. Un agent neuf répond aux dix questions depuis le disque.
+
+Deux faits pour la suite : (1) le hook du flake ressuscitait `codeberg`, corrigé ; **un état vérifié une fois n'est pas un état tenu**, les critères d'état se rejouent après un passage dans l'outil qui pourrait les défaire. (2) Le harnais injecte un `CLAUDE.md` périmé dans les sous-agents : tout test sur ce fichier lit le disque.
+
+**Étape 4 en attente du PO** : D4 (la nef s'ouvre avec ce qui existe) et D5 (comment compter un scan venu d'ailleurs) sont encore 🟡 / ⏳. L'étape commence par un scan bout en bout du PO sur son téléphone avec le build de `main`.
