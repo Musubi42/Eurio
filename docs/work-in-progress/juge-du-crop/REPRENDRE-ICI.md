@@ -12,6 +12,18 @@ et produit des crops que la review humaine jette. Celui-ci construit d'abord la
 **vérité terrain** (60 ellipses tracées à la main), *puis* le juge — et il
 s'arrête si le juge ne prédit pas le verdict humain (RE-4).
 
+## ⚠️ La séance se tient sur **v2** depuis le 2026-09-10
+
+> **https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2** — le
+> `?version=v2` n'est **pas** optionnel : la page vaut `v1` par défaut.
+
+v1 tirait 9 rejets sur 28 qui étaient des **mauvaises faces** au cadrage
+impeccable — un verdict qu'aucun juge du crop ne peut prédire, donc RE-4 faussé
+(la réserve était contaminée pareil). Détail, mesures et coût :
+[D13](./DECISIONS.md#d13). v1 n'était pas gelée et ne portait que 2 annotations,
+sur deux images que v2 reprend à l'identique : **les 2 ellipses sont à
+retracer**, rien d'autre n'est perdu (51 des 60 images sont les mêmes).
+
 ## ⏱️ État au 2026-09-08
 
 | lot | état |
@@ -35,7 +47,7 @@ table vide et la question de D6 — la prod sur-crope-t-elle ou sous-crope-t-ell
 
 **Depuis n'importe quel navigateur, sans terminal** (D12, déployé le 2026-09-08) :
 
-> **https://eurio-admin.musubi.dev/gold-crop/annoter**
+> **https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2**
 
 La page reprend à la première image sans ellipse. Le geste, par image : traîner
 l'ellipse jaune sur le **bord extérieur de la pièce** (le listel, pas l'anneau
@@ -65,7 +77,7 @@ n'est pas chargé, et l'or n'irait que sur disque.
 </details>
 
 **Puis, à ≥ 24 h d'écart**, la seconde passe :
-**https://eurio-admin.musubi.dev/gold-crop/annoter?passe=2** (le lien apparaît
+**https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2&passe=2** (le lien apparaît
 sur `/gold-crop` dès que la passe 1 est complète). En repli :
 `python -m bench.gold_crop.annotate.serve --out state/gold_crop/v1 --passe 2 --n-double 10`.
 

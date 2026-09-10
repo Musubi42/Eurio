@@ -10,7 +10,9 @@ Trois pièges y sont déjà désarmés, cf. JEU-D-OR.md :
 * `image_assets.sha256` est NULL sur les 20 375 lignes — la clé passe par
   `source_images.sha256` ;
 * 4 678 des 6 299 rejets portent `face_reverse` / `not_2eur` et **ne disent rien
-  du cadrage** — les inclure apprendrait à détecter des revers ;
+  du cadrage** — les inclure apprendrait à détecter des revers. Le motif seul
+  ne suffit pas : `rejected_in_review` est un fourre-tout dont 619 lignes sur
+  1 461 portent `face='reverse'`, donc la coupe porte aussi sur la face ;
 * `tilt_deg` est tronqué à 14,07° par construction — la strate « de face »
   s'écrit `axis_ratio >= 0,97`, jamais `tilt_deg`.
 
@@ -70,9 +72,13 @@ WITH base AS (
     AND si.storage_path IS NOT NULL
     AND si.sha256       IS NOT NULL
     AND ia.bbox_json    IS NOT NULL
-    -- un rejet « mauvaise face / mauvaise pièce » ne dit RIEN du crop
+    -- un rejet « mauvaise face / mauvaise pièce » ne dit RIEN du crop.
+    -- Le MOTIF ne suffit pas : 619 des 1 461 `rejected_in_review` portent
+    -- `face='reverse'` — le motif fourre-tout cache la mauvaise face. On
+    -- coupe donc AUSSI sur la face (mesure du 2026-09-10, cf. JEU-D-OR.md §2).
     AND (ia.resolution_status = 'manual'
-         OR COALESCE(ia.quality_reason,'') NOT IN ('face_reverse','not_2eur'))
+         OR (COALESCE(ia.quality_reason,'') NOT IN ('face_reverse','not_2eur')
+             AND COALESCE(ia.face,'') <> 'reverse'))
   GROUP BY ia.id
 ),
 strat AS (
@@ -194,7 +200,10 @@ def main(argv=None) -> int:
             r["prefill"] = prefill_ellipse(dst, r["hint"])
 
     manifeste = {
-        "version": "v1",
+        # La version est le NOM DU DOSSIER : `state/gold_crop/v2` publie v2.
+        # La figer à "v1" ferait publier un tirage sous une version qui n'est
+        # pas la sienne — et `enregistrer_tirage` refuse (409) précisément ça.
+        "version": out.name,
         "db": str(db),
         "requete_sha256": hashlib.sha256(REQUETE.encode()).hexdigest(),
         "n_tirage": len(tirage),

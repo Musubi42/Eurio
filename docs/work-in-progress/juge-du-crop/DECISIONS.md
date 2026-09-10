@@ -352,3 +352,62 @@ passe à ≥ 24 h sur 10), le gel, l'empreinte serveur, le juge. Aucun seuil.
 terminal — c'est une hypothèse sur la cause de l'arrêt, pas une mesure. Si la
 séance reprend, l'hypothèse tient ; sinon la cause est ailleurs et il faudra
 la lui demander.
+
+## D13 — Un rejet de mauvaise face n'entre pas dans l'or : v1 est abandonné pour v2 · 2026-09-10 · 🟡 PROPOSÉ
+
+**Ce qui l'a déclenché.** Le PO, à la 2ᵉ image de la séance : « la pièce 2/60
+est une obverse ». Elle l'est : `986ada7d…` montre les deux faces côte à côte,
+et le cercle de production (`bbox {x:349, y:25, w:294, h:294}` sur 643×324)
+tombe sur la face commune. Verdict humain : *reject*.
+
+**Ce que la vérification a trouvé, et qui est plus grave que le cas.** Le filtre
+anti-fuite de `sample.py` ne coupait que sur le **motif**
+(`face_reverse`, `not_2eur`). Or `rejected_in_review` est un fourre-tout :
+
+```sql
+-- ml/state/eurio.replica.db (réplique du 2026-09-08)
+SELECT face, COUNT(*) FROM image_assets
+ WHERE resolution_status='rejected' AND quality_reason='rejected_in_review'
+ GROUP BY 1;        -- obverse 842 | reverse 619
+```
+
+Dans le tirage v1 : **9 des 28 rejets** portaient `face='reverse'` (S1 rn 3 et
+6, S2 rn 2/4/5, S3 rn 1, S4 rn 2/3/7). Vérifié à l'œil sur `bdbacea1…` :
+coincard belge, face commune, **cadrage impeccable**. RE-4 — « le juge
+prédit-il le verdict humain ? » — aurait mesuré un désaccord fabriqué sur près
+d'un tiers du bras rejet. Et **la réserve était contaminée pareil** (6 rejets
+sur 12, dont les 3 de S1) : la substitution par la réserve ne réparait rien.
+
+**Ce qui est décidé.**
+
+1. La coupe porte aussi sur la face, et **sur les seuls rejets** :
+   `AND COALESCE(ia.face,'') <> 'reverse'`. `face` est une prédiction
+   (`face_source='pipeline'` sur les 6 299 rejets, 0 NULL) — l'appliquer aux
+   acceptés sortirait du vivier des crops qu'un humain a validés, sur la foi
+   d'un classifieur.
+2. **La requête change, donc la version change** : `v2`. Ce n'est pas un choix
+   de confort, c'est la garde de `enregistrer_tirage` (409 : « un tirage et sa
+   version sortent de la MÊME requête, sinon le jeu n'est pas reproductible »).
+   Écraser v1 aurait rendu irreproductible un jeu qui se croit reproductible —
+   RE-5.
+3. Le manifeste ne fige plus `"version": "v1"` : elle vaut le **nom du
+   dossier**, sinon `sample --out …/v2` publie sous v1 sans le dire.
+
+**Ce que ça coûte** — mesuré avant d'agir : v1 n'est **pas gelée**
+(`frozen_at IS NULL`) et ne porte que **2 annotations**, toutes deux sur des
+*acceptés*. `ROW_NUMBER()` partitionnant par `(strate, verdict)`, retirer des
+rejets ne déplace aucun rang du bras accepté : **51 des 60 images sont
+identiques**, les 2 ellipses déjà tracées portent sur des images inchangées
+(même `hint`). Coût réel : les retracer sous v2. Vivier restant après la coupe,
+par strate (accept / reject) : S1 1 224/184 · S2 176/**41** · S3 1 240/409 ·
+S4 271/184 — le 8/7 tient partout.
+
+**Résiduel assumé.** `986ada7d…` — le cas d'origine — **est toujours en
+position 2 de v2** : le classifieur l'étiquette `obverse` à tort. Aucune requête
+ne le rattrape. C'est le bouton **indécidable** qui le sort, et la réserve,
+propre depuis v2, qui le remplace. C'est exactement l'usage pour lequel la
+réserve existe.
+
+**Ce qui attend le PO.** Confirmer l'abandon de v1 (rien n'y est gelé), et dire
+s'il veut qu'on corrige `face` en base pour les assets mal classés — geste
+distinct, qui touche la donnée de production et pas seulement l'or.

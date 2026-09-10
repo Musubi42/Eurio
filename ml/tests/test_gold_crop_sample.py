@@ -64,12 +64,12 @@ def _image(conn, sid, *, sha="a" * 60, titre="2 euro commemorative",
 
 
 def _asset(conn, aid, sid, *, statut="manual", motif=None, axis=0.99,
-           tilt=8.0, fiable=0, bbox=BBOX, crop_index=0):
+           tilt=8.0, fiable=0, bbox=BBOX, crop_index=0, face="obverse"):
     conn.execute(
         "INSERT INTO image_assets (id, source_image_id, crop_index, bbox_json,"
         " resolution_status, quality_reason, tilt_deg, axis_ratio, tilt_trustworthy,"
-        " storage_path) VALUES (?,?,?,?,?,?,?,?,?,'crops/x.jpg')",
-        (aid, sid, crop_index, bbox, statut, motif, tilt, axis, fiable))
+        " storage_path, face) VALUES (?,?,?,?,?,?,?,?,?,'crops/x.jpg',?)",
+        (aid, sid, crop_index, bbox, statut, motif, tilt, axis, fiable, face))
 
 
 def _corpus_s1(conn, n_accept, n_reject):
@@ -110,6 +110,44 @@ def test_un_rejet_de_face_ou_de_denomination_ne_dit_rien_du_cadrage(tmp_path):
     conn.commit()
     motifs = {r["quality_reason"] for r in tirer(chemin)}
     assert motifs == {"rejected_in_review", "consensus_reject"}
+
+
+def test_un_rejet_de_revers_sort_meme_quand_le_motif_ne_le_dit_pas(tmp_path):
+    """Le MOTIF ne suffit pas à écarter les rejets de mauvaise face.
+
+    Mesuré le 2026-09-10 sur `state/eurio.replica.db` :
+
+        SELECT face, COUNT(*) FROM image_assets
+         WHERE resolution_status='rejected' AND quality_reason='rejected_in_review'
+         GROUP BY 1;   -- obverse 842 | reverse 619
+
+    Le premier tirage de v1 en avait ramassé 9 sur 28 rejets : des cadrages
+    IMPECCABLES portant un verdict « reject » qu'aucun juge du crop ne peut
+    prédire. RE-4 y mesurait un désaccord fabriqué.
+    """
+    conn, chemin = _base(tmp_path)
+    _image(conn, "si0", sha="0" * 60)
+    _asset(conn, "ia0", "si0", statut="rejected", motif="rejected_in_review",
+           face="reverse")
+    _image(conn, "si1", sha="1" * 60)
+    _asset(conn, "ia1", "si1", statut="rejected", motif="rejected_in_review",
+           face="obverse")
+    conn.commit()
+    assert [r["asset_id"] for r in tirer(chemin)] == ["ia1"]
+
+
+def test_un_accepte_reste_meme_avec_une_face_de_revers(tmp_path):
+    """La coupe sur la face porte, elle aussi, sur les seuls REJETS.
+
+    `face` vient du pipeline (`face_source='pipeline'` sur les 6 299 rejets) :
+    c'est une prédiction. L'appliquer aux acceptés ferait sortir du vivier des
+    crops qu'un humain a validés, sur la foi d'un classifieur.
+    """
+    conn, chemin = _base(tmp_path)
+    _image(conn, "si0", sha="0" * 60)
+    _asset(conn, "ia0", "si0", statut="manual", face="reverse")
+    conn.commit()
+    assert [r["asset_id"] for r in tirer(chemin)] == ["ia0"]
 
 
 def test_un_accepte_garde_son_motif_quel_qu_il_soit(tmp_path):

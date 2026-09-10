@@ -35,12 +35,46 @@ tronquée.
 |---|---:|---|
 | `face_reverse` | 2 636 | ❌ mauvaise face |
 | `not_2eur` | 2 042 | ❌ mauvaise dénomination |
-| `rejected_in_review` | 1 461 | ✅ |
+| `rejected_in_review` | 1 461 | ⚠️ **fourre-tout** — 619 sont des revers |
 | `consensus_reject` | 97 | ✅ |
 
 **4 678 des 6 299 rejets ne portent aucune information de cadrage** et doivent
 être exclus du vivier « rejeté », sans quoi le jeu d'or apprend à détecter des
 revers.
+
+⚠️ **Le motif ne suffit pas — corrigé le 2026-09-10.** `rejected_in_review` est
+un fourre-tout : il porte aussi bien « mal cadré » que « mauvaise face non
+étiquetée ».
+
+```sql
+-- réplique du 2026-09-08 (ml/state/eurio.replica.db)
+SELECT face, COUNT(*) FROM image_assets
+ WHERE resolution_status='rejected' AND quality_reason='rejected_in_review'
+ GROUP BY 1;        -- obverse 842 | reverse 619
+```
+
+Le premier tirage (v1) en avait ramassé **9 sur 28 rejets** : des cadrages
+impeccables portant un verdict « reject » qu'aucun juge du crop ne peut prédire
+— RE-4 y aurait mesuré un désaccord fabriqué. **La réserve était contaminée de
+la même façon** (6 rejets de réserve sur 12), donc la substitution ne réparait
+rien. La coupe porte désormais aussi sur la face :
+
+```sql
+AND (ia.resolution_status = 'manual'
+     OR (COALESCE(ia.quality_reason,'') NOT IN ('face_reverse','not_2eur')
+         AND COALESCE(ia.face,'') <> 'reverse'))
+```
+
+Elle ne porte que sur les **rejets** : `face` vient du pipeline
+(`face_source='pipeline'` sur les 6 299 rejets, 0 NULL), c'est une prédiction —
+l'appliquer aux acceptés sortirait du vivier des crops qu'un humain a validés,
+sur la foi d'un classifieur.
+
+**Résiduel assumé** : ce classifieur se trompe. `986ada7d…` (v2, position 2)
+montre les deux faces côte à côte, le cercle de production tombe sur la face
+commune, et l'asset porte pourtant `face='obverse'`. Aucune requête ne le
+rattrapera : c'est le bouton **indécidable** qui le sort, et la réserve — propre
+depuis v2 — qui le remplace.
 
 ## Les strates, justifiées par le parc
 

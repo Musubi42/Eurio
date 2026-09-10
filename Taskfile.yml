@@ -96,6 +96,11 @@ tasks:
     cmds:
       - pnpm -C admin/packages/studio-local typecheck
 
+  front:test:
+    desc: Tests unitaires du front admin studio-local (vitest run)
+    cmds:
+      - pnpm -C admin/packages/studio-local test
+
   front:preview:
     desc: Preview du build studio-local (vite preview)
     cmds:
