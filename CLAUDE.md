@@ -78,7 +78,7 @@ résiduels connus dans `ETAT.md` §Écritures. Détail : `docs/architecture/READ
 | `eurio-promote` | mettre un modèle dans l'APK — la promotion remplace, elle n'accumule pas |
 | `eurio-backup` | sauvegarde et restauration — avant de toucher `infra/backup/`, et le jour J |
 | `eurio-data-writes` | avant de toucher une route qui écrit ; devant un `readonly database` / 503 `canonical_readonly` |
-| `eurio-verify` | avant de déclarer qu'un correctif marche — ici les pannes sont muettes |
+| `eurio-verify` | avant de déclarer qu'un correctif marche : rejouer le geste **de bout en bout** (écran ou API réelle, pas le test seul) et faire rougir une mutation — ici les pannes sont muettes |
 | `eurio-vps-deploy` | tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
 | `eurio-driver` | actions méta exposées à musu-os (`actions.yml`) |
 
@@ -113,7 +113,7 @@ Puis vérifie comme le dit la skill `eurio-vps-deploy` (routeurs montés, OpenAP
 
 ## La CI juge
 
-`.github/workflows/ci.yml` tourne à chaque push sur `main` et sur chaque PR : `pytest` (`ml`),
+`.github/workflows/ci.yml` se déclenche par `git push github main` ou par une PR, rien d'autre ne la lance : `pytest` (`ml`),
 `vitest` + typecheck (`admin`), `go-task tokens:check` (`tokens`), chacun par `nix develop .#ci
 --command …` — même toolchain que le poste. Suivre un run : `gh run watch --exit-status`. Rejouer un
 job en local : `nix develop .#ci --command <commande du job>`. **Un test rouge ne se masque pas** : ni
