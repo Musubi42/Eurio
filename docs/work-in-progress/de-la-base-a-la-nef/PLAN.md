@@ -122,7 +122,7 @@ Pendant ce chantier, **aucun commit n'entre dans `ml/`, `studio-local/` ou `docs
 | 3.2 | Aucune date dans les préceptes | `grep -c '2026-' CLAUDE.md` | `0` |
 | 3.3 | Chaque règle R0..R3 et chaque interdiction pointe une ADR ou une skill | lecture croisée par le contre-relecteur | 100 % |
 | 3.4 | L'état daté a un seul domicile | `ls docs/architecture/ETAT.md` ; `grep -c '2026-' docs/architecture/ETAT.md` | existe ; ≥ 20 |
-| 3.5 | Test de succession | un agent neuf, avec `CLAUDE.md` et `docs/architecture/` seulement, répond à dix questions fixées dans `SUIVI.md` (où écrit-on, quel tronc, comment on vérifie, comment on déploie…) | 10/10 sans demander |
+| 3.5 | Test de succession | un agent neuf, avec `CLAUDE.md` et `docs/architecture/` seulement, répond à dix questions fixées dans `SUIVI.md`. **Lecture disque forcée par `cat`, contrôle `wc -l` + `grep` d'un titre nouveau en tête** : le harnais injecte le `CLAUDE.md` de début de session dans le contexte des sous-agents (trouvé le 2026-09-10) | 10/10 sans demander |
 
 **Falsification.** Retirer une ligne de pointeur de `CLAUDE.md` et rejouer 3.5 : une question doit devenir sans réponse.
 

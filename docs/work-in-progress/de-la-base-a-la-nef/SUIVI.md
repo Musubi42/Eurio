@@ -254,3 +254,9 @@ Coupé une fois par une limite de session, repris depuis l'arbre. Deux commits `
 Table de destination : 38 sections de l'ancien fichier, chacune avec sa destination. Supprimées avec raison : les comptes (« 16 ADR », « 13 chantiers ») qui dérivaient déjà (17 et 17), la table hostname → profil redondante avec `.envrc`, le « 1080 Ti ». Ajouté sans ADR : « un test rouge ne se masque pas », justifié par le verdict de l'étape 2, candidat ADR.
 
 **Panne muette trouvée en chemin** : `codeberg` était revenu dans `git remote` du Mac. Cause, `gitRemotesHook` dans `flake.nix` ré-ajoutait le remote à chaque `nix develop` ; le critère 0.5 avait passé parce qu'aucun shell n'avait tourné entre le retrait et la contre-review. Corrigé par l'architecte (`2c2ed02c`) : le hook retire `codeberg` s'il traîne. Leçon pour les critères : **un état vérifié une fois n'est pas un état tenu** ; 0.5 se rejoue après un passage dans le shell.
+
+### Piège de méthode trouvé au test de succession · 2026-09-10
+
+Trois agents neufs ont répondu « MANQUE » à la question 4 en citant des titres de l'**ancien** `CLAUDE.md` (« Déploiement admin », « 16 ADR ») alors que le fichier sur disque porte « Déployer sur le VPS » à la ligne 106 (`grep -n 'Déployer sur le VPS' CLAUDE.md`). Cause : le harnais injecte dans le contexte des sous-agents le `CLAUDE.md` lu **en début de session**, et un agent qui le trouve déjà dans son contexte ne relit pas le disque.
+
+Conséquence pour la méthode : tout test de succession qui porte sur `CLAUDE.md` doit **forcer la lecture disque** (`cat`) et commencer par un contrôle de version (`wc -l`, un `grep` sur un titre nouveau). Ajouté au protocole du critère 3.5.
