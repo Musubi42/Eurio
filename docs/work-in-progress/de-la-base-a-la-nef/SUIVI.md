@@ -54,3 +54,24 @@ Branche → tag : `coin-richness/p3-schema`→`archive/coin-richness-p3-schema` 
 Commits de l'étape sur `main` : `a5e9341f` (ouverture), `d02288b8` (tronc unique dans les instructions), `122445b6` (mention datée dans l'index).
 
 Restes signalés, non traités : le tag local `vps-main-preswitch-20260814` ramené par le fetch (gardé, jamais poussé) ; deux fichiers `ml/bench/gold_crop/sample.py` et `ml/tests/test_gold_crop_sample.py` modifiés par l'autre chantier.
+
+### Contre-rapport · 2026-09-10 · relecteur neuf (sonnet), critères seuls
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 0.1 | `0` | PASS |
+| 0.2 | `main` ; local = github = `d3cca1f7` | PASS |
+| 0.3 | 9 tags `archive/*` locaux, 8 sur github ; 1 branche ; heads github = `main` seul | PASS |
+| 0.4 | première lecture : VPS @ `122445b6` ≠ github @ `d3cca1f7` → **FAIL** ; l'architecte a joué `git fetch github main && git merge --ff-only github/main` sur le VPS ; relecture : `main` / `github` / `d3cca1f7` / une seule branche → PASS | PASS |
+| 0.5 | `github` seul, Mac et VPS | PASS |
+| 0.6 | trois mentions, toutes datées et au passé, jugées ligne par ligne | PASS |
+
+Falsification : `git branch tmp-x` porte le compte à 2, que le seuil « ≤ 2 » aurait laissé passer. → critère 0.3 resserré à **1** dans `PLAN.md`. Branche supprimée, retour à 1.
+
+Succession : « rien ne manquait ».
+
+### Verdict de l'architecte · 2026-09-10 · **étape 0 fermée**
+
+Le FAIL transitoire de 0.4 est réel et instructif : un commit poussé après la chaîne VPS suffit à désaligner le sol. C'est l'argument de l'étape 1, une machine qui regarde à chaque push. La 9e ref `archive/*` locale est `vps-main` (D9), volontairement absente de github.
+
+**Étape 1 ouverte** : le fil à plomb. Préalable connu : `pytest` absent du devShell.

@@ -53,7 +53,7 @@ Pendant ce chantier, **aucun commit n'entre dans `ml/`, `studio-local/` ou `docs
 |---|---|---|---|
 | 0.1 | `main` contient tout le travail | `git rev-list --count main..matrice-dino` | `0` |
 | 0.2 | `main` est la branche courante et poussée | `git branch --show-current` ; `git rev-parse main github/main` | `main` ; deux SHA identiques |
-| 0.3 | Les branches mortes sont archivées, pas perdues | `git tag -l 'archive/*' \| wc -l` ; `git branch \| wc -l` | ≥ 8 ; ≤ 2 |
+| 0.3 | Les branches mortes sont archivées, pas perdues | `git tag -l 'archive/*' \| wc -l` ; `git branch \| wc -l` | ≥ 8 ; **1** (resserré le 2026-09-10 : la falsification a montré que « ≤ 2 » laissait passer une branche surnuméraire) |
 | 0.4 | Le VPS suit `main` | sur le VPS : `git -C /opt/eurio rev-parse --abbrev-ref HEAD` ; `git -C /opt/eurio config branch.main.remote` | `main` ; `github` |
 | 0.5 | Le remote mort ne piège plus personne | `git remote` | `github` seul ; codeberg retiré du clone local |
 | 0.6 | La doc ne nomme plus `repo-cleanup` ni `matrice-dino` comme tronc | `grep -rn 'repo-cleanup\|matrice-dino' CLAUDE.md docs/work-in-progress/README.md .claude/skills` | vide, hors mention historique datée |
