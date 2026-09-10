@@ -97,7 +97,7 @@ Pendant ce chantier, **aucun commit n'entre dans `ml/`, `studio-local/` ou `docs
 | # | Critère | Commande | Attendu |
 |---|---|---|---|
 | 2.1 | Vert complet dans le devShell, forme exacte du job `ml` | `nix develop .#ci --command bash -c 'cd ml && .venv/bin/python -m pytest -q -p no:cacheprovider'` (corrigé le 2026-09-10 : le `python` du flake n'est pas la venv) | `0 failed` |
-| 2.2 | Aucun skip anonyme | `grep -rn 'pytest.mark.skip\|xfail' ml --include='test_*.py' \| grep -v 'reason='` | vide |
+| 2.2 | Aucun skip muet | `grep -rnE 'pytest\.skip\(\s*\)\|skip\(""\)\|mark\.skip\s*$\|mark\.skip\(\s*\)' ml/tests --include='*.py'` (corrigé le 2026-09-10 : l'ancienne commande exigeait `reason=` alors que le dépôt passe le message en positionnel, faux positif sur 17 lignes) | vide |
 | 2.3 | Les skips restants sont comptés et justifiés | `pytest ml -q -rs \| tail -n 30` collé dans `SUIVI.md` | chaque ligne pointe une décision |
 | 2.4 | Pannes muettes couvertes | un test nommé par famille, listé dans `SUIVI.md` avec le chemin | 3 tests, chacun rouge sur mutation |
 | 2.5 | Le front aussi | `pnpm --filter studio-local test` | `0 failed` |

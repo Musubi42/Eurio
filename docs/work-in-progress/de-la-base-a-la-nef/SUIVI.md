@@ -182,3 +182,31 @@ Pannes muettes couvertes : (1) le mapping Numista lit la base injectée, mutatio
 `pytest 9.1.1` arrive par `ai-edge-torch → litert-torch → torch-xla2`. Rien pinné.
 
 Non élucidé : **2 tests de moins collectés sur Linux** que sur Mac hermétique (2 732 + 64 = 2 796 contre 2 798).
+
+### Contre-rapport · 2026-09-10 · relecteur neuf (sonnet), critères seuls
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 2.1 | `2798 passed in 125 s` | PASS |
+| 2.2 | 17 lignes `pytest.skip(f"…")` sans `reason=` mais toutes avec un message nommant le fichier ou l'état absent | FAIL littéral, **faux positif de la commande** → critère réécrit dans `PLAN.md` (0 occurrence de skip muet) |
+| 2.3 | 0 skip sur le Mac, données présentes | PASS |
+| 2.4 | trois mutations rouges, trois reverts verts, arbre propre | PASS |
+| 2.5 | `8 files, 64 tests passed` | PASS |
+| 1.2 | run 34499098202 `success`, `headSha` = HEAD local | PASS |
+| 2.6 | un `def test_` disparu mais redéfini plus strict juste dessous ; un `assert` remplacé par quatre équivalents ; le reste = fixtures déplacées vers `ml/tests/fixtures/` | PASS |
+| 2.7 | Mac 2 798 collectés ; Linux 2 732 + 64 = 2 796 ; aucun `sys.platform` ni marqueur CI dans `ml/tests` | **écart de 2 non expliqué**, consigné |
+
+Falsification : `coin_lookup.bind` commenté → `test_pannes_muettes` rouge, **les 5 `test_lab_api` restent verts**. Le docstring disait vrai : ces cinq tests n'ont jamais vu ce couplage.
+
+Succession : « rien ne manquait ».
+
+### Verdict de l'architecte · 2026-09-10 · **étapes 1 et 2 fermées**
+
+`main` est vert sur un runner sans données, deux relecteurs le confirment. Trois pannes muettes ont un test qui crie, et sa mutation est jouée par deux mains différentes.
+
+Ce qui reste et qui va au BACKLOG, pas à cette étape :
+- **64 tests ne tournent jamais en CI** (skip sur `eurio.db` absent, caches Numista, banque DINO). Une base de fixture minimale les rendrait honnêtes. Mesure : `gh run view 34499098202 --log | grep -E '[0-9]+ passed'`.
+- **Écart de collecte Linux = 2** (`2 796` contre `2 798`). Requête : `pytest --collect-only -q | tail -1` sur Mac contre `passed + skipped` du run CI. À élucider avec `--collect-only` dans un job une fois.
+- `pytest` arrive dans la venv par `ai-edge-torch → litert-torch → torch-xla2`, en `9.1.1` contre `9.0.2` du flake. Inoffensif aujourd'hui, à déclarer le jour où les deux divergent.
+
+**Étape 3 en attente du PO** : D3 (`CLAUDE.md` ≤ 150 lignes, sans date) est encore 🟡.

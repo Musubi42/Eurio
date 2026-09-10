@@ -92,3 +92,11 @@ basse, sans impact sur l'action :
 | **S7 — auto-rejet de crop sur seuils** (`crop-forensics`) | Ses deux seuils dépendent de `bg_uniformity` (S4) et `inner_feature_score` (S5/S6), **tous réfutés sur les bench**. Implémenter l'auto-reject sur des signaux morts = faux positifs garantis. S7 attend un **nouveau signal discriminant** avant d'avoir un sens |
 | **Découpage du monorepo** | [ADR-007](./adr/007-pas-de-split-eurio-avant-artefacts.md) : il faut d'abord publier tokens et catalogue |
 | **Remaster de l'historique git** | [ADR-005](./adr/005-remaster-historique-git.md), 🟡 proposée, non exécutée. Conditionne la position de [ADR-015](./adr/015-secrets-sops-age.md) sur l'historique fuité |
+
+
+## de-la-base-a-la-nef — restes des étapes 0 à 2 (2026-09-10)
+
+- Déposer `../archives/eurio-vps-main-8cdd7403.bundle` (911 Mo, la vieille `main` du VPS avec 1,3 Go de données commitées) sur MinIO pour qu'il entre dans les anneaux de sauvegarde. Décision D9.
+- 64 tests `ml` ne tournent jamais en CI (skip sur `eurio.db` absent, caches Numista, banque DINO). Une base de fixture minimale les rendrait honnêtes. Mesure : `gh run view 34499098202 --log | grep -E '[0-9]+ passed'` → `2732 passed, 64 skipped`.
+- Écart de collecte pytest Linux = 2 (2 796 contre 2 798 sur Mac). Requête : `cd ml && .venv/bin/python -m pytest --collect-only -q | tail -1` contre `passed + skipped` du run CI. Aucun `sys.platform` dans `ml/tests`.
+- Le job Android rejoint la CI à l'étape 4 (D10) : il faut d'abord la signature et un moyen de fetcher les modèles sans exposer MinIO sur un dépôt public.
