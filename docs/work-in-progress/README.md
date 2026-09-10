@@ -8,6 +8,7 @@
 >
 > Revu le **2026-08-24** : 40 chantiers → 13. Les 25 autres ont été archivés.
 > Le **2026-08-26**, `debit-enrichissement/` est ouvert : 14.
+> Le **2026-09-10**, `de-la-base-a-la-nef/` est ouvert : 15. **Il gèle les autres** (D0) le temps de poser le sol, la CI et la nef.
 
 ## 🎯 Par où reprendre
 
@@ -31,6 +32,7 @@ github/repo-cleanup`.
 
 | Chantier | Où il en est |
 |---|---|
+| [`de-la-base-a-la-nef/`](./de-la-base-a-la-nef/PLAN.md) | **Solidifier avant d'ouvrir : un tronc, une CI, des tests qui disent vrai, des préceptes sans date, l'APK sur la piste interne, un rite de purge.** Ouvert le 2026-09-10 sur le constat que l'atelier a grossi pendant que l'app reculait (commits Android 16→0 par mois). Six décisions 🟡 dans `DECISIONS.md`, atelier gelé (D0). 👉 **Entrée : [`PLAN.md`](./de-la-base-a-la-nef/PLAN.md)** |
 | [`debit-enrichissement/`](./debit-enrichissement/SUIVI.md) | **Le débit de crops validés — les 4 leviers : scraper, cropper, reconnaître, auto-valider.** Photo de départ prise le 2026-08-26. ⚠️ **Le goulot a basculé : ce n'est plus le scrape, c'est la review** (307 classes bloquées par un humain contre 265 par le quota ; file ouverte 10 440). L'auto-accept machine est **à l'arrêt depuis le 2026-07-08**, et les deux seuils sont mesurés **quasi inertes** (les désarmer rapporte +3,2 %, pas ×2). ⛔ Deux bloquants ouverts et un débris de mutation dans le code — tout est en haut de `SUIVI.md`. 👉 **Entrée : [`SUIVI.md`](./debit-enrichissement/SUIVI.md)** |
 | [`pipeline-propre/`](./pipeline-propre/) | `/besoin` — quelle classe nourrir, par quel geste, quand s'arrêter. Lots 0-4 déployés, **5-6 commités non déployés**. 671 classes, couverture 250/671 |
 | [`review-collaborative-v2/`](./review-collaborative-v2/) | **En production et utilisée.** Un ami tranche depuis `eurio-admin.musubi.dev`, en quarantaine. Reste : une vérif d'écriture du recadrage, le bail sur la file (lot 7), le full clean (lot 9). Décision : [ADR-012](../adr/012-review-collaborative-ecriture-directe.md) |
