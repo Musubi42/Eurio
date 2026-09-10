@@ -23,9 +23,8 @@ from vision import frame_scorer as fs
 
 TOL = 1e-3
 
-pytestmark_session = pytest.mark.skipif(
-    not (REAL_SESSION / "events.jsonl").exists(),
-    reason="session device committée absente",
+pytestmark_session = pytest.mark.skipif(reason="session device committée absente",
+    condition=not (REAL_SESSION / "events.jsonl").exists(),
 )
 
 

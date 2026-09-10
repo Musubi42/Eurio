@@ -24,9 +24,8 @@ from bench.session_io import (
 )
 from tests._bench_fixtures import ML_DIR, REAL_SESSION, frame
 
-requires_session = pytest.mark.skipif(
-    not (REAL_SESSION / "events.jsonl").exists(),
-    reason="session device committée absente",
+requires_session = pytest.mark.skipif(reason="session device committée absente",
+    condition=not (REAL_SESSION / "events.jsonl").exists(),
 )
 
 

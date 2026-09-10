@@ -14,8 +14,8 @@ from scripts.bench_theme_match import DB_PATH, GOLD_PATH, replay_bench
 from store import Store
 
 _REASON = "gold gelé ou eurio.db absent (artefacts locaux)"
-pytestmark = pytest.mark.skipif(
-    not GOLD_PATH.exists() or not DB_PATH.exists(), reason=_REASON
+pytestmark = pytest.mark.skipif(reason=_REASON,
+    condition=not GOLD_PATH.exists() or not DB_PATH.exists(),
 )
 
 

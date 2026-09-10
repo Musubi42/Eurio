@@ -102,8 +102,8 @@ def test_face_probe_missing_raises(tmp_path):
         load_face_probe(tmp_path / "nope.npz")
 
 
-@pytest.mark.skipif(not FACE_PROBE_PATH.exists(),
-                    reason="probe non générée (build_fragment_probe.py)")
+@pytest.mark.skipif(reason="probe non générée (build_fragment_probe.py)",
+                    condition=not FACE_PROBE_PATH.exists())
 def test_face_probe_shape():
     coef, intercept = load_face_probe()
     assert coef.ndim == 1 and coef.shape[0] == 384   # dim features DINO
