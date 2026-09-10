@@ -198,7 +198,21 @@ def re4(run: dict) -> dict:
         out[grandeur] = {"med_accept": float(np.median(va)),
                          "med_reject": float(np.median(vr)),
                          "mannwhitney_p": float(u.pvalue)}
-    out["verdict"] = "sépare" if p_fisher < 0.05 else "NE SÉPARE PAS"
+    # ⚠️ Fisher est BILATÉRAL : il rend le même p pour « les rejetés sont plus
+    # amputés » et pour son contraire. Or RE-4 demande que le juge PRÉDISE le
+    # verdict humain — une association inversée (les crops que l'humain accepte
+    # sont ceux que le juge déclare amputés) est un échec, pas un succès. Mesuré
+    # le 2026-09-11 sur v2 : accept 90,6 % amputés contre reject 58,3 %,
+    # p = 0,025. Sans ce test de sens, le banc l'aurait lu « sépare ».
+    out["sens"] = ("rejets plus amputés"
+                   if out["amputation_pct_reject"] > out["amputation_pct_accept"]
+                   else "INVERSÉ — les acceptés sont plus amputés")
+    if p_fisher >= 0.05:
+        out["verdict"] = "NE SÉPARE PAS"
+    elif out["amputation_pct_reject"] > out["amputation_pct_accept"]:
+        out["verdict"] = "sépare"
+    else:
+        out["verdict"] = "SÉPARE À L'ENVERS"
     return out
 
 
@@ -243,7 +257,7 @@ def main(argv=None) -> int:
         print("\n⛔ RE-4 — le juge sépare-t-il les acceptés des rejetés ?")
         v = re4(base)
         print(json.dumps(v, indent=1, ensure_ascii=False))
-        if v.get("verdict") == "NE SÉPARE PAS":
+        if v.get("verdict") in ("NE SÉPARE PAS", "SÉPARE À L'ENVERS"):
             print("\n🔴 Le juge est FAUX. Le banc s'arrête là (RE-4).")
             return 2
     return 0

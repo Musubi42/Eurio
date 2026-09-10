@@ -322,6 +322,21 @@ def test_re4_dit_quand_le_juge_ne_separe_pas():
     assert v["verdict"] == "NE SÉPARE PAS" and v["fisher_p"] > 0.05
 
 
+def test_re4_refuse_une_separation_inversee():
+    """Fisher est bilatéral : sans test de sens, un juge qui déclare amputés les
+    crops que l'humain ACCEPTE passerait pour un juge qui sépare.
+
+    Mesuré le 2026-09-11 sur l'or v2 : accept 90,6 % amputés contre reject
+    58,3 %, p = 0,025 — le banc l'aurait lu « sépare ».
+    """
+    cas = ([_cas("reject", i < 6) for i in range(10)]
+           + [_cas("accept", i < 28) for i in range(31)])
+    v = re4(_run_factice("baseline_prod", cas))
+    assert v["fisher_p"] < 0.05
+    assert v["verdict"] == "SÉPARE À L'ENVERS"
+    assert v["sens"].startswith("INVERSÉ")
+
+
 def test_le_tableau_met_les_bornes_en_tete():
     """Un tableau sans plancher ni plafond est illisible."""
     runs = [{"arm": "baseline_prod", "borne": False, "cases": [_cas("accept", False)]},
