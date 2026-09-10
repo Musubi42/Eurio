@@ -298,3 +298,23 @@ Deux faits pour la suite : (1) le hook du flake ressuscitait `codeberg`, corrig�
 **Interdits** : feature, écran, bouton, modèle nouveau (D4) ; un secret en clair hors SOPS ; toucher `secrets/dev.env` au-delà d'un ajout, et le rapporter tel quel (l'arbre le porte déjà modifié par une autre session) ; `git add -A`.
 
 **En parallèle, hors de ce chantier** : `juge-du-crop` reprend (D12) — RE-4 préliminaire sur 41 images, sans gel, décision D14 dans son propre `DECISIONS.md`.
+
+### Rapport de l'exécutant · 2026-09-11
+
+Quatre commits (`68bef1d4`, `877906a6`, `afaf5af1`, `1a0cdfbe`), CI verte sur `0fd688bd`.
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 4.1 | `go-task android:release` → APK 89 Mo, `apksigner` : `CN=Eurio, O=Musubi42`, SHA-256 `b43cbdc8…` ≠ debug `dd92f14d…` ; `android:bundle` → AAB 82 Mo, `jar verified` | PASS |
+| 4.2 | `versionCode = 2`, `versionName = "0.2.0"`, confirmés par `aapt2 dump badging` | PASS |
+| 4.3–4.6 | gestes PO ; tout est dans `PLAY-INTERNE.md` §8 | en attente |
+
+Falsification obtenue sans la chercher : sans les variables dans l'environnement, le build release s'arrête sur un message qui nomme les manquantes ; aucun APK non signé ne sort.
+
+**D5** : table Room `scan_events` (migration 4→5, sans FK vers `coins` : la migration 3→4 droppe cette table). Écriture par un décorateur autour du dépôt du coffre, `confirmPossession` étant le seul point où un scan est déclaré abouti ; `features/` intact. Lecture en **debug seulement** (`ScanJournalDumpReceiver` sous `src/debug/`, absent du manifeste release, vérifié). **L'export testeur n'existe pas** : c'est un bouton, donc une scène proto (R1) et une nouveauté (D4). Le critère 4.5 n'est pas mesurable à distance en l'état. 250 tests JVM verts dont 5 sur le journal ; le test instrumenté du DAO attend un appareil.
+
+**Deux pannes muettes trouvées en chemin.**
+1. `.envrc` faisait `source <(sops -d …)` ; une valeur avec parenthèse (`DUPLICATI_EURIO_PASSPHRASE`) faisait mourir bash et **les cinq variables suivantes n'étaient jamais exportées** sur cette machine, dont `MINIO_ROOT_*` et `REVIEW_SESSION_SECRET`. Corrigé par une lecture ligne à ligne (`68bef1d4`), idem `.envrc.example`.
+2. `secrets/dev.env` était modifié par une autre session : rotation d'`EURIO_API_TOKEN`, rien d'autre. L'exécutant y a ajouté les quatre `ANDROID_RELEASE_*` par `sops set --value-stdin` et **n'a pas commité** : la clé de signature n'existait que sur ce Mac. L'architecte a vérifié que les deux jetons répondent 200 et a commité le fichier chiffré.
+
+Non fait : installation sur téléphone (aucun appareil branché), test instrumenté du DAO, job Android en CI (D10 tient : dépôt public, identifiants MinIO au `preBuild`).
