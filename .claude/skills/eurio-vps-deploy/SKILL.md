@@ -18,8 +18,12 @@ cd infra/eurio-api && sops exec-env ../../secrets/dev.env "docker compose up -d 
 Le front hébergé est un conteneur séparé, même schéma :
 `cd /opt/eurio/infra/eurio-admin && sops exec-env ../../secrets/dev.env "docker compose up -d --build"`.
 
-⚠️ **Le VPS pousse aussi des commits.** Une autre session y travaille parfois :
-`git push` peut être rejeté. `git fetch` + rebase, ne force jamais.
+⚠️ **Le VPS ne pousse jamais.** Sa clé github est une deploy key en **lecture
+seule** (vérifié le 2026-09-10 : `git push` répond « marked as read only »). Ne
+commite pas dans `/opt/eurio` : le code n'entre que par le Mac vers `github/main`.
+Un tag né sur le VPS remonte par le Mac :
+`git fetch ssh://serverOimNixDontpanic/opt/eurio refs/tags/<t>:refs/tags/<t> && git push github <t>`.
+Décision : `docs/work-in-progress/de-la-base-a-la-nef/DECISIONS.md` D8.
 
 ⚠️ **`infra/minio/bootstrap.sh` fait un `docker compose up -d` sur MinIO**
 (étape 3). MinIO porte `eurio-api`, `eurio-review` et le miroir de backup :

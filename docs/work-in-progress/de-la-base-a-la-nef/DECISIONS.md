@@ -48,3 +48,31 @@ Options : (a) un compteur local exporté par les testeurs à la fin des 7 jours,
 ## D6 — Plafond de 1 500 lignes par chantier vivant, rite trimestriel · 2026-09-10 · 🟡 PROPOSÉ
 
 **Pourquoi** : Ise se reconstruit tous les vingt ans pour transmettre le geste. `juge-et-banc` fait 7 538 lignes et `scan-sans-retrain` 5 533 ; personne ne les relit.
+
+## D7 — La `main` locale du VPS est archivée en tag, puis réalignée sur `github/main` · 2026-09-10 · ✅ architecte
+
+Trouvé à l'exécution de l'étape 0 : `/opt/eurio` porte une branche `main` locale divergente (sommet `8cdd7403`, 2026-06-08 ; 23 commits sans équivalent patch dans `github/main`, des `WIP` d'avril à juin et un « update docker compose »). Le conteneur en service est bâti sur `repo-cleanup` @ `e4be1c3f`, pas sur cette `main`.
+
+Geste : `git tag archive/vps-main main`, pousser le tag sur github, puis `git branch -f main github/main && git checkout main`. Retirer le remote `codeberg` du VPS et ses branches locales orphelines, toutes ancêtres de `github/main`.
+
+**Pourquoi** : c'est l'application de D1 au clone du VPS. Rien n'est détruit : le tag garde les 23 commits. Aucun `docker compose` : le conteneur continue de tourner sur `e4be1c3f`, ancêtre de `main`.
+
+## D8 — Le VPS ne pousse jamais ; sa clé github reste en lecture seule · 2026-09-10 · ✅ architecte
+
+Trouvé à l'exécution de D7 : `git push` depuis `/opt/eurio` répond « The key you are authenticating with has been marked as read only ». La skill `eurio-vps-deploy` affirmait le contraire, et `remote.pushDefault github` y était inerte.
+
+Geste : on garde la clé telle quelle. Un tag né sur le VPS remonte par le Mac (`git fetch ssh://serverOimNixDontpanic/opt/eurio refs/tags/<t>:refs/tags/<t>` puis `git push github <t>`). La skill est corrigée.
+
+**Pourquoi** : le VPS est le writer canonique de la **donnée**, pas du **code**. Le code n'a qu'une entrée, le Mac vers github. Une clé en écriture sur un serveur exposé serait une voie de plus, sans lecteur pour la surveiller.
+
+## D9 — `archive/vps-main` ne va PAS sur github ; il vit en bundle hors ligne · 2026-09-10 · ✅ architecte, supersède le push de D7
+
+Mesuré à l'exécution : le tag traîne **201 commits et 13 012 objets** absents de github, **1 308 Mo**, dont 24 objets de plus de 10 Mo et 309 Mo de `eurio.db.bak-*` (requête : `git rev-list --objects github/main..archive/vps-main | git cat-file --batch-check`). Deux `git push` concurrents y ont passé 22 minutes sans atterrir ; tués, rien n'a atteint github.
+
+Les 23 commits sans équivalent sont des `WIP` d'avril et mai, cinq « crop forensics chunk 8 à 12 » du 2026-05-27 et un « update docker compose » du 2026-06-08 (`git cherry github/main archive/vps-main`).
+
+Geste : le tag reste sur le Mac et sur le VPS ; un bundle `../archives/eurio-vps-main-8cdd7403.bundle` est écrit hors dépôt (ADR-005 : « ancien historique archivé en tarball hors ligne »). La chaîne VPS de D7 se joue sans le push.
+
+**Pourquoi** : ADR-004, les artefacts binaires sont hors de git. Pousser ce tag aurait gravé 1,3 Go de sauvegardes SQLite dans le dépôt de référence pour toujours. Rien n'est perdu : deux copies sur deux machines plus un bundle vérifié.
+
+**Reste à faire, BACKLOG** : déposer le bundle sur MinIO pour qu'il entre dans les anneaux de sauvegarde.

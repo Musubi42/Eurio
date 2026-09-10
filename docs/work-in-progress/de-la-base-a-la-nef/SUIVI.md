@@ -29,3 +29,28 @@ _Contrat : à écrire à l'ouverture de la session d'exécution._
 **Entrées** : `PLAN.md` §Étape 0. **Sorties** : les six critères avec sortie collée, la table branche → tag, les trois docs corrigées.
 
 **Interdits** : `push --force` ; `branch -D` sur une branche non taguée ; `git add -A` ; toucher aux fichiers modifiés de l'autre chantier ; sur le VPS, autre chose que `git fetch`, `git checkout main`, `git config` — aucun `docker compose`.
+
+### Rapport de l'exécutant · 2026-09-10
+
+Trois passes. La première a fermé 0.1, 0.2, 0.3, 0.5, 0.6 et s'est **arrêtée** sur 0.4 : `/opt/eurio` portait une `main` locale divergente (`8cdd7403`, 201 commits depuis le merge-base `24aa4636`, 23 sans équivalent patch). L'arbre a été remis sur `repo-cleanup`, les deux `docker-compose.yml` retrouvés, aucun conteneur touché. → D7.
+
+La deuxième a buté sur `git push` depuis le VPS : « key marked as read only ». → D8, skill `eurio-vps-deploy` corrigée.
+
+La troisième a tenté de pousser le tag depuis le Mac : 22 minutes, deux pushes concurrents, rien d'atterri. L'architecte a mesuré **1 308 Mo / 13 012 objets** dont 309 Mo de `eurio.db.bak-*`, tué les pushes. → D9, bundle `../archives/eurio-vps-main-8cdd7403.bundle` (911 Mo, `git bundle verify` ok).
+
+Chaîne VPS finale (exit 0) : `main` réalignée sur `github/main`, `repo-cleanup` / `scan-corpus-funnel` / `sources-jo-wikipedia` supprimées avec `-d` (donc fusionnées), `codeberg` retiré, `branch.main.remote=github`. Conteneurs inchangés : `eurio-admin` Up 39 h, `eurio-api` Up 2 j, `eurio-review` et `eurio-minio` Up 2 mois.
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 0.1 | `git rev-list --count main..archive/matrice-dino` → `0` | PASS |
+| 0.2 | `main` ; local = github = `122445b6` | PASS |
+| 0.3 | `git tag -l 'archive/*' \| wc -l` → 8 ; `git branch \| wc -l` → 1 | PASS |
+| 0.4 | VPS HEAD `main` @ `122445b6`, `branch.main.remote` = `github` | PASS |
+| 0.5 | `git remote` → `github`, Mac et VPS | PASS |
+| 0.6 | trois mentions restantes, toutes datées et au passé | PASS |
+
+Branche → tag : `coin-richness/p3-schema`→`archive/coin-richness-p3-schema` 9051c20b · `data-harmonization` eae5b6da · `debug-data-taxonomy` a82d8cd0 · `repo-cleanup` 21be7b13 · `scan-corpus-funnel` d1f58122 · `source-lmdlp-rebuild` 4cf86e8c · `sources-jo-wikipedia` 36a75a57 · `matrice-dino` e4be1c3f. Les 8 tags sont sur github.
+
+Commits de l'étape sur `main` : `a5e9341f` (ouverture), `d02288b8` (tronc unique dans les instructions), `122445b6` (mention datée dans l'index).
+
+Restes signalés, non traités : le tag local `vps-main-preswitch-20260814` ramené par le fetch (gardé, jamais poussé) ; deux fichiers `ml/bench/gold_crop/sample.py` et `ml/tests/test_gold_crop_sample.py` modifiés par l'autre chantier.
