@@ -429,8 +429,32 @@ Les 16 indécidables sont **tous des rejets**. Les commentaires du PO sur dix po
 
 **Ce qui est décidé.**
 1. Les positions 44, 45 et 59 sont **à passer indécidables** par le PO — trois clics sur la page v2, non gelée. Aucun code.
-2. RE-4 se joue **d'abord en préliminaire** sur les 41 restantes (44 moins les trois dessins), sans gel, pour savoir si le juge sépare 12 rejets de 29 acceptés. Un bras rejet à 12 est mince ; le résultat est une indication, pas le verdict.
+2. RE-4 se joue **d'abord en préliminaire** sur les 41 restantes (44 moins les trois dessins), sans gel, pour savoir si le juge sépare **10 rejets de 31 acceptés** (corrigé le 2026-09-11 : 44 et 59 sont des rejets, 45 un accepté). Un bras rejet à 12 est mince ; le résultat est une indication, pas le verdict.
 3. La **réserve** (24 images dans le tirage, rôle `reserve`) sert à regarnir : le PO l'annote après les trois clics. Le gel attend passe 2 et la réserve.
 4. Pour la suite du vivier (v3 si nécessaire) : le tirage ne peut pas couper « dessin » par SQL — c'est la confirmation humaine qui le fait, et elle coûte 16 images sur 28 dans le bras rejet. Si RE-4 préliminaire est concluant, on regarnit par la réserve ; sinon on discute d'un v3 avec un vivier de rejets **`crop`-motivés** (les lignes L1 du recadrage manuel, quand la review aura repris).
 
 **Ce qui attend le PO** : les trois clics (44, 45, 59 → indécidable), la passe 2 (10 images, ≥ 24 h après la passe 1, donc dès cet après-midi), la réserve.
+
+
+## D15 — RE-4 préliminaire : le juge sépare à l'envers ; le banc s'arrête sur `amputation_rate`, pas sur la géométrie · 2026-09-11 · 🟡 PROPOSÉ
+
+**Mesuré** (`python -m bench.gold_crop.harness --out state/gold_crop/v2`, 44 annotées, et sur une copie locale à 41 avec les trois dessins de D14 marqués indécidables ; rien d'écrit au canonique, rien de gelé) :
+
+| run | n accept / reject | amputés chez les acceptés | amputés chez les rejetés | Fisher | sens |
+|---|---:|---:|---:|---:|---|
+| 44 | 32 / 12 | **29 (90,6 %)** | 7 (58,3 %) | p = 0,025 | **inversé** |
+| 41 | 31 / 10 | **28 (90,3 %)** | 6 (60,0 %) | p = 0,047 | **inversé** |
+
+`amputation_rate` à `m = 0` est **saturé et anticorrélé** : la prod rogne en routine ~2 % du rayon (`C1_marge_min_frac` médian −0,0195·a chez les acceptés) et l'humain l'accepte. La profondeur de marge **ne sépare pas** (Mann-Whitney p = 0,68). Fisher est bilatéral : il criait « sépare » sur une relation inversée — **le harness rend désormais `SÉPARE À L'ENVERS` et s'arrête** (`a13dc30a`, un test verrouille le cas).
+
+Ce qui sépare, et fort : la **position** du cercle par rapport à l'or. Boundary IoU médian **0,677** (accept) contre **0,058** (reject), p = 1,5·10⁻⁵ ; IoU de masque **0,970** contre **0,779**, p = 2,3·10⁻⁵. Les rejets ne sont pas « un peu rognés », ce sont des cercles posés ailleurs (un cas à IoU 0,000, un à marge −5,2·a).
+
+**Ce qui est proposé.**
+1. RE-4 est **tenu** : sur le critère déclaré (amputation binaire à `m = 0`), le juge est faux, et le banc s'arrête là. C'est le huitième oracle qui tombe, mais celui-ci est tombé **avant** de servir — le dispositif a fonctionné.
+2. Le juge est **amendé, pas abandonné** : critère = **IoU de masque contre l'or ≥ τ** (contrainte géométrique, pas un score d'embedding — D2 tient). L'amputation reste **publiée** comme mesure, hors verdict, comme C2 depuis D8.
+3. **τ ne se choisit pas sur les 41.** Il se pose par une règle écrite avant (RE-1), puis se **valide sur la réserve annotée**, qui devient le jeu tenu à l'écart. Proposition de règle : τ = le point qui maximise la séparation acceptés/rejetés sur passe 1, arrondi au centième, signé avant que la réserve ne soit lue par le banc.
+4. Le piège « `gold_replay` doit être à 0 % » est amendé en « 0 % **hors images tronquées par le bord du raw** » : les 4 cas à 9,1 % ont tous `C1_cadre_tronque = True`, disque à 0,000, cadre clampé — aucune méthode ne peut les récupérer.
+
+**Réserves.** Dix rejets, deux strates à une seule image rejetée (S2, S4) : aucune lecture par strate côté rejet. La réserve (24 images, 6 par strate tirée, 3 accept + 3 reject chacune) rapporte ~17 utilisables et **ne ramène ni S2 ni S3 à 15**. Un v3 avec un vivier de rejets `crop`-motivés (les lignes L1 du recadrage manuel) restera probablement nécessaire.
+
+**Ce qui attend le PO** : (a) valider l'amendement du juge (point 2) et la règle de τ (point 3) ; (b) les trois clics de D14 ; (c) la passe 2 ; (d) la réserve — la page doit d'abord savoir la servir (`?role=reserve`, trois lignes de front, en cours).

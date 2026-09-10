@@ -24,7 +24,11 @@ impeccable — un verdict qu'aucun juge du crop ne peut prédire, donc RE-4 faus
 sur deux images que v2 reprend à l'identique : **les 2 ellipses sont à
 retracer**, rien d'autre n'est perdu (51 des 60 images sont les mêmes).
 
-## ⏱️ État au 2026-09-08
+## ⏱️ État au 2026-09-11 — la passe 1 est jouée, RE-4 préliminaire dit « à l'envers »
+
+Les 60 annotations de v2 sont dans le canonique (2026-09-10). **16 indécidables, tous des rejets** (D14) ; 44 utilisables, 32 accept / 12 reject. RE-4 préliminaire, sans gel : le juge `amputation_rate` **sépare à l'envers** (90 % des acceptés « amputés ») ; la géométrie (BIoU, IoU masque) sépare fort. Proposition D15 : juge amendé en IoU de masque ≥ τ, τ validé sur la réserve. **Trois gestes PO** : les trois clics D14 (44, 45, 59 → indécidable), la passe 2, la réserve (dès que `?role=reserve` est déployé). Le gel attend ces trois gestes.
+
+## ⏱️ État au 2026-09-08 (historique)
 
 | lot | état |
 |---|---|
@@ -167,7 +171,7 @@ marche aussi depuis le front hébergé.
 | **Cloudflare refuse l'UA par défaut d'urllib** | 403 « error code: 1010 », une page HTML au lieu de JSON. `curl` passe, l'outil non : la panne ne se voit QUE dans l'outil. Tout client Python du canonique doit poser un `User-Agent` |
 | **une session de test écrit dans le même `gold.json`** | arrivé le 28/08 : une annotation d'essai a fui dans le jeu du PO puis dans le canonique. Toujours utiliser `--version SMOKE-…` pour un essai, jamais `v1` |
 | **la reprise se fait sur « annotée », pas sur « touchée »** | confirmer une strate crée une entrée ; reprendre après elle sauterait l'image, en silence. Corrigé, mais c'est le genre de chose à re-vérifier |
-| **`gold_replay` doit être à 0 % d'amputation** | s'il est à 100 %, le seuil est mal posé (c'était le cas avant [D9](./DECISIONS.md)) — un plafond au plancher rend le tableau illisible |
+| **`gold_replay` doit être à 0 % d'amputation, hors images tronquées par le bord** | s'il est à 100 %, le seuil est mal posé (c'était le cas avant [D9](./DECISIONS.md)). À 9,1 % sur v2 : 4 pièces touchent le bord du raw, `C1_cadre_tronque`, irrécupérables par toute méthode ([D15](./DECISIONS.md)) |
 | **C2 est inerte** | `arc_coverage` = 1,000 jusqu'à 25 % d'amputation. Journalisée, hors du critère ([D8](./DECISIONS.md)). Ne pas la ré-armer sans amendement |
 
 ## Ce qui attend encore le PO
