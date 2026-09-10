@@ -29,7 +29,7 @@ Un devShell `ci` léger dans `flake.nix` (python + pytest, node + pnpm, JDK + SD
 
 **Réouverture** : si le run dépasse 20 minutes, on scinde `android` dans un job nocturne.
 
-## D3 — `CLAUDE.md` ≤ 150 lignes, sans date · 2026-09-10 · 🟡 PROPOSÉ
+## D3 — `CLAUDE.md` ≤ 150 lignes, sans date · 2026-09-10 · ✅ PO le 2026-09-10
 
 Les préceptes restent ; l'état déménage dans `docs/architecture/ETAT.md`. Une règle sans ADR ni skill est écrite en ADR ou retirée.
 

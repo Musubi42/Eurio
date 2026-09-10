@@ -210,3 +210,31 @@ Ce qui reste et qui va au BACKLOG, pas à cette étape :
 - `pytest` arrive dans la venv par `ai-edge-torch → litert-torch → torch-xla2`, en `9.1.1` contre `9.0.2` du flake. Inoffensif aujourd'hui, à déclarer le jour où les deux divergent.
 
 **Étape 3 en attente du PO** : D3 (`CLAUDE.md` ≤ 150 lignes, sans date) est encore 🟡.
+
+## Étape 3 — Les préceptes
+
+### Contrat · 2026-09-10 · feu vert PO sur D3
+
+**Point de départ** : `CLAUDE.md` = 394 lignes, 23 occurrences de `2026-`. `docs/architecture/` = `README.md`, `parcours.md`, `artifacts.md`.
+
+**Sorties** :
+1. `CLAUDE.md` ≤ 150 lignes, **zéro** occurrence de `2026-`, uniquement des règles intemporelles et des pointeurs. Chaque règle R0..R3, chaque interdiction, chaque « lis d'abord » pointe une ADR, une skill ou un doc.
+2. `docs/architecture/ETAT.md` : la photo datée du système, où déménage tout ce qui porte une date ou un chiffre mesuré (état des chantiers, mesures ArcFace/DINO, résiduels de rerouting, état du backup, piège codeberg…). Chaque fait garde sa date et sa requête.
+3. **Table de destination** dans le rapport : chaque section de l'ancien `CLAUDE.md` → `gardée` / `ETAT.md` / `ADR-xxx` / `skill xxx` / `supprimée (raison)`. Rien ne disparaît sans ligne.
+4. `docs/architecture/README.md` pointe `ETAT.md` ; `docs/adr/README.md` §« Où vit quelle information » ajoute la ligne « l'état daté → `architecture/ETAT.md` ».
+
+**Test de succession (critère 3.5)** — dix questions qu'un agent neuf, avec `CLAUDE.md` et `docs/architecture/` seulement, doit pouvoir résoudre sans demander :
+1. Où vit la donnée canonique, et par quel chemin le Mac y écrit-il ?
+2. Quel est le tronc git, et d'où le VPS tire-t-il ?
+3. Avant de déclarer qu'un correctif marche, que fait-on et quelle skill lit-on ?
+4. Comment redéploie-t-on `eurio-api` sur le VPS ?
+5. Comment change-t-on une couleur de l'app Android ?
+6. Que faut-il avant de coder un écran de l'app Android ? Et pour un écran d'admin ?
+7. Où vivent les secrets, et comment en édite-t-on un ?
+8. Que signifie un `503 canonical_readonly`, et que lit-on avant de contourner ?
+9. Où sont les décisions, et comment en lit-on une ?
+10. Quelle commande lance la CI et que juge-t-elle ?
+
+**Ce qui est tranché** : les règles d'interdiction restent dans `CLAUDE.md` mais sans leur justification datée (elle va en ETAT.md ou en ADR). La mention du proto (R1) reste. Les tableaux de skills restent, resserrés à une ligne par skill. La section « ML pipeline » et « ArcFace ou DINO » deviennent deux lignes de pointeur vers `SUIVI-MATRICE.md` et `ETAT.md`.
+
+**Interdits** : supprimer une règle sans ligne dans la table de destination ; inventer une règle ; toucher aux fichiers modifiés de l'autre chantier ; `git add -A` ; toucher à `.claude/skills/` (les skills ne bougent pas à cette étape).
