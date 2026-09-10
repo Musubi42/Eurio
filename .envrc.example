@@ -26,13 +26,25 @@ esac
 
 # 2) Déchiffre les secrets et les exporte dans le shell.
 #    Lit ~/.config/sops/age/keys.txt automatiquement (clé privée de la machine).
-#    `set -a` auto-exporte chaque assignment du fichier sourcé ; gère
-#    proprement les commentaires et lignes vides (contrairement à un `eval`
-#    avec `sed 's/^/export /'` qui ferait planter sur les `#`).
+#
+#    ⚠️ Lecture ligne à ligne, PAS `set -a` + `source`. Le `source` fait
+#    interpréter les valeurs par bash : une valeur portant une parenthèse
+#    coupe le chargement en plein milieu, et toutes les variables situées
+#    après elle dans le fichier ne sont jamais exportées — sans autre signe
+#    qu'un message noyé dans la sortie de direnv (trouvé le 2026-09-11).
+#    Le fichier est un dotenv plat produit par SOPS (`CLE=valeur`, jamais de
+#    quotes, jamais de multi-ligne) : `export "$k=$v"` a exactement la même
+#    sémantique, sans passer par le parseur shell.
 if [ -f secrets/dev.env ]; then
-  set -a
-  . <(sops -d --input-type dotenv --output-type dotenv secrets/dev.env)
-  set +a
+  while IFS= read -r _sops_line; do
+    case "$_sops_line" in
+      ''|'#'*) continue ;;
+      *=*) ;;
+      *) continue ;;
+    esac
+    export "${_sops_line%%=*}=${_sops_line#*=}"
+  done < <(sops -d --input-type dotenv --output-type dotenv secrets/dev.env)
+  unset _sops_line
 else
   echo "⚠️  secrets/dev.env absent — voir README.md §Secrets pour le bootstrap." >&2
 fi
