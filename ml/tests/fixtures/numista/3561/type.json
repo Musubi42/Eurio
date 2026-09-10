@@ -1,0 +1,168 @@
+{
+  "id": 3561,
+  "url": "https://en.numista.com/3561",
+  "title": "2 Euros (French Presidency of the European Union)",
+  "object_type": {
+    "id": 2,
+    "name": "Circulating commemorative coins"
+  },
+  "issuer": {
+    "code": "france",
+    "name": "France"
+  },
+  "min_year": 2008,
+  "max_year": 2008,
+  "ruler": [
+    {
+      "id": 11,
+      "name": "Fifth Republic",
+      "wikidata_id": "Q200686",
+      "group": {
+        "id": 89,
+        "name": "Modern France"
+      }
+    }
+  ],
+  "value": {
+    "text": "2 Euros",
+    "numeric_value": 2,
+    "currency": {
+      "id": 9006,
+      "name": "Euro",
+      "full_name": "Euro (2002-date)"
+    }
+  },
+  "demonetization": {
+    "is_demonetized": false
+  },
+  "size": 25.75,
+  "thickness": 2.2,
+  "shape": "Round",
+  "composition": {
+    "text": "Bimetallic: nickel brass clad nickel centre in copper-nickel ring"
+  },
+  "technique": {
+    "text": "Milled"
+  },
+  "obverse": {
+    "designers": [
+      "Philippe Starck"
+    ],
+    "description": "The coin is inscribed as follows: ‘2008 PRÉSIDENCE FRANÇAISE UNION EUROPÉENNE RF’. The mint mark and the mintmaster's mark are located below, to the left and the right respectively. The twelve stars of the European Union are shown on the outer ring.",
+    "lettering": "2008 PRÉSIDENCE FRANÇAISE UNION EUROPÉENNE\r\nRF",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "unabridged_legend": "République française",
+    "lettering_translation": "French Presidency to the European Union\r\n2008",
+    "picture": "https://en.numista.com/catalogue/photos/france/6958d8106fcf94.60952913-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/france/6958d8106fcf94.60952913-180.jpg",
+    "picture_copyright": "brismike",
+    "picture_license_name": "CC BY-NC",
+    "picture_license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.en"
+  },
+  "reverse": {
+    "engravers": [
+      "Luc Luycx"
+    ],
+    "description": "A map, next to the face value, shows the European continent without borders.",
+    "lettering": "2 EURO LL",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "picture": "https://en.numista.com/catalogue/photos/france/6958d811cc9a99.91865549-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/france/6958d811cc9a99.91865549-180.jpg",
+    "picture_copyright": "brismike",
+    "picture_license_name": "CC BY-NC",
+    "picture_license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.en"
+  },
+  "series": "Présidence du Conseil de l'Union européenne",
+  "commemorated_topic": "French Presidency of the Council of the European Union",
+  "comments": "coincard<br />\r\n<a href=\"https://en.numista.com/catalogue/images/5c2e647c844a6.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5c2e647c844a6.jpg\" alt=\"\" width=\"200\" height=\"174\" /></a>",
+  "related_types": [
+    {
+      "id": 30592,
+      "title": "1½ Euro (French Presidency)",
+      "category": "coin",
+      "country": {
+        "code": "france",
+        "name": "France"
+      },
+      "minYear": 2008,
+      "maxYear": 2008
+    },
+    {
+      "id": 22052,
+      "title": "10 Euros (French Presidency)",
+      "category": "coin",
+      "country": {
+        "code": "france",
+        "name": "France"
+      },
+      "minYear": 2008,
+      "maxYear": 2008
+    },
+    {
+      "id": 359189,
+      "title": "20 Euros (French Presidency)",
+      "category": "coin",
+      "country": {
+        "code": "france",
+        "name": "France"
+      },
+      "minYear": 2008,
+      "maxYear": 2008
+    },
+    {
+      "id": 125677,
+      "title": "50 Euros (French Presidency of European Union)",
+      "category": "coin",
+      "country": {
+        "code": "france",
+        "name": "France"
+      },
+      "minYear": 2008,
+      "maxYear": 2008
+    }
+  ],
+  "tags": [
+    "Map"
+  ],
+  "references": [
+    {
+      "catalogue": {
+        "id": 3,
+        "code": "KM"
+      },
+      "number": "1459"
+    },
+    {
+      "catalogue": {
+        "id": 24,
+        "code": "Schön"
+      },
+      "number": "951"
+    }
+  ],
+  "weight": 8.5,
+  "orientation": "medal",
+  "edge": {
+    "description": "Finely ribbed with edge lettering: three times the sequence \"2 * *\" upright and the sequence \"* * 2\" inverted",
+    "lettering": "2 ** 2 ** 2 ** 2 ** 2 ** 2 **",
+    "picture": "https://en.numista.com/catalogue/photos/france/6952ad9492fd09.72278191-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/france/6952ad9492fd09.72278191-180.jpg",
+    "picture_copyright": "Cyrillius"
+  },
+  "mints": [
+    {
+      "id": 14,
+      "name": "Monnaie de Paris"
+    }
+  ],
+  "category": "coin",
+  "type": "Circulating commemorative coins"
+}

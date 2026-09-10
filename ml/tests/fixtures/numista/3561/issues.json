@@ -1,0 +1,73 @@
+[
+  {
+    "id": 19189,
+    "is_dated": true,
+    "year": 2008,
+    "gregorian_year": 2008,
+    "marks": [
+      {
+        "id": 361,
+        "title": "Hubert Larivière, Head of the engraving department, Monnaie de Paris (2003-2011)",
+        "picture": "https://en.numista.com/catalogue/marks/lariviere.svg"
+      }
+    ],
+    "mintage": 20064000,
+    "references": [
+      {
+        "catalogue": {
+          "id": 2884,
+          "code": "Gad Euro"
+        },
+        "number": "902.1"
+      }
+    ]
+  },
+  {
+    "id": 149805,
+    "is_dated": true,
+    "year": 2008,
+    "gregorian_year": 2008,
+    "marks": [
+      {
+        "id": 361,
+        "title": "Hubert Larivière, Head of the engraving department, Monnaie de Paris (2003-2011)",
+        "picture": "https://en.numista.com/catalogue/marks/lariviere.svg"
+      }
+    ],
+    "mintage": 10000,
+    "references": [
+      {
+        "catalogue": {
+          "id": 2884,
+          "code": "Gad Euro"
+        },
+        "number": "902.1"
+      }
+    ],
+    "comment": "Proof"
+  },
+  {
+    "id": 149804,
+    "is_dated": true,
+    "year": 2008,
+    "gregorian_year": 2008,
+    "marks": [
+      {
+        "id": 361,
+        "title": "Hubert Larivière, Head of the engraving department, Monnaie de Paris (2003-2011)",
+        "picture": "https://en.numista.com/catalogue/marks/lariviere.svg"
+      }
+    ],
+    "mintage": 10936,
+    "references": [
+      {
+        "catalogue": {
+          "id": 2884,
+          "code": "Gad Euro"
+        },
+        "number": "902.2"
+      }
+    ],
+    "comment": "In BU sets; 10,936 made out of the 20,000 forecasted"
+  }
+]

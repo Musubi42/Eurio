@@ -36,7 +36,10 @@ from referential.numista_transforms import (  # noqa: E402
 )
 
 
-CACHE_DIR = ML_DIR / "state" / "numista_cache"
+# Copie de `ml/state/numista_cache/<nid>/` (réponses Numista du 2026-05-26,
+# identiques octet pour octet, `type_fr.json` en moins) : le cache d'état est
+# gitignoré, la suite doit passer sur un runner qui ne l'a pas.
+CACHE_DIR = ML_DIR / "tests" / "fixtures" / "numista"
 BREMEN_CACHE = CACHE_DIR / "10069"
 # French Presidency of the EU (2008) — obverse designer 'Philippe Starck',
 # reverse engraver 'Luc Luycx'. Sert de fixture pour le rôle 'designer'.
