@@ -82,7 +82,7 @@ Pendant ce chantier, **aucun commit n'entre dans `ml/`, `studio-local/` ou `docs
 | 1.4 | Le devShell `ci` fournit pytest | `nix develop .#ci --command python -m pytest --version` | une version |
 | 1.5 | Durée raisonnable | `gh run view --json jobs -q '.jobs[] \| .name+" "+.conclusion'` et l'horodatage | < 20 min total, sinon D2 rouvert |
 
-**Falsification.** Pousser sur une branche `ci-falsification` un test qui `assert False` et un `tokens.css` désaligné ; les deux jobs doivent passer au rouge. Supprimer la branche.
+**Falsification.** Pousser sur une branche `ci-falsification` un test qui `assert False` et un `tokens.css` désaligné, **et ouvrir une PR en draft** : le workflow ne se déclenche sur `push` que pour `main`, c'est `pull_request` qui couvre les branches (corrigé le 2026-09-10 après que le contre-relecteur a dû le découvrir seul). Les deux jobs doivent passer au rouge. Fermer la PR, supprimer la branche.
 
 **Contrat exécutant.** Entrées : ce tableau, `flake.nix`, `Taskfile.yml`. Interdits : désactiver un test pour passer au vert (les tests cassés sont **listés** pour l'étape 2, pas masqués) ; secrets dans le workflow. Sortie : le workflow, le devShell `ci`, la liste des tests rouges au premier run.
 

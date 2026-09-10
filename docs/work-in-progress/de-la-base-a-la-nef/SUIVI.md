@@ -115,3 +115,47 @@ Choix rapportés : pas de `magic-nix-cache-action` (backend GitHub arrêté en f
 ### Verdict de l'architecte · 2026-09-10 · **étape 1 ouverte sur 1.2 seul**
 
 Le fil à plomb est posé et il crie. Il a d'abord crié sur ceci : 2 795 tests « verts » sur le Mac dont 15 ne l'étaient que par la présence de données hors dépôt. Le critère 1.2 se fermera quand l'étape 2 aura rendu ces 15 tests honnêtes ; les autres critères de l'étape 1 sont soumis au contre-relecteur.
+
+### Contre-rapport · 2026-09-10 · relecteur neuf (sonnet), critères seuls
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 1.1 | `13:    branches: [main]` | PASS |
+| 1.2 | run 34493861491 `failure`, mêmes 15 tests que l'exécutant | **FAIL** |
+| 1.3 | `admin`, `ml`, `tokens` | PASS |
+| 1.4 | `pytest 9.0.2` | PASS |
+| 1.5 | `admin` 1 min 28, `ml` 4 min 46, `tokens` 52 s | PASS |
+| 1.6 (ajouté) | `permissions: contents: read`, aucun `secrets.` | PASS |
+| 1.7 (ajouté) | aucun fichier de `ml/tests` touché par les commits `ci:` | PASS |
+
+Falsification : PR #3, run 34495729294 → `ml` failure, `admin` et `tokens` success. PR fermée, branche supprimée, une seule branche locale.
+
+Succession : **il manquait** que le `push` d'une branche hors `main` ne déclenche rien ; le relecteur a dû ouvrir une PR de lui-même. → texte de falsification corrigé dans `PLAN.md`.
+
+### Verdict de l'architecte · 2026-09-10 · **étape 1 fermée sauf 1.2**, qui se ferme avec l'étape 2
+
+Deux relecteurs indépendants donnent la même liste de 15 tests. Ce n'est pas la CI qui est en défaut, c'est la suite. Le critère 1.2 est rattaché à l'étape 2 : il passera quand `main` sera vert sans rien masquer.
+
+## Étape 2 — Le gabarit
+
+### Contrat · 2026-09-10
+
+**Entrée** : les 15 tests rouges du run 34493861491, en quatre familles :
+
+| Famille | Tests | Ce qu'ils lisent hors dépôt | Nature |
+|---|---|---|---|
+| A | `test_lab_api.py` ×5 | le vrai `eurio.db` via un `_DB_PATH` de module dans `sources_routes.py` et `coin_assets_routes.py`, en `mode=ro` | **couplage caché dans la route** : le test injecte une base, la route en ouvre une autre |
+| B | `test_orchestrator.py` ×5, `test_orchestrator_push_c4c.py` ×2 | `ml/datasets/{64,80,88,96,104}/obverse.jpg` via `MockAdapter` | fixture qui pointe des données réelles |
+| C | `test_numista_transforms.py` ×2 | `ml/state/numista_cache/10069/prices_*.json` | test sur données réelles sans fixture |
+| D | `test_refetch_numista_2eur.py::test_parse_real_cohort_file` | `ml/state/cohort_validation_19.txt` | idem |
+
+**Ce qui est tranché** :
+- A se corrige **dans la route**, pas dans le test : la route lit le chemin de base par le même point d'injection que celui que le test surcharge. Un commit par route, nommé par le test qu'il fait passer.
+- B : `MockAdapter` génère ses images dans `tmp_path` (PIL, quelques pixels) ; il ne lit plus `ml/datasets`.
+- C et D : si le fichier réel pèse moins de 200 Ko, une copie **anonymisée si nécessaire** entre dans `ml/tests/fixtures/` avec une ligne d'origine ; sinon un `skip(reason=…)` daté qui nomme le fichier attendu.
+- Aucun seuil élargi, aucun `assert` retiré.
+- Les 79 `skipped` existants : chaque `skip`/`skipif`/`xfail` porte un `reason=`. Les sans raison sont complétés, pas supprimés.
+- Trois tests de **pannes muettes** (critère 2.4) : lire la skill `eurio-verify`, choisir trois familles du catalogue, écrire un test par famille dont la mutation cible est **documentée dans le docstring** du test.
+- `pytest` arrive dans la venv en `9.1.1` par une transitive alors que le flake fournit `9.0.2` : identifier le paquet qui le tire (`uv pip show`), rapporter, ne rien pinner sans ordre.
+
+**Interdits** : supprimer un test ; marquer `skip` un test de la famille A ou B ; toucher aux fichiers modifiés de l'autre chantier (`Taskfile.yml`, `ml/tasks.yml`, `useLotReview.ts`, `LotDetailView.vue`, specs `lot-*`, docs `juge-du-crop/`, `ml/bench/gold_crop/sample.py`, `ml/tests/test_gold_crop_sample.py`, `secrets/dev.env`) ; `git add -A` ; relancer une commande longue sans ordre ; plus d'un push par itération, trois itérations au plus.
