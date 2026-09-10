@@ -3,6 +3,7 @@
 > **Lis ce fichier avant de chercher où se trouve une donnée.** Il décrit l'état
 > **réel** au 2026-08-14, vérifié dans le code, pas l'état visé.
 >
+> **L'état daté du système** (mesures, chantiers, pièges vérifiés, CI) : [`ETAT.md`](./ETAT.md) — c'est là qu'on lit « où en est-on », et là qu'on corrige un fait devenu faux.
 > Détail des artefacts (producteur, consommateur, régénérable ?) : [`artifacts.md`](./artifacts.md).
 > Lecture **par geste** (« je fais ça, où part la donnée ? ») : [`parcours.md`](./parcours.md).
 > Décisions et leur raison : [`../adr/README.md`](../adr/README.md).
@@ -239,8 +240,8 @@ Aucun des deux n'a de sha ni de meta, donc **on ne peut pas le savoir en l'état
 
 ## Ce qui n'existe pas (et qu'on croit souvent exister)
 
-- **Aucune CI.** Pas de `.github/workflows`, pas de hook git. `go-task tokens:check`
-  existe mais n'est lancé que localement ou par un agent (`actions.yml`).
+- ~~**Aucune CI.**~~ Vrai au 2026-08-14, faux depuis le 2026-09-10 : `.github/workflows/ci.yml`
+  joue pytest, vitest + typecheck et `go-task tokens:check` à chaque push sur `main` — cf. [`ETAT.md`](./ETAT.md) §CI.
 - **Aucune tâche « lancer toute la suite de tests ».** Seulement 5 invocations pytest ciblées.
 - **Aucun générateur de types** ml ↔ front. Les types TS sont retapés à la main.
   `ml/swagger.yaml` est la spec **de Numista**, pas d'Eurio, et n'est référencée nulle part.

@@ -34,6 +34,7 @@
 |---|---|
 | **Pourquoi** une décision a été prise | `docs/adr/` (ce dossier) |
 | **Ce que fait le système** aujourd'hui | `docs/architecture/` |
+| L'**état daté** du système (mesures, chantiers, pièges vérifiés) | `docs/architecture/ETAT.md` |
 | **Ce qu'on est en train de faire** | `docs/work-in-progress/<chantier>/` |
 | Décisions design par vue | `docs/design/{vue}/README.md` |
 | Règles non-négociables | `CLAUDE.md` |
