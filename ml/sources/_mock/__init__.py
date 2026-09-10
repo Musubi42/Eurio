@@ -1,7 +1,7 @@
 """Mock source adapter for orchestrator tests.
 
-Returns 5 fixed `DiscoveredItem` rows backed by the obverse.jpg of
-real coins (numista_id 64, 80, 88, 96, 104) under `ml/datasets/`.
+Returns 5 fixed `DiscoveredItem` rows (numista_id 64, 80, 88, 96, 104) ;
+`download_raw()` fabrique l'image (PIL), rien n'est lu hors dépôt.
 Used by `ml/tests/test_orchestrator.py` to validate the pipeline
 without touching any external API.
 """

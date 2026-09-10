@@ -291,15 +291,24 @@ def test_query_signature_is_stable() -> None:
     assert compute_query_signature(q1) != compute_query_signature(q3)
 
 
-def test_mock_fixtures_have_real_files() -> None:
-    """Guards against silent dataset moves — fail loud, not at runtime."""
-    from pathlib import Path
+def test_mock_fixtures_have_real_files(tmp_path) -> None:
+    """Chaque fixture du mock rend un vrai fichier image, fabriqué dans
+    `tmp_path` — rien n'est lu dans `ml/datasets` (gitignoré). Les 5 images
+    doivent différer entre elles (les phash en aval en dépendent)."""
+    from PIL import Image
 
-    root = Path(__file__).resolve().parents[1] / "datasets"
-    for nid, *_ in MOCK_FIXTURES:
-        assert (root / str(nid) / "obverse.jpg").is_file(), (
-            f"missing fixture obverse for numista_id={nid}"
-        )
+    adapter = MockAdapter()
+    digests: set[str] = set()
+    for item in adapter.discover(SourceQuery(source_id="mock")):
+        nid = item.raw_payload["numista_id"]
+        dest = tmp_path / str(nid) / "obverse.jpg"
+        res = adapter.download_raw(item, dest)
+        assert dest.is_file(), f"missing synthesized obverse for numista_id={nid}"
+        assert res.bytes == dest.stat().st_size > 0
+        with Image.open(dest) as im:
+            assert im.size == (320, 320)
+        digests.add(res.sha256)
+    assert len(digests) == len(MOCK_FIXTURES)
 
 
 # ─── Phase 3.A: target_eurio_ids (plural) batching ──────────────────────────
