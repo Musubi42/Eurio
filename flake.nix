@@ -269,9 +269,20 @@
           '';
         });
 
+        # Sur un runner Linux non-NixOS, les wheels PyPI (torch+cu126, cv2…)
+        # cherchent libstdc++.so.6 que le loader du Python Nix ne trouve ni
+        # dans /usr/lib ni via nix-ld (absent hors NixOS). Même rôle que
+        # nvidiaHook sur le PC : on expose la libstdc++ du stdenv Nix.
+        # Mesuré au premier run (2026-09-10) : `import torch` →
+        # « libstdc++.so.6: cannot open shared object file ».
+        ciLibsHook = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+          export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        '';
+
         ciShell = pkgs.mkShell {
           buildInputs = ciInputs;
           shellHook = ''
+            ${ciLibsHook}
             ${bannerHook "ci"}
           '';
         };
