@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overlay debug uniquement. Ce manifeste n'est pas fusionné dans le build
+  release : le receiver de dump du journal de scans (D5) n'existe donc pas
+  dans l'APK/AAB livré aux testeurs.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name="com.musubi.eurio.debug.ScanJournalDumpReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

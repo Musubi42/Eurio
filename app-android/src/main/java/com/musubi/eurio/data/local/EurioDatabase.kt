@@ -11,6 +11,7 @@ import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.data.local.dao.CoinDao
 import com.musubi.eurio.data.local.dao.CoinPriceDao
 import com.musubi.eurio.data.local.dao.MetaDao
+import com.musubi.eurio.data.local.dao.ScanEventDao
 import com.musubi.eurio.data.local.dao.SetDao
 import com.musubi.eurio.data.local.dao.SharedReverseDao
 import com.musubi.eurio.data.local.dao.VaultDao
@@ -20,6 +21,7 @@ import com.musubi.eurio.data.local.entities.CoinEntity
 import com.musubi.eurio.data.local.entities.CoinInVaultEntity
 import com.musubi.eurio.data.local.entities.CoinPriceEntity
 import com.musubi.eurio.data.local.entities.CoinSeriesEntity
+import com.musubi.eurio.data.local.entities.ScanEventEntity
 import com.musubi.eurio.data.local.entities.SetEntity
 import com.musubi.eurio.data.local.entities.SetMemberEntity
 import com.musubi.eurio.data.local.entities.SharedReverseEntity
@@ -35,8 +37,9 @@ import com.musubi.eurio.data.local.entities.SharedReverseEntity
         CoinInVaultEntity::class,
         CoinCaptureEntity::class,
         CatalogMetaEntity::class,
+        ScanEventEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -47,6 +50,7 @@ abstract class EurioDatabase : RoomDatabase() {
     abstract fun setDao(): SetDao
     abstract fun vaultDao(): VaultDao
     abstract fun metaDao(): MetaDao
+    abstract fun scanEventDao(): ScanEventDao
 
     companion object {
         private const val DB_NAME = "eurio.db"
@@ -219,6 +223,28 @@ abstract class EurioDatabase : RoomDatabase() {
             }
         }
 
+        // v4 → v5 (D5, chantier « de la base à la nef ») : journal des scans
+        // aboutis. Table neuve, aucune donnée existante touchée — un downgrade
+        // n'est pas prévu et Room le refuserait de toute façon.
+        //
+        // Pas de FK vers `coins` : la migration 3→4 juste au-dessus DROPpe la
+        // table `coins` pour changer de catalogue, et une cascade viderait le
+        // journal en silence.
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS scan_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        eurio_id TEXT NOT NULL,
+                        occurred_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_scan_events_occurred_at ON scan_events(occurred_at)")
+            }
+        }
+
         @Volatile
         private var instance: EurioDatabase? = null
 
@@ -229,7 +255,7 @@ abstract class EurioDatabase : RoomDatabase() {
                     EurioDatabase::class.java,
                     DB_NAME,
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .apply {
                         // Migrations destructives autorisées uniquement en debug.
                         // Release = on doit écrire une Migration explicite pour chaque v+1

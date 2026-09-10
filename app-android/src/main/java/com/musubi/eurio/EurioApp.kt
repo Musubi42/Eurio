@@ -5,7 +5,10 @@ import android.util.Log
 import com.musubi.eurio.data.local.EurioDatabase
 import com.musubi.eurio.data.local.bootstrap.AppCoreBootstrapper
 import com.musubi.eurio.data.repository.CoinRepository
+import com.musubi.eurio.data.repository.JournalingVaultRepository
 import com.musubi.eurio.data.repository.MetaStreakRepository
+import com.musubi.eurio.data.repository.RoomScanJournalRepository
+import com.musubi.eurio.data.repository.ScanJournalRepository
 import com.musubi.eurio.data.repository.RoomCoinRepository
 import com.musubi.eurio.data.repository.RoomSetRepository
 import com.musubi.eurio.data.repository.CatalogRepository
@@ -97,8 +100,21 @@ class EurioApp : Application() {
         RoomCoinRepository(database.coinDao(), database.sharedReverseDao(), database.coinPriceDao())
     }
 
+    // D5 (chantier « de la base à la nef ») — le journal des scans aboutis.
+    // Aucune UI ne le lit : il n'existe que pour mesurer le critère 4.5 de la
+    // piste interne. Lecture : PLAY-INTERNE.md §« Lire le compteur ».
+    val scanJournalRepository: ScanJournalRepository by lazy {
+        RoomScanJournalRepository(database.scanEventDao())
+    }
+
+    // Le journal s'accroche par délégation autour du repository de coffre :
+    // `confirmPossession` est le seul point où un scan est déclaré abouti, et
+    // le décorateur laisse RoomVaultRepository — et tout `features/` — intacts.
     val vaultRepository: VaultRepository by lazy {
-        RoomVaultRepository(database.vaultDao())
+        JournalingVaultRepository(
+            delegate = RoomVaultRepository(database.vaultDao()),
+            journal = scanJournalRepository,
+        )
     }
 
     // ─────────────────────────────────────────────────────────────────
