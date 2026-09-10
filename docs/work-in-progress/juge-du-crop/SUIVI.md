@@ -130,3 +130,4 @@ change quoi que ce soit à sa façon de travailler.
 - **`gold_replay` à 9,1 %** : 4 pièces tronquées par le bord du raw (`C1_cadre_tronque`), disque à 0,000. Piège amendé dans REPRENDRE-ICI.
 - **Réserve** : 24 images, 6 par strate tirée, 3 accept + 3 reject chacune. Rendement attendu ~17 utilisables ; S2 et S3 ne reviennent pas à 15. La page ne servait que `role=tirage` en dur : lot `?role=reserve` en cours, avec déploiement du front hébergé.
 - Rien gelé, rien écrit au canonique.
+- **`?role=reserve` livré et déployé** (`d77ccb57`, CI verte, front hébergé rebuild, `eurio-api` intact). Déviation assumée : le hub lisait `v1` en dur, il lit `?version=`. Résiduel cosmétique : le panneau dit encore « 60 images, 15 par famille » sur la réserve et la passe 2. Vérifié par le code servi et l'API (`n = 24`), pas à l'œil (OIDC).

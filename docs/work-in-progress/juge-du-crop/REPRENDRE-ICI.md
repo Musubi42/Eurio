@@ -26,7 +26,10 @@ retracer**, rien d'autre n'est perdu (51 des 60 images sont les mêmes).
 
 ## ⏱️ État au 2026-09-11 — la passe 1 est jouée, RE-4 préliminaire dit « à l'envers »
 
-Les 60 annotations de v2 sont dans le canonique (2026-09-10). **16 indécidables, tous des rejets** (D14) ; 44 utilisables, 32 accept / 12 reject. RE-4 préliminaire, sans gel : le juge `amputation_rate` **sépare à l'envers** (90 % des acceptés « amputés ») ; la géométrie (BIoU, IoU masque) sépare fort. Proposition D15 : juge amendé en IoU de masque ≥ τ, τ validé sur la réserve. **Trois gestes PO** : les trois clics D14 (44, 45, 59 → indécidable), la passe 2, la réserve (dès que `?role=reserve` est déployé). Le gel attend ces trois gestes.
+Les 60 annotations de v2 sont dans le canonique (2026-09-10). **16 indécidables, tous des rejets** (D14) ; 44 utilisables, 32 accept / 12 reject. RE-4 préliminaire, sans gel : le juge `amputation_rate` **sépare à l'envers** (90 % des acceptés « amputés ») ; la géométrie (BIoU, IoU masque) sépare fort. Proposition D15 : juge amendé en IoU de masque ≥ τ, τ validé sur la réserve. **Trois gestes PO**, dans cet ordre, le gel attend les trois :
+1. les trois clics D14 — positions **44, 45, 59 → indécidable** sur `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2` ;
+2. **la réserve**, 24 images : `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2&role=reserve` (déployé le 2026-09-11, `d77ccb57` ; le hub `…/gold-crop?version=v2` porte le lien « Annoter la réserve ») ;
+3. **la passe 2**, 10 images : `…/annoter?version=v2&passe=2`.
 
 ## ⏱️ État au 2026-09-08 (historique)
 
