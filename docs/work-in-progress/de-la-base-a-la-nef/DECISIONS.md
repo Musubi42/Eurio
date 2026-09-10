@@ -35,13 +35,13 @@ Les préceptes restent ; l'état déménage dans `docs/architecture/ETAT.md`. Un
 
 **Pourquoi** : les préceptes de Kongō Gumi tiennent sur une page. Un fichier de règles qui porte « vérifié le 2026-08-17 » est un changelog.
 
-## D4 — La nef s'ouvre avec ce qui existe · 2026-09-10 · 🟡 PROPOSÉ
+## D4 — La nef s'ouvre avec ce qui existe · 2026-09-10 · ✅ PO le 2026-09-11
 
 Pas de feature, pas de modèle, pas d'écran nouveau avant la piste interne. Une pièce non reconnue est une donnée.
 
 **Pourquoi** : la crypte sert au culte pendant que la tour attend. Une portion utilisable par génération.
 
-## D5 — Comment compter « un scan venu d'ailleurs » · 2026-09-10 · ⏳ À TRANCHER
+## D5 — Comment compter « un scan venu d'ailleurs » · 2026-09-10 · ✅ PO le 2026-09-11 : option (a), compteur local exporté
 
 Options : (a) un compteur local exporté par les testeurs à la fin des 7 jours, (b) un ping minimal vers `eurio-api` à chaque scan, (c) le journal Play Console seul. L'architecte penche pour (a) : zéro réseau ajouté, zéro dépendance, conforme à « offline-first ».
 
@@ -92,3 +92,8 @@ Mesuré : `nix develop .#mac --command python -m pytest --version` → « No mod
 Geste : `pytest` s'ajoute à `pythonEnv` dans `flake.nix` (la venv hérite par `--system-site-packages`, comme numpy et fastapi). Le devShell `ci` est un `mkShell` léger : `pythonEnv`, `uv`, `nodejs_22`, `pnpm`, `go-task` ; ni JDK ni SDK Android.
 
 **Pourquoi** : un outil de vérification qui n'est pas déclaré disparaît au premier rebuild de venv. ADR-002 : tout par le flake.
+
+
+## D12 — Le gel D0 est levé pour `juge-du-crop` · 2026-09-11 · ✅ PO
+
+Le PO a joué les 60 annotations (passe 1 complète le 2026-09-10) et demande la suite du banc. Le chemin critique de ce chantier était humain ; il est passé. `juge-du-crop` reprend, en parallèle de l'étape 4. Le gel tient pour tout le reste de l'atelier.
