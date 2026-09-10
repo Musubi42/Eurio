@@ -23,8 +23,14 @@ vi.mock('@/shared/api/eurio-api', async () => {
   return { ...reel, eurioApi: { get: (...a: unknown[]) => get(...a) } }
 })
 
-/** La page porte des liens vers la séance ; sans routeur, on les stube. */
-const globalMount = { stubs: { RouterLink: { template: '<a><slot /></a>' } } }
+/** La page porte des liens vers la séance ; sans routeur, on les stube. Le
+ *  stub garde `to` en `href` : c'est la CIBLE des liens qu'on vérifie. */
+const globalMount = {
+  stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } },
+}
+
+const requete = vi.fn(() => ({ query: {} as Record<string, string> }))
+vi.mock('vue-router', () => ({ useRoute: () => requete() }))
 
 function ligne(over: Partial<AnnotationOr> = {}): AnnotationOr {
   return {
@@ -69,7 +75,10 @@ describe('la page', () => {
   // Démonter est indispensable : un composant laissé monté continue de vivre
   // dans le test SUIVANT, et ses promesses s'y mêlent aux siennes.
   const montes: ReturnType<typeof mount>[] = []
-  beforeEach(() => get.mockReset())
+  beforeEach(() => {
+    get.mockReset()
+    requete.mockReturnValue({ query: {} })
+  })
   afterEach(() => {
     montes.splice(0).forEach((w) => w.unmount())
   })
@@ -85,6 +94,10 @@ describe('la page', () => {
     await w.vm.$nextTick()
     return w
   }
+
+  /** Les 60 de la passe 1 : ce qui ouvre la 2ᵉ passe et la réserve. */
+  const passe1Complete = () =>
+    Array.from({ length: 60 }, (_, i) => ligne({ asset_id: `a${i}`, passe: 1 }))
 
   it('un jeu vide n’est pas une panne mais une séance à faire', async () => {
     const w = await monter([])
@@ -116,6 +129,32 @@ describe('la page', () => {
     expect(s2, 'un bouton S2_capsule doit exister').toBeTruthy()
     await s2!.trigger('click')
     expect(w.findAll('.grille figure')).toHaveLength(1)
+  })
+
+  // La réserve (D14, D15) : 24 images tenues à l'écart, qui regarnissent le
+  // tirage quand une image en sort par « indécidable ». Elle ne s'annote qu'une
+  // fois la passe 1 finie — l'offrir avant ferait annoter des images dont on ne
+  // sait pas encore si elles serviront.
+  it('la réserve ne s’ouvre qu’une fois la passe 1 complète', async () => {
+    const w = await monter([ligne({ asset_id: 'a1', passe: 1 })])
+    expect(w.text()).not.toContain('Annoter la réserve')
+
+    const plein = await monter(passe1Complete())
+    const reserve = plein.findAll('a').find((a) => a.text().includes('Annoter la réserve'))
+    expect(reserve, 'le lien de réserve doit être là à 60/60').toBeTruthy()
+    expect(reserve!.attributes('href')).toBe('/gold-crop/annoter?version=v1&role=reserve')
+  })
+
+  // Le hub était collé à `v1` — la version abandonnée par D13. Les entrées
+  // qu'il propose doivent ouvrir la version qu'il AFFICHE, sinon le lien de
+  // réserve n'apparaîtrait jamais (v1 ne porte que 2 annotations).
+  it('`?version=` porte jusqu’aux liens de la séance', async () => {
+    requete.mockReturnValue({ query: { version: 'v2' } })
+    const w = await monter(passe1Complete())
+    const cibles = w.findAll('a').map((a) => a.attributes('href'))
+    expect(cibles).toContain('/gold-crop/annoter?version=v2')
+    expect(cibles).toContain('/gold-crop/annoter?version=v2&passe=2')
+    expect(cibles).toContain('/gold-crop/annoter?version=v2&role=reserve')
   })
 
   // ⚠️ **Non couvert ici, et c'est nommé plutôt que caché** : la branche

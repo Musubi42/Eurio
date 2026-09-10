@@ -8,6 +8,7 @@
 // hébergé. L'annotation, elle, se fait dans l'outil local — c'est lui qui a les
 // raws en cache et les poignées.
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import VignetteOr from '../components/VignetteOr.vue'
 import {
@@ -19,7 +20,11 @@ import {
 } from '../composables/useGoldCropApi'
 import { N_DOUBLE } from '../composables/sha256'
 
-const version = ref('v1')
+// `?version=` comme la page d'annotation. Sans ça le hub reste collé à v1 —
+// abandonnée par D13 — et les entrées qu'il propose (2ᵉ passe, réserve) ne
+// s'ouvriraient jamais sur la version où la séance vit réellement.
+const route = useRoute()
+const version = ref(String(route.query.version || 'v1'))
 const { jeu, chargement, erreur, charger } = useGoldCropApi(version.value)
 
 const filtreStrate = ref<string | null>(null)
@@ -123,11 +128,20 @@ onMounted(() => {
         </span>
       </div>
       <RouterLink
-        v-if="!gele" class="bouton" to="/gold-crop/annoter"
+        v-if="!gele" class="bouton" :to="`/gold-crop/annoter?version=${version}`"
       >Annoter la séance →</RouterLink>
       <RouterLink
-        v-if="!gele && seance.complete" class="bouton second" to="/gold-crop/annoter?passe=2"
+        v-if="!gele && seance.complete" class="bouton second"
+        :to="`/gold-crop/annoter?version=${version}&passe=2`"
       >2ᵉ passe ({{ seance.p2 }} / {{ seance.n_double }}) →</RouterLink>
+      <!-- La réserve (24 images) regarnit le tirage quand une image en sort par
+           « indécidable » — 16 des 28 rejets de v2 (D14). Elle ne s'ouvre qu'une
+           fois la passe 1 du tirage complète : l'annoter avant, c'est annoter des
+           images dont on ne sait pas encore si elles serviront. -->
+      <RouterLink
+        v-if="!gele && seance.complete" class="bouton second"
+        :to="`/gold-crop/annoter?version=${version}&role=reserve`"
+      >Annoter la réserve →</RouterLink>
       <span v-else-if="!gele" class="doux">
         la 2ᵉ passe s'ouvre quand la 1ʳᵉ est complète — elle fixe le plafond du banc
       </span>

@@ -506,3 +506,95 @@ describe('la page d’annotation', () => {
     expect(figures.map((f) => f.text())).toEqual(['haut', 'droite', 'bas', 'gauche'])
   })
 })
+
+/* ════════════════════════════════════════════════════════════════════════ */
+
+// La réserve (D14, D15). Le tirage porte DEUX lots dans la même table :
+// 60 images `role='tirage'` et 24 `role='reserve'`, qui regarnissent le tirage
+// quand une image en sort par « indécidable » — 16 des 28 rejets de v2.
+//
+// La page servait le lot `tirage` en dur, à deux endroits : l'appel réseau
+// (`?role=`) ET le filtre client. Les deux devaient bouger ensemble — ne
+// corriger que l'appel aurait rendu une liste VIDE, sans erreur ni message,
+// exactement la panne muette que le projet paie le plus cher.
+describe('la page d’annotation, sur la réserve', () => {
+  const montes: ReturnType<typeof mount>[] = []
+  const dodo = (ms = 0) => new Promise((r) => setTimeout(r, ms))
+
+  beforeEach(() => {
+    get.mockReset()
+    put.mockReset()
+    requete.mockReturnValue({ query: {} })
+  })
+  afterEach(() => {
+    montes.splice(0).forEach((w) => w.unmount())
+  })
+
+  /** Un tirage mixte : ce que rend vraiment `GET /crop-gold/{v}/tirage`. */
+  const mixte = (): ImageTirage[] => [
+    { ...TIRAGE_DEMO.images[0], asset_id: 't1', role: 'tirage' },
+    { ...TIRAGE_DEMO.images[1], asset_id: 't2', role: 'tirage' },
+    { ...TIRAGE_DEMO.images[0], asset_id: 'r1', role: 'reserve' },
+    { ...TIRAGE_DEMO.images[2], asset_id: 'r2', role: 'reserve' },
+  ]
+
+  function servir(annotations: AnnotationOr[] = []) {
+    get.mockImplementation(async (chemin: string) => {
+      if (chemin.includes('/tirage')) {
+        const images = mixte()
+        return { gold_version: 'v2', n: images.length, images }
+      }
+      return { gold_version: 'v2', version: null, n: annotations.length, annotations }
+    })
+  }
+
+  async function monter() {
+    const { default: Page } = await import('../pages/GoldCropAnnotatePage.vue')
+    const w = mount(Page)
+    montes.push(w)
+    await dodo(0)
+    await w.vm.$nextTick()
+    return w
+  }
+
+  it('`?role=reserve` demande la réserve au canonique ET filtre dessus', async () => {
+    requete.mockReturnValue({ query: { version: 'v2', role: 'reserve' } })
+    servir()
+    const w = await monter()
+
+    const chemins = get.mock.calls.map((c) => String(c[0]))
+    expect(chemins).toContain('/crop-gold/v2/tirage?role=reserve')
+    // le filtre client a suivi : « n / N » compte le lot SERVI, pas les 60
+    expect(w.text()).toContain('2 images')
+    expect(w.text()).toContain('1 / 2')
+    // le bandeau le DIT : annoter la réserve en croyant faire le tirage est
+    // une confusion qu'aucun message ne rattraperait ensuite
+    expect(w.find('.soustitre').text()).toContain('réserve')
+    expect(w.text()).toContain('r1')
+    expect(w.text()).not.toContain('t1')
+  })
+
+  it('sans `?role=`, rien ne change : c’est le tirage', async () => {
+    requete.mockReturnValue({ query: { version: 'v2' } })
+    servir()
+    const w = await monter()
+
+    expect(get.mock.calls.map((c) => String(c[0]))).toContain('/crop-gold/v2/tirage?role=tirage')
+    expect(w.text()).toContain('t1')
+    expect(w.text()).not.toContain('r1')
+    expect(w.find('.soustitre').text()).not.toContain('réserve')
+  })
+
+  it('la reprise « première sans ellipse » se fait DANS la réserve', async () => {
+    requete.mockReturnValue({ query: { version: 'v2', role: 'reserve' } })
+    // `r1` est annotée ; `t1`/`t2` du tirage aussi, et elles ne doivent pas
+    // décaler le rang — la reprise se calcule sur le lot servi.
+    servir([
+      { ...JEU_DEMO.annotations[0], asset_id: 't1', passe: 1 },
+      { ...JEU_DEMO.annotations[0], asset_id: 'r1', passe: 1 },
+    ])
+    const w = await monter()
+    expect(w.text()).toContain('2 / 2')
+    expect(w.text()).toContain('r2')
+  })
+})

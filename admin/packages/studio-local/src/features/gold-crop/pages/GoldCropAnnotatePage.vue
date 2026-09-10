@@ -47,6 +47,11 @@ const route = useRoute()
 const version = String(route.query.version || 'v1')
 const passe = Number(route.query.passe || 1)
 const demo = route.query.demo === '1'
+// Le tirage a DEUX lots : les 60 du tirage, et les 24 de la réserve qui les
+// regarnissent quand une image sort en indécidable (D14, D15). Même geste, même
+// route d'écriture — seul le lot servi change. Tout ce qui compte ici (« n / N »,
+// la barre, la reprise) se calcule sur `images`, donc sur le lot chargé.
+const role: 'tirage' | 'reserve' = route.query.role === 'reserve' ? 'reserve' : 'tirage'
 
 const { chargerTirage, chargerJeu, envoyerAnnotation } = useGoldCropSeance(version)
 
@@ -88,8 +93,8 @@ async function demarrer() {
       images.value = TIRAGE_DEMO.images
       appliquerJeu(JEU_DEMO.annotations)
     } else {
-      const [tirage, jeu] = await Promise.all([chargerTirage('tirage'), chargerJeu(passe)])
-      let liste = tirage.images.filter((i) => i.role === 'tirage')
+      const [tirage, jeu] = await Promise.all([chargerTirage(role), chargerJeu(passe)])
+      let liste = tirage.images.filter((i) => i.role === role)
       if (passe > 1) {
         // Le sous-ensemble de la 2ᵉ passe se tire du même hachage que
         // `serve.py`, sinon les deux instruments ne mesurent pas la même chose.
@@ -806,6 +811,7 @@ onBeforeUnmount(() => {
       <h1>Jeu d'or — ellipses</h1>
       <p class="doux soustitre">
         passe {{ passe }} · {{ images.length }} images · version {{ version }}
+        <span v-if="role === 'reserve'" class="pastille todo">réserve</span>
         <span v-if="demo" class="pastille todo">fixture</span>
       </p>
       <div class="barre"><i :style="{ width: `${progres}%` }"></i></div>
