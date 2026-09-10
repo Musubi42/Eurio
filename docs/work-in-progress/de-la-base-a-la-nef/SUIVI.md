@@ -159,3 +159,26 @@ Deux relecteurs indépendants donnent la même liste de 15 tests. Ce n'est pas l
 - `pytest` arrive dans la venv en `9.1.1` par une transitive alors que le flake fournit `9.0.2` : identifier le paquet qui le tire (`uv pip show`), rapporter, ne rien pinner sans ordre.
 
 **Interdits** : supprimer un test ; marquer `skip` un test de la famille A ou B ; toucher aux fichiers modifiés de l'autre chantier (`Taskfile.yml`, `ml/tasks.yml`, `useLotReview.ts`, `LotDetailView.vue`, specs `lot-*`, docs `juge-du-crop/`, `ml/bench/gold_crop/sample.py`, `ml/tests/test_gold_crop_sample.py`, `secrets/dev.env`) ; `git add -A` ; relancer une commande longue sans ordre ; plus d'un push par itération, trois itérations au plus.
+
+### Rapport de l'exécutant · 2026-09-10
+
+Six commits `fc78ca01..747773fe`, un push, run **34498204039 → success** en une itération (`tokens` 48 s, `admin` 1 min 42, `ml` 5 min 37).
+
+**Le contrat se trompait de fichier.** Aucun `mode=ro` dans `sources_routes.py` ni `coin_assets_routes.py` ; le site fautif est `serving/coin_lookup.py:38`, atteint par `lab_routes.py:2371`. Un `_DB_PATH` résolu **à l'import** : sur le Mac, direnv pointe `EURIO_DB_PATH` sur la réplique et les cinq tests étaient verts pour de mauvaises raisons ; sur le runner, rien. Corrigé par un `bind(db_path)` appelé depuis `lab_routes.bind`, repli inchangé. Un seul commit pour la famille A.
+
+**Reproduire le runner** : `conftest.py` n'a aucun mécanisme et une fixture ne peut pas masquer des chemins dérivés de `Path(__file__)`. Ce qui reproduit : un worktree propre + `env -u` sur toutes les `EURIO_*`. Les 15 rouges y réapparaissent à l'identique, **mais seulement `EURIO_DB_PATH` désarmée** : la variable de direnv masquait la famille A même hors dépôt.
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 2.1 | CI : `2732 passed, 64 skipped, 0 failed` ; local : `2798 passed` | PASS (commande du PLAN corrigée) |
+| 2.2 | grep vide | PASS |
+| 2.3 | 64 skips, 9 raisons, chacune nomme le fichier absent | PASS |
+| 2.4 | trois tests, trois mutations rouges, trois reverts | PASS |
+| 2.5 | `8 files, 64 tests passed` | PASS |
+| 1.2 | `success` | PASS |
+
+Pannes muettes couvertes : (1) le mapping Numista lit la base injectée, mutation = retirer `coin_lookup.bind` ; (2) un lecteur `mode=ro` voit le WAL, mutation = `immutable=1` ; (3) un seuil entier fractionnaire est refusé par la route, mutation = désarmer le garde dans `dino_thresholds.set_threshold`.
+
+`pytest 9.1.1` arrive par `ai-edge-torch → litert-torch → torch-xla2`. Rien pinné.
+
+Non élucidé : **2 tests de moins collectés sur Linux** que sur Mac hermétique (2 732 + 64 = 2 796 contre 2 798).
