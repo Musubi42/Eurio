@@ -1,0 +1,74 @@
+# Le fil à plomb (chantier de-la-base-a-la-nef, étape 1 — D2, D10, D11).
+#
+# Trois jobs qui crient à chaque push : pytest (ml), vitest + typecheck
+# (studio-local), tokens:check (R2). Chacun entre par `nix develop .#ci`, le
+# devShell léger de flake.nix, pour que la CI et le poste de dev partagent le
+# même toolchain (ADR-002) : aucun `pip install`, aucun `apt`, aucun secret.
+# Le job Android est un critère de l'étape 4 (D10) : le dépôt est public et
+# son preBuild exige des identifiants MinIO.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Un seul point d'entrée pour les trois jobs.
+  NIX_DEVELOP: nix develop .#ci --command
+
+jobs:
+  ml:
+    name: ml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - name: Cache ml/.venv et le cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ml/.venv
+            ~/.cache/uv
+          # flake.nix et flake.lock entrent dans la clé : la venv hérite du
+          # pythonEnv Nix par --system-site-packages, et pyvenv.cfg pointe le
+          # store path exact — un pythonEnv qui bouge invalide la venv.
+          key: ml-venv-${{ runner.os }}-${{ hashFiles('ml/pyproject.toml', 'flake.lock', 'flake.nix') }}
+      - name: Construire la venv (go-task ml:setup, la même séquence uv qu'en local)
+        run: ${{ env.NIX_DEVELOP }} go-task ml:setup
+      - name: pytest
+        run: ${{ env.NIX_DEVELOP }} bash -c 'cd ml && .venv/bin/python -m pytest -q -p no:cacheprovider'
+
+  admin:
+    name: admin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - name: Cache du store pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('admin/pnpm-lock.yaml') }}
+      - name: pnpm install
+        run: ${{ env.NIX_DEVELOP }} pnpm -C admin install --frozen-lockfile
+      - name: vitest
+        run: ${{ env.NIX_DEVELOP }} pnpm -C admin --filter eurio-studio-local test
+      - name: typecheck (vue-tsc, ~15 s en local)
+        run: ${{ env.NIX_DEVELOP }} pnpm -C admin --filter eurio-studio-local typecheck
+
+  tokens:
+    name: tokens
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - name: go-task tokens:check
+        run: ${{ env.NIX_DEVELOP }} go-task tokens:check

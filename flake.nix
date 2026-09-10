@@ -72,6 +72,10 @@
           # See docs/harmonisation-images/.
           boto3
           botocore
+          # Vérification (D11, chantier de-la-base-a-la-nef) : pytest est déclaré
+          # ici, pas hérité par accident d'une dépendance transitive de la venv.
+          # La venv le voit via --system-site-packages, comme numpy et fastapi.
+          pytest
         ]);
 
         # ─── Profile building blocks ──────────────────────────────────────────
@@ -113,6 +117,13 @@
         ];
 
         fullInputs = androidInputs ++ mlInputs ++ adminInputs;
+
+        # CI (D2/D10/D11) : le strict nécessaire pour `pytest` (ml), `vitest`
+        # (studio-local) et `go-task tokens:check`. Ni JDK, ni SDK Android, ni
+        # maestro, ni sops : le job Android attend l'étape 4, la CI n'a aucun
+        # secret. Un `mkShell` distinct pour que le runner ne télécharge pas
+        # plusieurs Go de SDK qu'il n'utilise pas.
+        ciInputs = [ pkgs.go-task ] ++ mlInputs ++ adminInputs;
 
         commonEnv = {
           JAVA_HOME = "${pkgs.jdk17}";
@@ -258,6 +269,13 @@
           '';
         });
 
+        ciShell = pkgs.mkShell {
+          buildInputs = ciInputs;
+          shellHook = ''
+            ${bannerHook "ci"}
+          '';
+        };
+
         vpsShell = pkgs.mkShell {
           buildInputs = baseInputs ++ vpsInputs;
           shellHook = ''
@@ -272,6 +290,7 @@
           mac = macShell;
           pc = pcShell;
           vps = vpsShell;
+          ci = ciShell;
           # Fallback pour `nix develop` hors direnv : full stack sans bits NVIDIA.
           default = macShell;
         };
