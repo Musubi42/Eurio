@@ -318,3 +318,27 @@ Falsification obtenue sans la chercher : sans les variables dans l'environnement
 2. `secrets/dev.env` était modifié par une autre session : rotation d'`EURIO_API_TOKEN`, rien d'autre. L'exécutant y a ajouté les quatre `ANDROID_RELEASE_*` par `sops set --value-stdin` et **n'a pas commité** : la clé de signature n'existait que sur ce Mac. L'architecte a vérifié que les deux jetons répondent 200 et a commité le fichier chiffré.
 
 Non fait : installation sur téléphone (aucun appareil branché), test instrumenté du DAO, job Android en CI (D10 tient : dépôt public, identifiants MinIO au `preBuild`).
+
+### Contre-rapport · 2026-09-11 · relecteur neuf (sonnet), critères seuls
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 4.1 | `CN=Eurio, O=Musubi42`, pas d'`Android Debug` | PASS |
+| 4.1b | AAB 71 Mo (`ls`), `jar verified` | PASS |
+| 4.2 | `versionCode = 2`, `"0.2.0"` | PASS |
+| 4.7 | aucun secret en clair tracké ; `keys/` = `debug.keystore` seul ; aucun `.jks` | PASS |
+| 4.8 | 4 variables dans SOPS, 4 dans l'environnement | PASS |
+| 4.9 | sans `ANDROID_RELEASE_KEYSTORE_B64` : « Build release impossible … Variable(s) manquante(s) : ANDROID_RELEASE_KEYSTORE_B64 » | PASS |
+| 4.10 | `ScanJournalDumpReceiver` : 0 dans le manifeste release, présent sous `src/debug/` | PASS |
+| 4.11 | `./gradlew testFullDebugUnitTest` depuis la racine (pas de wrapper dans `app-android/`) ; `ScanJournalTest` 5 tests, 0 échec | PASS |
+| 4.12 | les 5 variables après la parenthèse sont `PRESENT` ; plus aucun `source <(` exécutable | PASS |
+| 4.13 | `PLAY-INTERNE.md` 228 lignes, 25 occurrences des sujets attendus | PASS |
+| 4.14 | aucun `/features/` dans les deux commits Android | PASS |
+
+Falsification sur téléphone : aucun appareil branché, rien tenté. Succession : « rien ne manquait », deux précisions de commande (direnv à recharger dans le shell de l'outil, `gradlew` à la racine).
+
+### Verdict de l'architecte · 2026-09-11 · **étape 4 : la pierre est taillée, la pose attend le PO**
+
+Tout ce qui est technique est fait et contre-vérifié. Les critères 4.3 à 4.6 sont des gestes du PO : compte développeur, scan bout en bout sur son téléphone avec l'APK signé, fiche, AAB sur la piste interne, cinq testeurs, sept jours. Le critère 4.5 n'est pas mesurable à distance tant que l'export du compteur n'a pas son geste (scène proto). L'étape se ferme quand ces gestes sont joués ; rien de code n'y manque.
+
+Deux résidus consignés : le test instrumenté du DAO attend un appareil ; le job Android en CI attend une décision sur les identifiants MinIO au `preBuild` sur un dépôt public (D10 tient).
