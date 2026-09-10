@@ -411,3 +411,26 @@ réserve existe.
 **Ce qui attend le PO.** Confirmer l'abandon de v1 (rien n'y est gelé), et dire
 s'il veut qu'on corrige `face` en base pour les assets mal classés — geste
 distinct, qui touche la donnée de production et pas seulement l'or.
+
+## D14 — Le bras « rejet » de l'or est contaminé par le contenu, pas par le cadrage · 2026-09-11 · 🟡 PROPOSÉ
+
+**Mesuré sur v2, passe 1 complète** (`GET /crop-gold/v2`, 60 annotations, 2026-09-11) :
+
+| | tirage | indécidables | restants |
+|---|---:|---:|---:|
+| acceptés (`manual`) | 32 | 0 | 32 |
+| rejetés | 28 | **16** | **12** |
+
+Les 16 indécidables sont **tous des rejets**. Les commentaires du PO sur dix positions (24, 27, 28, 33, 37, 40, 44, 45, 51, 59) disent pourquoi : dessins, illustration, planche d'images, pièce dans un rouleau. Un rejet de ce genre n'a rien à voir avec le cadrage — c'est la contamination de D13 sous une autre forme : `rejected_in_review` est dominé par « ce n'est pas une photo de pièce », pas par « mal cadré ».
+
+**Trois dessins ont été annotés au lieu d'être écartés** : positions **44** (`9c7025e9`, rejeté), **59** (`d439819d`, rejeté) et **45** (`17c70842`, **accepté en review** — un dessin validé par un humain, cf. mémoire « ancres atypiques »). Ils entrent dans RE-4 avec un verdict que le cadrage n'explique pas.
+
+**Les strates confirmées ne sont plus 15/15/15/15** : S1 23 · S4 9 · S3 6 · S2 6 (sur 44). 43 images sur 60 ont changé de strate à la confirmation. Le tirage sur texte a menti à 72 %.
+
+**Ce qui est décidé.**
+1. Les positions 44, 45 et 59 sont **à passer indécidables** par le PO — trois clics sur la page v2, non gelée. Aucun code.
+2. RE-4 se joue **d'abord en préliminaire** sur les 41 restantes (44 moins les trois dessins), sans gel, pour savoir si le juge sépare 12 rejets de 29 acceptés. Un bras rejet à 12 est mince ; le résultat est une indication, pas le verdict.
+3. La **réserve** (24 images dans le tirage, rôle `reserve`) sert à regarnir : le PO l'annote après les trois clics. Le gel attend passe 2 et la réserve.
+4. Pour la suite du vivier (v3 si nécessaire) : le tirage ne peut pas couper « dessin » par SQL — c'est la confirmation humaine qui le fait, et elle coûte 16 images sur 28 dans le bras rejet. Si RE-4 préliminaire est concluant, on regarnit par la réserve ; sinon on discute d'un v3 avec un vivier de rejets **`crop`-motivés** (les lignes L1 du recadrage manuel, quand la review aura repris).
+
+**Ce qui attend le PO** : les trois clics (44, 45, 59 → indécidable), la passe 2 (10 images, ≥ 24 h après la passe 1, donc dès cet après-midi), la réserve.
