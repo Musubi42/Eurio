@@ -58,7 +58,7 @@ github/main`.
 | [`giga-cohorte/`](./giga-cohorte/PLAN.md) | Entraîner sur les 50 pièces qui comptent (20 → 50 reconnues, 0 perdue). Plan établi sur mesures le 2026-08-18 |
 | [`coin-richness/`](./coin-richness/ROADMAP-DB.md) | ~85 %. Reste le run eBay sur la cohorte, le tour visuel 19 pages, le GO/NO-GO sur le scale à 524 (~2000 appels Numista, multi-session) |
 | [`hardening-2026-07/`](./hardening-2026-07/) | **36 findings tiennent encore** (6 `high`), cadrés en 9 fiches `F01`…`F09`. Sur les 46 de juillet, 26 sont tombés seuls et 2 sont sans objet — re-vérifiés au code le 2026-08-25. **Lire [`ETAT-2026-08-25.md`](./hardening-2026-07/ETAT-2026-08-25.md) avant les fiches** |
-| [`repo-refactor/`](./repo-refactor/) | Le méta-chantier de la branche `repo-cleanup`. Sa section « Déjà établi » contient des faits vérifiés qui ont coûté cher — la lire avant toute exploration |
+| [`repo-refactor/`](./repo-refactor/) | Le méta-chantier de l'ancienne branche `repo-cleanup` (archivée en tag `archive/repo-cleanup` le 2026-09-10). Sa section « Déjà établi » contient des faits vérifiés qui ont coûté cher — la lire avant toute exploration |
 
 ## La règle
 
