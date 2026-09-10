@@ -112,6 +112,9 @@ def bind(store: Store, runner: IterationRunner, local_store: Store | None = None
     _store = store
     _runner = runner
     _local_store = local_store or local_state_store()
+    # Le mapping eurio_id ↔ numista_id lit la MÊME base que le store câblé —
+    # pas un chemin résolu à l'import (cf. serving/coin_lookup.py).
+    coin_lookup.bind(store.db_path)
 
 
 def _get_store() -> Store:
