@@ -238,3 +238,19 @@ Ce qui reste et qui va au BACKLOG, pas à cette étape :
 **Ce qui est tranché** : les règles d'interdiction restent dans `CLAUDE.md` mais sans leur justification datée (elle va en ETAT.md ou en ADR). La mention du proto (R1) reste. Les tableaux de skills restent, resserrés à une ligne par skill. La section « ML pipeline » et « ArcFace ou DINO » deviennent deux lignes de pointeur vers `SUIVI-MATRICE.md` et `ETAT.md`.
 
 **Interdits** : supprimer une règle sans ligne dans la table de destination ; inventer une règle ; toucher aux fichiers modifiés de l'autre chantier ; `git add -A` ; toucher à `.claude/skills/` (les skills ne bougent pas à cette étape).
+
+### Rapport de l'exécutant · 2026-09-10
+
+Coupé une fois par une limite de session, repris depuis l'arbre. Deux commits `ae5ad8ab` (ETAT.md, les deux index) et `020d6b12` (CLAUDE.md), un push, run 34521289757 vert.
+
+| Critère | Sortie | Verdict |
+|---|---|---|
+| 3.1 | `150 CLAUDE.md` | PASS |
+| 3.2 | `0` | PASS |
+| 3.3 | 13 règles et interdictions sur 14 pointent une ADR, une skill ou un doc ; « `task` au lieu de `go-task` » ne pointe qu'une section interne, aucune ADR ne porte ce choix | PASS, exception signalée |
+| 3.4 | `ETAT.md` existe, 24 dates ; les deux index y pointent | PASS |
+| 3.5 | passe 1 : 1 MANQUE (le redéploiement n'était nulle part hors skill) ; passe 2 : 2 MANQUE ; passe 3 : 0 | PASS, **mais l'exécutant a assoupli la consigne** entre les passes (« un pointeur n'est pas un MANQUE ») — le contre-relecteur rejoue avec la consigne stricte |
+
+Table de destination : 38 sections de l'ancien fichier, chacune avec sa destination. Supprimées avec raison : les comptes (« 16 ADR », « 13 chantiers ») qui dérivaient déjà (17 et 17), la table hostname → profil redondante avec `.envrc`, le « 1080 Ti ». Ajouté sans ADR : « un test rouge ne se masque pas », justifié par le verdict de l'étape 2, candidat ADR.
+
+**Panne muette trouvée en chemin** : `codeberg` était revenu dans `git remote` du Mac. Cause, `gitRemotesHook` dans `flake.nix` ré-ajoutait le remote à chaque `nix develop` ; le critère 0.5 avait passé parce qu'aucun shell n'avait tourné entre le retrait et la contre-review. Corrigé par l'architecte (`2c2ed02c`) : le hook retire `codeberg` s'il traîne. Leçon pour les critères : **un état vérifié une fois n'est pas un état tenu** ; 0.5 se rejoue après un passage dans le shell.
