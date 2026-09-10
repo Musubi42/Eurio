@@ -71,8 +71,12 @@ def test_parse_nids_missing_file(tmp_path: Path) -> None:
 
 
 def test_parse_real_cohort_file() -> None:
-    """Le fichier cohorte committé doit être parseable et contenir 19 NIDs."""
-    cohort = ML_DIR / "state" / "cohort_validation_19.txt"
+    """Le fichier cohorte réel doit être parseable et contenir 19 NIDs.
+
+    Copie de `ml/state/cohort_validation_19.txt` (2026-05-25, 19 NIDs Numista
+    et leurs slugs en commentaire) : `ml/state/` est gitignoré, la suite doit
+    passer sur un runner qui ne l'a pas."""
+    cohort = ML_DIR / "tests" / "fixtures" / "cohort_validation_19.txt"
     nids = parse_nids_file(cohort)
     assert len(nids) == 19
     # Quelques NIDs canoniques (cf. ROADMAP-DB.md §6) :
