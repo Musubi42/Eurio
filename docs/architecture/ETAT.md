@@ -129,6 +129,7 @@ Décision : ADR-015. `loan` est **sorti du monorepo le 2026-08-14** (ADR-006) et
 Sur le VPS, le pattern est **SOPS via direnv** : `.envrc` déchiffre `secrets/dev.env` au
 `cd /opt/eurio`, `docker compose up` forwarde par `environment: { VAR: ${VAR:?missing} }`.
 Contexte scripté (cron, systemd) : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up …"`.
+Le geste complet de redéploiement (`eurio-api` comme `eurio-admin`) : `CLAUDE.md` §« Déployer sur le VPS ».
 Le pattern legacy Docker secrets (`infra/*/secrets/<name>` + `*_FILE`) est **déprécié** :
 `infra/eurio-api/` a migré en **juin 2026** ; `infra/review/` reste en service sur l'ancien
 schéma jusqu'au lot 9 (cf. §Front admin).

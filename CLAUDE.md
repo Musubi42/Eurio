@@ -50,14 +50,11 @@ et `components-parity.md`. Une entrée `❌ à proto'er` **bloque** le code Andr
 
 ## Trois machines, trois stockages
 
-| Machine | Rôle |
+| Machine / stockage | Rôle |
 |---|---|
 | **Mac** (`Musubi42s-MacBook-Air-Oim`) | dev, admin, scraping, crop, review — pas de GPU |
 | **PC** (`desktop`, NixOS) | entraînement — la seule machine à GPU |
 | **VPS** (`nixos`) | **writer canonique** de la donnée, MinIO, API, fronts — devShell allégé |
-
-| Stockage | Rôle |
-|---|---|
 | `eurio.db` (SQLite WAL, VPS) | **le canonique** — référentiel, review, cohortes, itérations |
 | MinIO (`eurio-s3.musubi.dev`) | images : raws, crops, canoniques, artefacts de modèle |
 | Supabase | projection read-only pour l'app en prod |
@@ -106,9 +103,11 @@ procédure, une skill manque : cherche, puis écris-la à la fin. Méthode : `do
 `main` est le seul tronc ; `github` le seul remote de référence. Pousse là ; le VPS **ne pousse jamais**, le
 code n'entre que par le Mac. Les branches mortes sont des tags `archive/*`. Historique et pièges : `ETAT.md` §Git.
 
-**Redéployer `eurio-api` (ou `eurio-admin`) sur le VPS**, en trois commandes : `ssh serverOimNixDontpanic` ;
-`cd /opt/eurio && git fetch github main && git merge --ff-only github/main` (le `--ff-only` refuse au lieu de
-fabriquer un merge) ; `cd infra/eurio-api && sops exec-env ../../secrets/dev.env "docker compose up -d --build"`.
+## Déployer sur le VPS — `eurio-api`, `eurio-admin`
+
+Trois commandes : `ssh serverOimNixDontpanic` ; `cd /opt/eurio && git fetch github main && git merge --ff-only
+github/main` (le `--ff-only` refuse au lieu de fabriquer un merge) ; `cd infra/eurio-api && sops exec-env
+../../secrets/dev.env "docker compose up -d --build"` (même geste dans `infra/eurio-admin/` pour le front).
 Puis vérifie comme le dit la skill `eurio-vps-deploy` (routeurs montés, OpenAPI) — une panne y est muette.
 
 ## La CI juge
