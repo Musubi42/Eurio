@@ -187,12 +187,12 @@
           fi
         '';
 
-        # Garantit la topologie de remotes git canonique sur toute machine
-        # dev (mac/pc), de façon idempotente à chaque entrée de shell. Sans ça,
-        # un clone frais côté PC oublie facilement codeberg et tout `git push`
-        # part sur github seul (incident 2026-07-01). Doctrine repo cleanup :
-        # deux remotes nommés par leur hôte — codeberg (source de vérité) et
-        # github (backup), pas d'« origin » opaque.
+        # Garantit le remote git canonique sur toute machine dev (mac/pc), de
+        # façon idempotente à chaque entrée de shell : `github` seul, nommé par
+        # son hôte, pas d'« origin » opaque. `codeberg` n'est plus alimenté et
+        # ce hook le ré-ajoutait à chaque `nix develop` (trouvé le 2026-09-10,
+        # chantier de-la-base-a-la-nef, D1) : il est retiré ici, et retiré du
+        # clone s'il y traîne encore.
         # N'agit QUE si le remote est absent ou pointe ailleurs — silencieux
         # sinon. Ne touche jamais le VPS (checkout de déploiement).
         gitRemotesHook = ''
@@ -208,8 +208,11 @@
                 echo "  🔗 git remote '$name' corrigé → $want"
               fi
             }
-            ensure_remote codeberg https://codeberg.org/Musubi42/Eurio.git
             ensure_remote github git@github.com:Musubi42/Eurio.git
+            if git remote get-url codeberg >/dev/null 2>&1; then
+              git remote remove codeberg
+              echo "  🔗 git remote 'codeberg' retiré (plus alimenté, D1 2026-09-10)"
+            fi
           fi
         '';
 
