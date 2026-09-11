@@ -585,6 +585,12 @@ CREATE TABLE IF NOT EXISTS crop_gold_annotations (
 
   editor_version   TEXT NOT NULL,
 
+  -- ── Les familles, en ÉTIQUETTES (migration 0021, D16) ────────────────────
+  -- Liste JSON triée parmi capsule / multi / oblique. NULL = pas étiquetée,
+  -- `[]` = facile. En DERNIÈRE colonne : c'est là qu'`ALTER TABLE ADD COLUMN`
+  -- la pose sur le canonique, et une base neuve doit avoir le même ordre.
+  familles         TEXT,
+
   PRIMARY KEY (gold_version, asset_id, passe),
 
   -- Une annotation dit quelque chose : soit une ellipse complète, soit

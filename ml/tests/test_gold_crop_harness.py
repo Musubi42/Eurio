@@ -345,3 +345,22 @@ def test_le_tableau_met_les_bornes_en_tete():
     lignes = tableau(runs).splitlines()
     assert "human_2nd_pass" in lignes[2] and "gold_replay" in lignes[3]
     assert "baseline_prod" in lignes[4]
+
+
+def test_une_image_compte_dans_chacune_de_ses_familles():
+    """D16 / RE-6 par famille : une pièce sous capsule dans un lot pèse sur les
+    deux colonnes ; `[]` est « facile » et `None` « non étiquetée » — les
+    confondre ferait passer une image non relue pour une image facile."""
+    from bench.gold_crop.harness import tableau_par_famille
+
+    base = {"boundary_iou": 0.5, "C1_ok": True, "C2_ok": True,
+            "mask_iou": 0.9, "hausdorff_frac": 0.01}
+    run = {"arm": "x", "borne": False, "cases": [
+        {**base, "ampute": True, "familles": ["capsule", "multi"]},
+        {**base, "ampute": False, "familles": []},
+        {**base, "ampute": False, "familles": None},
+        {"absent": True, "familles": ["oblique"]},
+    ]}
+    entete, _, ligne = tableau_par_famille([run]).splitlines()
+    assert entete == "| bras | facile | capsule | multi | oblique | (non étiquetée) |"
+    assert ligne == "| `x` | 0 % (1) | 100 % (1) | 100 % (1) | — | 0 % (1) |"

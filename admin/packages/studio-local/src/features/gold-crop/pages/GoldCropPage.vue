@@ -15,7 +15,7 @@ import {
   type AnnotationOr,
   TAILLE_TIRAGE,
   estAnnotee,
-  strateRetenue,
+  etiquettesFamille,
   useGoldCropApi,
 } from '../composables/useGoldCropApi'
 import { N_DOUBLE } from '../composables/sha256'
@@ -27,21 +27,25 @@ const route = useRoute()
 const version = ref(String(route.query.version || 'v1'))
 const { jeu, chargement, erreur, charger } = useGoldCropApi(version.value)
 
-const filtreStrate = ref<string | null>(null)
+const filtreFamille = ref<string | null>(null)
 const filtreVerdict = ref<string | null>(null)
 const montrerBande = ref(true)
 
 const lignes = computed<AnnotationOr[]>(() => jeu.value?.annotations ?? [])
 const passe1 = computed(() => lignes.value.filter((a) => a.passe === 1))
 
-const strates = computed(() =>
-  [...new Set(passe1.value.map(strateRetenue))].sort(),
+// D16 — une image se compte dans CHACUNE de ses familles ; « facile » = aucune
+// des trois. L'ordre est fixe : une liste triée mettrait « non étiquetée » au
+// milieu, alors que c'est ce qui reste à faire.
+const ORDRE_FAMILLES = ['facile', 'capsule', 'multi', 'oblique', 'non étiquetée']
+const familles = computed(() =>
+  ORDRE_FAMILLES.filter((f) => passe1.value.some((a) => etiquettesFamille(a).includes(f))),
 )
 
 const visibles = computed(() =>
   passe1.value.filter(
     (a) =>
-      (!filtreStrate.value || strateRetenue(a) === filtreStrate.value) &&
+      (!filtreFamille.value || etiquettesFamille(a).includes(filtreFamille.value)) &&
       (!filtreVerdict.value ||
         (filtreVerdict.value === 'accept') === (a.resolution_status === 'manual')),
   ),
@@ -60,7 +64,7 @@ const bilan = computed(() => {
     annotees: l.filter(estAnnotee).length,
     indecidables: l.filter((a) => a.indecidable === 1).length,
     acceptes: l.filter((a) => a.resolution_status === 'manual').length,
-    strates_confirmees: l.filter((a) => a.strate_confirmee).length,
+    familles_posees: l.filter((a) => a.familles != null).length,
     doubles: doubles.size,
     // La médiane d'obliquité dit d'avance ce que le format coûtera : à
     // b/a = 0,90, aucune méthode ne peut dépasser BIoU ≈ 0,26 (ADR-017).
@@ -172,7 +176,7 @@ onMounted(() => {
         <div><b>{{ bilan.annotees }}</b><span>/ {{ bilan.n }} annotées</span></div>
         <div><b>{{ bilan.acceptes }}</b><span>acceptées par l'humain</span></div>
         <div><b>{{ bilan.indecidables }}</b><span>indécidables</span></div>
-        <div><b>{{ bilan.strates_confirmees }}</b><span>strates confirmées</span></div>
+        <div><b>{{ bilan.familles_posees }}</b><span>familles posées</span></div>
         <div :title="'La 2ᵉ passe fixe le plafond du banc : le bruit de la main.'">
           <b>{{ bilan.doubles }}</b><span>en double passe</span>
         </div>
@@ -182,15 +186,15 @@ onMounted(() => {
       </section>
 
       <section class="filtres">
-        <button :class="{ actif: !filtreStrate }" @click="filtreStrate = null">
+        <button :class="{ actif: !filtreFamille }" @click="filtreFamille = null">
           toutes ({{ passe1.length }})
         </button>
         <button
-          v-for="s in strates" :key="s"
-          :class="{ actif: filtreStrate === s }"
-          @click="filtreStrate = s"
+          v-for="f in familles" :key="f"
+          :class="{ actif: filtreFamille === f }"
+          @click="filtreFamille = f"
         >
-          {{ s }} ({{ passe1.filter((a) => strateRetenue(a) === s).length }})
+          {{ f }} ({{ passe1.filter((a) => etiquettesFamille(a).includes(f)).length }})
         </button>
         <span class="sep"></span>
         <button :class="{ actif: !filtreVerdict }" @click="filtreVerdict = null">

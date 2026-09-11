@@ -34,6 +34,7 @@ export interface AnnotationOr extends Partial<EllipseOr> {
   indecidable: number
   strate_tiree: string | null
   strate_confirmee: string | null
+  familles: Famille[] | null
   secondes: number | null
   prefill_modifie: number | null
   editor_version: string
@@ -69,10 +70,6 @@ export interface JeuDOr {
   annotations: AnnotationOr[]
 }
 
-/** La strate qui compte : celle que le PO a CONFIRMÉE, jamais celle du tirage. */
-export function strateRetenue(a: AnnotationOr): string {
-  return a.strate_confirmee || a.strate_tiree || '—'
-}
 
 export function estAnnotee(a: AnnotationOr): boolean {
   return a.indecidable === 1 || a.a != null
@@ -172,6 +169,7 @@ export interface AnnotationEnvoi {
   passe: number
   strate_tiree: string | null
   strate_confirmee: string | null
+  familles: Famille[] | null
   secondes: number | null
   prefill_modifie: boolean
   editor_version: string
@@ -190,11 +188,29 @@ export const TAILLE_TIRAGE = 60
 
 export const STRATES = ['S1_facile', 'S2_capsule', 'S3_multi', 'S4_oblique'] as const
 
+/**
+ * Les familles d'une image (D16) — des ÉTIQUETTES, pas des cases. Une pièce sous
+ * capsule, de biais, dans un lot est les trois : la forcer dans une seule faisait
+ * changer d'avis la même main d'une passe à l'autre (3 sur 8 concordaient).
+ * « facile » n'en est pas une : c'est la liste VIDE. `null` = pas encore
+ * étiquetée, qui n'est pas la même chose que facile. Miroir de
+ * `store.crop_gold.FAMILLES`.
+ */
+export const FAMILLES = ['capsule', 'multi', 'oblique'] as const
+export type Famille = (typeof FAMILLES)[number]
+
+/** Les colonnes où une image se compte : chacune de ses familles, ou « facile ». */
+export function etiquettesFamille(a: { familles?: Famille[] | null }): string[] {
+  if (a.familles == null) return ['non étiquetée']
+  return a.familles.length ? [...a.familles] : ['facile']
+}
+
 /** L'état local d'une image pendant la séance. */
 export interface EtatAnnotation {
   asset_id: string
   strate_tiree: string | null
   strate_confirmee: string | null
+  familles: Famille[] | null
   indecidable: boolean
   secondes: number
   ellipse: EllipseEdition | null
@@ -253,7 +269,15 @@ export function premiereAFaire(
     const e = etats[im.asset_id]
     return !(e && (e.ellipse || e.indecidable))
   })
-  return i < 0 ? 0 : i
+  if (i >= 0) return i
+  // Tout est tracé : la séance qui reste est celle des familles (D16). On
+  // rouvre la première image TRACÉE sans famille — un indécidable sort du jeu,
+  // l'étiqueter ne servirait à rien.
+  const j = images.findIndex((im) => {
+    const e = etats[im.asset_id]
+    return !!e?.ellipse && !e.indecidable && e.familles == null
+  })
+  return j < 0 ? 0 : j
 }
 
 /** Une annotation déjà au canonique, ramenée dans l'état local de la séance. */
@@ -262,6 +286,7 @@ export function etatDepuisAnnotation(a: AnnotationOr): EtatAnnotation {
     asset_id: a.asset_id,
     strate_tiree: a.strate_tiree,
     strate_confirmee: a.strate_confirmee,
+    familles: a.familles ?? null,
     indecidable: a.indecidable === 1,
     secondes: a.secondes ?? 0,
     ellipse:

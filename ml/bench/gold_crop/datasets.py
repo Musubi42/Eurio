@@ -29,6 +29,9 @@ class Cas:
     hint: dict
     gold: Ellipse
     gold_2e_passe: Ellipse | None = None
+    #: D16 — étiquettes (`capsule`, `multi`, `oblique`), `[]` = facile,
+    #: `None` = pas encore étiquetée.
+    familles: list[str] | None = None
 
     def raw(self) -> np.ndarray | None:
         import cv2
@@ -101,6 +104,7 @@ def charger(racine: str | Path) -> JeuDOr:
             largeur=int(img["width"]), hauteur=int(img["height"]),
             hint=img["hint"], gold=_ellipse(a["ellipse"]),
             gold_2e_passe=_ellipse((annot2.get(img["asset_id"]) or {}).get("ellipse")),
+            familles=a.get("familles"),
         ))
     return JeuDOr(
         version=manifeste.get("version", "v1"), racine=racine, cas=cas,

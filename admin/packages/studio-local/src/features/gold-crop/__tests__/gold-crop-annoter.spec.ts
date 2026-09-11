@@ -117,6 +117,18 @@ describe('la reprise', () => {
     expect(TIRAGE_DEMO.images[i].asset_id).toBe('a3')
   })
 
+  it('tout tracé : on rouvre la première image TRACÉE sans familles (D16)', () => {
+    const [a1, a2, a3] = TIRAGE_DEMO.images.map((im) => im.asset_id)
+    const base = JEU_DEMO.annotations[0]
+    const i = premiereAFaire(TIRAGE_DEMO.images, etats([
+      { ...base, asset_id: a1, familles: [] },
+      // un indécidable sort du jeu : l'étiqueter ne servirait à rien
+      { ...base, asset_id: a2, indecidable: 1, familles: null },
+      { ...base, asset_id: a3, familles: null },
+    ]))
+    expect(i).toBe(2)
+  })
+
   it('tout fait : on rouvre la première, on ne sort pas du tableau', () => {
     const tout = TIRAGE_DEMO.images.map(
       (im) => ({ ...JEU_DEMO.annotations[0], asset_id: im.asset_id }) as AnnotationOr,
@@ -158,11 +170,18 @@ describe('la page d’annotation', () => {
     return w
   }
 
-  it('sans tirage publié, elle dit quoi lancer — ce n’est pas une panne', async () => {
+  // Vécu le 2026-09-11 : `?version=v2.` (un point de trop) rend un tirage vide,
+  // et la page réclamait `publier_tirage` — que le PO a lancé depuis la racine
+  // du dépôt, où il échoue. Le canonique ne distingue pas une version mal tapée
+  // d'une version neuve : la page doit NOMMER la version et dire OÙ lancer.
+  it('sans tirage sous cette version, elle la nomme et dit où lancer — ce n’est pas une panne', async () => {
+    requete.mockReturnValue({ query: { version: 'v2.' } })
     servir([], [])
     const w = await monter()
-    expect(w.text()).toContain("Le tirage n'est pas encore publié")
-    expect(w.text()).toContain('publier_tirage')
+    expect(w.text()).toContain('Aucun tirage sous la version « v2. »')
+    expect(w.text()).toContain(
+      'cd ml && python -m bench.gold_crop.publier_tirage --out state/gold_crop/v2.',
+    )
   })
 
   it('le PUT porte `theta`, `editor_version` et pas de `prefill_modifie` inventé', async () => {
@@ -444,11 +463,11 @@ describe('la page d’annotation', () => {
     expect(ligne.text()).not.toBe('409')
   })
 
-  it('confirmer une strate seule n’écrit rien — mais l’image reste à faire', async () => {
+  it('poser des familles seules n’écrit rien — mais l’image reste à faire', async () => {
     servir(TIRAGE_DEMO.images, [])
     put.mockResolvedValue({ n: 0 })
     const w = await monter()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }))
     await dodo()
     expect(put).not.toHaveBeenCalled()
     expect(w.text()).toContain('à faire')
@@ -596,5 +615,117 @@ describe('la page d’annotation, sur la réserve', () => {
     const w = await monter()
     expect(w.text()).toContain('2 / 2')
     expect(w.text()).toContain('r2')
+  })
+})
+
+/* ════════════════════════════════════════════════════════════════════════ */
+
+// La navigation n'écrit que ce qu'on a MODIFIÉ (D16). Avant le 2026-09-11, ← →
+// validaient en passant : les 16 indécidables de v2 portent le pré-remplissage
+// comme ellipse, et `7a072305` / `986ada7d` ont été réécrites en les revoyant.
+// Sur une image pas encore tracée, → aurait fait entrer `measure_tilt` dans l'or.
+describe('la navigation n’écrit que ce qu’on a modifié', () => {
+  const montes: ReturnType<typeof mount>[] = []
+  const dodo = (ms = 200) => new Promise((r) => setTimeout(r, ms))
+  const touche = (key: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+
+  beforeEach(() => {
+    get.mockReset()
+    put.mockReset()
+    put.mockResolvedValue({ n: 1 })
+    requete.mockReturnValue({ query: {} })
+  })
+  afterEach(() => {
+    montes.splice(0).forEach((w) => w.unmount())
+  })
+
+  function servir(annotations: AnnotationOr[]) {
+    get.mockImplementation(async (chemin: string) =>
+      chemin.includes('/tirage')
+        ? { gold_version: 'v1', n: 3, images: TIRAGE_DEMO.images }
+        : { gold_version: 'v1', version: null, n: annotations.length, annotations },
+    )
+  }
+
+  async function monter() {
+    const { default: Page } = await import('../pages/GoldCropAnnotatePage.vue')
+    const w = mount(Page)
+    montes.push(w)
+    await dodo(0)
+    await w.vm.$nextTick()
+    return w
+  }
+
+  const tracee = (asset_id: string, over: Partial<AnnotationOr> = {}) =>
+    ({ ...JEU_DEMO.annotations[0], asset_id, ...over }) as AnnotationOr
+  const indecidable = (asset_id: string) =>
+    tracee(asset_id, { indecidable: 1, cx: undefined, cy: undefined, a: undefined, b: undefined })
+
+  it('→ sur une image pas encore tracée ne l’écrit pas', async () => {
+    servir([])
+    const w = await monter()
+    expect(w.text()).toContain('1 / 3')
+    touche('ArrowRight')
+    await dodo()
+    expect(put).not.toHaveBeenCalled()
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('2 / 3')
+  })
+
+  it('revoir un indécidable et une image tracée, aux flèches ET à Entrée, n’écrit rien', async () => {
+    servir([tracee('a1'), indecidable('a2'), tracee('a3')])
+    const w = await monter()
+    expect(w.text()).toContain('1 / 3')
+    touche('ArrowRight') // a2, indécidable
+    touche('ArrowRight') // a3
+    touche('ArrowLeft') // a2
+    touche('Enter') // a2 est faite et intacte : on passe, on ne réécrit pas
+    touche('ArrowLeft')
+    touche('ArrowLeft') // a1
+    touche('Enter')
+    await dodo()
+    expect(put).not.toHaveBeenCalled()
+  })
+
+  it('une ellipse BOUGÉE s’écrit en quittant par la flèche', async () => {
+    servir([])
+    const w = await monter()
+    const pointeur = (type: string, x: number, y: number) =>
+      new MouseEvent(type, { clientX: x, clientY: y, bubbles: true })
+    const toile = w.find('svg.toile').element
+    w.find('[data-poignee="C"]').element.dispatchEvent(pointeur('pointerdown', 5, 5))
+    toile.dispatchEvent(pointeur('pointermove', 140, 160))
+    toile.dispatchEvent(pointeur('pointerup', 140, 160))
+    await w.vm.$nextTick()
+    touche('ArrowRight')
+    await dodo()
+    expect(put).toHaveBeenCalledTimes(1)
+    const a = (put.mock.calls[0][1] as { annotations: Record<string, unknown>[] }).annotations[0]
+    expect(a.asset_id).toBe('a1')
+    expect(a.prefill_modifie).toBe(true)
+  })
+
+  it('les familles se cumulent, 1 remet à facile, et chaque geste s’écrit sur une image tracée', async () => {
+    servir([tracee('a1'), tracee('a2'), tracee('a3')])
+    const w = await monter()
+    const dernier = () =>
+      (put.mock.calls.at(-1)![1] as { annotations: Record<string, unknown>[] }).annotations[0]
+
+    touche('2')
+    await dodo()
+    expect(dernier().familles).toEqual(['capsule'])
+    touche('3')
+    await dodo()
+    expect(dernier().familles).toEqual(['capsule', 'multi'])
+    touche('2')
+    await dodo()
+    expect(dernier().familles).toEqual(['multi'])
+    touche('1')
+    await dodo()
+    expect(dernier().familles).toEqual([])
+    // le ré-étiquetage ne retouche PAS l'ellipse tracée
+    expect(dernier().ellipse).toEqual({ cx: 450, cy: 450, a: 370, b: 360, theta: 12 })
+    await w.vm.$nextTick()
+    expect(w.find('.strate.actif').text()).toContain('facile')
   })
 })

@@ -11,7 +11,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AnnotationOr } from '../composables/useGoldCropApi'
-import { estAnnotee, strateRetenue, useGoldCropApi } from '../composables/useGoldCropApi'
+import { estAnnotee, etiquettesFamille, useGoldCropApi } from '../composables/useGoldCropApi'
 
 const get = vi.fn()
 // `importActual` et pas un objet nu : le composable importe désormais les
@@ -47,9 +47,10 @@ function ligne(over: Partial<AnnotationOr> = {}): AnnotationOr {
 }
 
 describe('les grandeurs du jeu d’or', () => {
-  it('la strate confirmée prime sur celle du tirage', () => {
-    expect(strateRetenue(ligne({ strate_confirmee: 'S2_capsule' }))).toBe('S2_capsule')
-    expect(strateRetenue(ligne())).toBe('S1_facile')
+  it('facile est la liste VIDE, et une image non étiquetée ne passe pas pour facile (D16)', () => {
+    expect(etiquettesFamille(ligne({ familles: ['capsule', 'multi'] }))).toEqual(['capsule', 'multi'])
+    expect(etiquettesFamille(ligne({ familles: [] }))).toEqual(['facile'])
+    expect(etiquettesFamille(ligne({ familles: null }))).toEqual(['non étiquetée'])
   })
 
   it('le composable retient l’erreur au lieu de la laisser filer', async () => {
@@ -119,16 +120,21 @@ describe('la page', () => {
     expect(w.findAll('.grille figure')).toHaveLength(2)
   })
 
-  it('le filtre de strate suit la strate CONFIRMÉE', async () => {
+  it('le filtre de famille compte une image dans CHACUNE de ses familles (D16)', async () => {
     const w = await monter([
-      ligne({ asset_id: 'a1', strate_tiree: 'S1_facile', strate_confirmee: 'S2_capsule' }),
-      ligne({ asset_id: 'a2', strate_tiree: 'S1_facile' }),
+      ligne({ asset_id: 'a1', familles: ['capsule', 'multi'] }),
+      ligne({ asset_id: 'a2', familles: [] }),
+      ligne({ asset_id: 'a3', familles: null }),
     ])
-    const boutons = w.findAll('.filtres button')
-    const s2 = boutons.find((b) => b.text().startsWith('S2_capsule'))
-    expect(s2, 'un bouton S2_capsule doit exister').toBeTruthy()
-    await s2!.trigger('click')
-    expect(w.findAll('.grille figure')).toHaveLength(1)
+    const bouton = (debut: string) =>
+      w.findAll('.filtres button').find((b) => b.text().startsWith(debut))
+    for (const f of ['capsule', 'multi', 'facile', 'non étiquetée']) {
+      expect(bouton(f), `un bouton « ${f} » doit exister`).toBeTruthy()
+      await bouton(f)!.trigger('click')
+      expect(w.findAll('.grille figure'), f).toHaveLength(1)
+    }
+    expect(bouton('oblique'), 'pas de bouton pour une famille absente').toBeFalsy()
+    expect(w.text()).toContain('familles posées')
   })
 
   // La réserve (D14, D15) : 24 images tenues à l'écart, qui regarnissent le

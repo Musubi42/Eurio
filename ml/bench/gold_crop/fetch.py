@@ -53,10 +53,10 @@ ML_DIR = Path(__file__).resolve().parents[2]
 #: QUE dans l'outil.
 USER_AGENT = "eurio-gold-fetch/1.0"
 
-#: Les 12 colonnes de l'instantané canonique, cf. `store.crop_gold.instantane`.
+#: Les 13 colonnes de l'instantané canonique, cf. `store.crop_gold.instantane`.
 COLONNES_INSTANTANE = ("asset_id", "passe", "cx", "cy", "a", "b", "theta_deg",
                        "indecidable", "strate_tiree", "strate_confirmee",
-                       "actor", "editor_version")
+                       "familles", "actor", "editor_version")
 
 
 class ErreurCanonique(Exception):
@@ -111,7 +111,7 @@ def _diagnostic_http(code: int, corps: str) -> str:
 def empreinte_instantane(version: str, lignes: list[dict]) -> str:
     """Rejoue `store.crop_gold.instantane()` côté client, à l'octet.
 
-    Le serveur projette 12 colonnes par ligne, dans l'ordre `(passe, asset_id)`
+    Le serveur projette 13 colonnes par ligne, dans l'ordre `(passe, asset_id)`
     rendu par `lire()`, puis `json.dumps(sort_keys=True,
     separators=(",", ":"), ensure_ascii=False)`. `GET /crop-gold/<v>` rend ces
     mêmes lignes dans ce même ordre : la reproduction est exacte, pas
@@ -144,9 +144,22 @@ def entree_gold(ligne: dict) -> dict:
             "indecidable": bool(ligne.get("indecidable")),
             "strate_tiree": ligne.get("strate_tiree"),
             "strate_confirmee": ligne.get("strate_confirmee"),
+            "familles": ligne.get("familles"),
             "secondes": ligne.get("secondes"),
             "prefill_modifie": None if prefill is None else bool(prefill),
             "editor_version": ligne.get("editor_version")}
+
+
+def etiquettes_famille(familles: list[str] | None) -> list[str]:
+    """Les colonnes où une image se compte (D16).
+
+    `[]` n'est pas « rien » : c'est **facile**, aucune des trois difficultés.
+    `None` est « pas encore étiquetée » — les deux se confondre ferait passer
+    une image non relue pour une image facile.
+    """
+    if familles is None:
+        return ["(non étiquetée)"]
+    return list(familles) or ["facile"]
 
 
 def _annotations_reelles(fichier: Path) -> dict:
@@ -259,15 +272,16 @@ def main(argv=None) -> int:
     ecrire(fichier, entrees, version=version, passe=a.passe,
            frozen_at=frozen_at, snapshot_sha256=snapshot)
 
-    par_strate: dict[str, int] = {}
+    par_famille: dict[str, int] = {}
     for e in entrees.values():
-        par_strate[e.get("strate_confirmee") or "(non confirmée)"] = \
-            par_strate.get(e.get("strate_confirmee") or "(non confirmée)", 0) + 1
+        for f in etiquettes_famille(e.get("familles")):
+            par_famille[f] = par_famille.get(f, 0) + 1
 
     print(f"or {version}  ·  passe {a.passe} → {fichier}")
     print(f"annotations : {len(entrees)} (toutes passes : {len(lignes)})")
-    print("par strate confirmée : " + (
-        "  ".join(f"{k} {v}" for k, v in sorted(par_strate.items())) or "—"))
+    # Une image compte dans CHACUNE de ses familles : la somme dépasse le total.
+    print("par famille : " + (
+        "  ".join(f"{k} {v}" for k, v in sorted(par_famille.items())) or "—"))
     if frozen_at:
         print(f"gelé le {frozen_at}  ·  sha256 {snapshot}  ·  empreinte vérifiée")
     else:

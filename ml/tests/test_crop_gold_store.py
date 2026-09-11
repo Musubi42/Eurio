@@ -341,3 +341,58 @@ def test_l_ordre_de_la_seance_est_le_meme_pour_deux_annotateurs(conn):
     assert [(l["role"], l["strate_tiree"], l["rn"]) for l in lire_tirage(conn, "v1")] == [
         ("tirage", "S1_facile", 2), ("tirage", "S2_capsule", 1),
         ("reserve", "S1_facile", 1)]
+
+
+# ─── les familles, en étiquettes (D16, migration 0021) ──────────────────────
+
+def _familles_brutes(conn):
+    return [r[0] for r in conn.execute(
+        "SELECT familles FROM crop_gold_annotations ORDER BY asset_id")]
+
+
+def test_les_familles_arrivent_triees_dedoublonnees_et_se_relisent_en_liste(conn):
+    res = enregistrer_lot(conn, [_ann("ia0", familles=["multi", "capsule", "multi"])],
+                          actor="po", gold_version="v2")
+    assert res["comptes"] == {"ecrit": 1}
+    # trié et dédoublonné : deux fois le même geste = le même octet, sinon
+    # l'empreinte du gel bouge sur du bruit
+    assert _familles_brutes(conn) == ['["capsule", "multi"]']
+    (ligne,) = lire(conn, "v2")
+    assert ligne["familles"] == ["capsule", "multi"]
+
+
+def test_facile_est_une_liste_vide_pas_une_absence(conn):
+    enregistrer_lot(conn, [_ann("ia0", familles=[]), _ann("ia1")],
+                    actor="po", gold_version="v2")
+    par_asset = {l["asset_id"]: l["familles"] for l in lire(conn, "v2")}
+    assert par_asset == {"ia0": [], "ia1": None}
+
+
+def test_une_famille_inconnue_est_refusee_sans_faire_tomber_le_lot(conn):
+    res = enregistrer_lot(conn, [_ann("ia0", familles=["dessin"]),
+                                 _ann("ia1", familles=["oblique"])],
+                          actor="po", gold_version="v2")
+    assert res["comptes"] == {"invalide": 1, "ecrit": 1}
+    assert "dessin" in res["details"][0]["raison"]
+    assert [l["asset_id"] for l in lire(conn, "v2")] == ["ia1"]
+
+
+def test_un_client_qui_ne_porte_pas_les_familles_ne_les_efface_pas(conn):
+    # l'outil local `serve.py` est antérieur à D16 : il renvoie une annotation
+    # sans le champ. Il ne doit pas remettre à « non étiquetée » ce que la page
+    # a posé.
+    enregistrer_lot(conn, [_ann("ia0", familles=["oblique"])], actor="po", gold_version="v2")
+    enregistrer_lot(conn, [_ann("ia0")], actor="po", gold_version="v2")
+    assert lire(conn, "v2")[0]["familles"] == ["oblique"]
+    # …mais un client qui les porte les remplace, y compris par « facile »
+    enregistrer_lot(conn, [_ann("ia0", familles=[])], actor="po", gold_version="v2")
+    assert lire(conn, "v2")[0]["familles"] == []
+
+
+def test_l_instantane_bouge_quand_les_familles_bougent(conn):
+    enregistrer_lot(conn, [_ann("ia0", familles=["capsule"])], actor="po", gold_version="v2")
+    avant = instantane(conn, "v2")
+    enregistrer_lot(conn, [_ann("ia0", familles=["capsule", "multi"])],
+                    actor="po", gold_version="v2")
+    assert instantane(conn, "v2") != avant
+    assert '"familles":["capsule","multi"]' in instantane(conn, "v2")

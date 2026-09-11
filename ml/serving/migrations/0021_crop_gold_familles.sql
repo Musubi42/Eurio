@@ -1,0 +1,26 @@
+-- 0021 — Les familles du jeu d'or deviennent des ÉTIQUETTES (D16).
+--
+-- Chantier `juge-du-crop`. 0019 rangeait une image dans UNE strate
+-- (`strate_confirmee` : S1_facile, S2_capsule, S3_multi, S4_oblique). La 2ᵉ
+-- passe du 2026-09-11 a mesuré que ce n'est pas une partition : la même main a
+-- rendu la même strate sur 3 images sur 8 seulement, et le PO l'a dit en
+-- clair — « capsule, oblique et même multi sur une seule image ». Forcer une
+-- case fabrique un désaccord que personne n'a.
+--
+-- `familles` porte une LISTE JSON triée, parmi `capsule`, `multi`, `oblique`
+-- (`store.crop_gold.FAMILLES`) :
+--
+--   · `NULL`  — pas encore étiquetée ;
+--   · `[]`    — FACILE : aucune des trois difficultés. Ce n'est pas une absence ;
+--   · `["capsule","multi"]` — l'image compte dans les DEUX colonnes de RE-6.
+--
+-- `strate_confirmee` reste : c'est l'historique de la passe 1, et l'empreinte
+-- d'un gel futur doit pouvoir dire ce qui a été confirmé avant D16.
+--
+-- Pas de CHECK `json_valid` : il dépend de JSON1 dans le SQLite du conteneur,
+-- et une migration qui échoue au démarrage éteint l'API entière. La garde vit
+-- dans le writer (`enregistrer_annotation` refuse une famille inconnue).
+--
+-- ALTER, donc non rejouable seule : hors du test paramétré de miroir, gardée
+-- nommément par `test_la_colonne_familles_de_0021_est_dans_les_deux_fichiers`.
+ALTER TABLE crop_gold_annotations ADD COLUMN familles TEXT;

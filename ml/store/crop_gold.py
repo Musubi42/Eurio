@@ -23,6 +23,14 @@ import sqlite3
 #: annoté avec deux outils différents.
 EDITOR_VERSION = "gold_v1"
 
+#: Les familles d'une image du jeu d'or (D16). Des ÉTIQUETTES, pas des cases :
+#: une pièce sous capsule posée de biais dans un lot est les trois à la fois, et
+#: la forcer dans une seule faisait changer d'avis l'annotateur d'une passe à
+#: l'autre (3 sur 8 seulement concordaient). « Facile » n'est pas une famille :
+#: c'est la liste VIDE — aucune des trois difficultés. `None` = pas encore
+#: étiquetée, ce qui n'est pas la même chose que facile.
+FAMILLES = ("capsule", "multi", "oblique")
+
 
 class OrGele(Exception):
     """Écriture refusée : cette version d'or est gelée.
@@ -112,18 +120,32 @@ def enregistrer_annotation(conn: sqlite3.Connection, obs, *, actor: str,
     if passe < 1:
         return {"statut": "invalide", "asset_id": asset_id, "raison": "passe < 1"}
 
+    familles = _champ(obs, "familles")
+    if familles is not None:
+        inconnues = sorted(set(familles) - set(FAMILLES))
+        if inconnues:
+            return {"statut": "invalide", "asset_id": asset_id,
+                    "raison": f"famille(s) inconnue(s) : {', '.join(inconnues)}"}
+        # Trié et dédoublonné : deux fois le même geste doit donner le même
+        # octet, sinon l'empreinte du gel bouge sur du bruit.
+        familles = json.dumps(sorted(set(familles)))
+
     conn.execute(
         "INSERT INTO crop_gold_annotations"
         " (gold_version, asset_id, passe, actor, cx, cy, a, b, theta_deg,"
-        "  indecidable, strate_tiree, strate_confirmee, secondes,"
+        "  indecidable, strate_tiree, strate_confirmee, familles, secondes,"
         "  prefill_modifie, editor_version)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(gold_version, asset_id, passe) DO UPDATE SET"
         "   actor = excluded.actor, cx = excluded.cx, cy = excluded.cy,"
         "   a = excluded.a, b = excluded.b, theta_deg = excluded.theta_deg,"
         "   indecidable = excluded.indecidable,"
         "   strate_tiree = excluded.strate_tiree,"
         "   strate_confirmee = excluded.strate_confirmee,"
+        # Un client qui ne PORTE pas les familles (l'outil local `serve.py`,
+        # antérieur à D16) ne doit pas effacer celles qu'un autre a posées.
+        # Aucun geste ne ramène à « non étiquetée » : facile, c'est `[]`.
+        "   familles = COALESCE(excluded.familles, crop_gold_annotations.familles),"
         "   secondes = excluded.secondes,"
         "   prefill_modifie = excluded.prefill_modifie,"
         "   editor_version = excluded.editor_version,"
@@ -132,7 +154,7 @@ def enregistrer_annotation(conn: sqlite3.Connection, obs, *, actor: str,
         # l'annotateur avait commencé avant de renoncer, et ça se relit.
         (gold_version, asset_id, passe, actor, cx, cy, a, b, theta,
          indecidable, _champ(obs, "strate_tiree"), _champ(obs, "strate_confirmee"),
-         _champ(obs, "secondes"),
+         familles, _champ(obs, "secondes"),
          None if _champ(obs, "prefill_modifie") is None
          else int(bool(_champ(obs, "prefill_modifie"))),
          _champ(obs, "editor_version") or EDITOR_VERSION))
@@ -178,7 +200,14 @@ def lire(conn: sqlite3.Connection, gold_version: str,
         sql += " AND g.passe = ?"
         params.append(passe)
     sql += " ORDER BY g.passe, g.asset_id"
-    return [dict(r) for r in conn.execute(sql, params)]
+    lignes = [dict(r) for r in conn.execute(sql, params)]
+    for ligne in lignes:
+        # Rendue en LISTE : le texte JSON est un détail de rangement, et un
+        # client qui testerait `"multi" in familles` sur la chaîne répondrait
+        # juste par accident (« multi » est une sous-chaîne de rien d'autre).
+        if ligne.get("familles") is not None:
+            ligne["familles"] = json.loads(ligne["familles"])
+    return lignes
 
 
 # ─── Le TIRAGE : ce qu'il y a À annoter (D12, migration 0020) ───────────────
@@ -331,7 +360,8 @@ def instantane(conn: sqlite3.Connection, gold_version: str) -> str:
     lignes = [
         {k: r[k] for k in ("asset_id", "passe", "cx", "cy", "a", "b",
                            "theta_deg", "indecidable", "strate_tiree",
-                           "strate_confirmee", "actor", "editor_version")}
+                           "strate_confirmee", "familles", "actor",
+                           "editor_version")}
         for r in lire(conn, gold_version)
     ]
     return json.dumps({"gold_version": gold_version, "annotations": lignes},

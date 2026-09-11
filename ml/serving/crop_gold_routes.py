@@ -62,6 +62,10 @@ class AnnotationIn(BaseModel):
     passe: int = Field(1, ge=1)
     strate_tiree: str | None = None
     strate_confirmee: str | None = None
+    # D16 — étiquettes parmi `store.crop_gold.FAMILLES`. Validées par le STORE,
+    # pas ici : un `Literal` rendrait 422 au lot entier pour une seule image,
+    # et une séance ne perd pas 59 annotations pour la 60ᵉ.
+    familles: list[str] | None = None
     secondes: float | None = None
     prefill_modifie: bool | None = None
     editor_version: str | None = None

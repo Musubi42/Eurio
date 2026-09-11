@@ -24,7 +24,26 @@ impeccable — un verdict qu'aucun juge du crop ne peut prédire, donc RE-4 faus
 sur deux images que v2 reprend à l'identique : **les 2 ellipses sont à
 retracer**, rien d'autre n'est perdu (51 des 60 images sont les mêmes).
 
-## ⏱️ État au 2026-09-11 — la passe 1 est jouée, RE-4 préliminaire dit « à l'envers »
+## ⏱️ État au 2026-09-11 (soir) — passe 2 jouée, le banc change de règle ([D16](./DECISIONS.md))
+
+**Ce que l'or est, en une ligne :** une règle graduée pour **juger une méthode de crop** sur 60 raws. Il ne re-juge pas le parc ; c'est la méthode gagnante qui re-cropera le parc.
+
+La passe 2 (10 images) a dit trois choses :
+
+1. **La main est précise** (Δcentre ≤ 2,7 px, Δrayon ≤ 1,5 %, BIoU p10 0,48) — **et le critère `m = 0` est sous son bruit** : ta passe 2 est « amputée » par ta passe 1 à 87,5 %. D'où l'inversion de D15 ;
+2. **RE-4 comparait la main de la review à l'algorithme** : 26 des 32 acceptés sont des crops `manual`. Le détecteur *avant retouche* n'atteint le niveau de la main sur **aucune** de ces 26 images (BIoU médiane ~0,09) ;
+3. **les familles ne se reproduisent pas** (3/8) : une image est souvent capsule *et* multi.
+
+**Proposé (D16, 🟡)** : juge = BIoU ≥ τ avec **τ = p10 de la main (0,48)**, sans lire les verdicts ; nouveau bras **`pipeline_natif`** (la vraie prod rejouée sur le raw) à la place de `baseline_prod` ; **un dessin est indécidable** ; familles en étiquettes multiples.
+
+**Gestes PO, dans cet ordre :**
+1. **valider D16** (points 1 à 3, et oui/non au point 5 — étiquettes multiples — *avant* la réserve) ;
+2. **les trois dessins → indécidable** : `9c7025e9`, `17c70842`, `d439819d` (positions 44, 45, 59 de la page), sur `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2` — toujours à `indecidable = 0` ;
+3. **la réserve**, 24 images : `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2&role=reserve`.
+
+**Côté code, une fois D16 validée** : le bras `pipeline_natif` ; le critère τ dans `judge.py`/`harness.py` (l'amputation reste publiée, hors verdict) ; si oui au point 5, les bascules de famille sur la page d'annotation. Puis L5 : filtrage des candidats → ajustement du bord → capsule/multi.
+
+## ⏱️ État au 2026-09-11 (matin, historique) — la passe 1 est jouée, RE-4 préliminaire dit « à l'envers »
 
 Les 60 annotations de v2 sont dans le canonique (2026-09-10). **16 indécidables, tous des rejets** (D14) ; 44 utilisables, 32 accept / 12 reject. RE-4 préliminaire, sans gel : le juge `amputation_rate` **sépare à l'envers** (90 % des acceptés « amputés ») ; la géométrie (BIoU, IoU masque) sépare fort. Proposition D15 : juge amendé en IoU de masque ≥ τ, τ validé sur la réserve. **Trois gestes PO**, dans cet ordre, le gel attend les trois :
 1. les trois clics D14 — positions **44, 45, 59 → indécidable** sur `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2` ;
@@ -161,6 +180,7 @@ marche aussi depuis le front hébergé.
    l'outil, pas par la confiance. Il refuse d'écraser un `gold.json` local
    qui porterait des annotations absentes du canonique (un envoi raté) ;
 3. **Exécuter RE-4** — `python -m bench.gold_crop.harness --out state/gold_crop/v1`.
+   ⚠️ *Amendé par [D16](./DECISIONS.md) (🟡) : le verdict se lit sur `pipeline_natif` et le critère devient BIoU ≥ τ (p10 de la main) ; la suite de ce point décrit l'ancien critère.*
    Il publie la corrélation entre `amputation_rate(baseline_prod)` et le verdict
    humain sur les 60. **Si le juge ne sépare pas les acceptés des rejetés, le
    juge est faux et le banc s'arrête là** — c'est tout l'intérêt du dispositif.

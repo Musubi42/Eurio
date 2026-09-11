@@ -27,6 +27,7 @@ from bench.gold_crop import bras as _bras_builtin  # noqa: F401  (enregistrement
 from bench.gold_crop.datasets import Cas, JeuDOr, charger
 from bench.gold_crop.geometry import Cercle
 from bench.gold_crop.iface import ContexteBorne, ContexteCandidat, controler_re2, get_bras
+from store.crop_gold import FAMILLES
 from bench.gold_crop.judge import (
     ARC_MIN,
     D_FRAC,
@@ -76,6 +77,7 @@ def executer(nom: str, jeu: JeuDOr, *, m: float = M_AMPUTATION, arc_min: float =
             "asset_id": c.asset_id, "strate": c.strate,
             "strate_confirmee": c.strate_confirmee,
             "strate_retenue": c.strate_retenue,
+            "familles": c.familles,
             "verdict_humain": c.verdict_humain,
             "gold": {"cx": c.gold.cx, "cy": c.gold.cy, "a": c.gold.a,
                      "b": c.gold.b, "theta": c.gold.theta},
@@ -152,6 +154,26 @@ def tableau_par_strate(runs: list[dict]) -> str:
             cs = [c for c in r["cases"] if c.get("strate_retenue") == s]
             res = resume(r, cs)
             vals.append("—" if not res["n"] else f"{res['amputation_pct']:.0f} %")
+        lignes.append(f"| `{r['arm']}` | " + " | ".join(vals) + " |")
+    return "\n".join(lignes)
+
+
+def tableau_par_famille(runs: list[dict]) -> str:
+    """RE-6 par famille (D16). Une image compte dans CHACUNE de ses familles :
+    une pièce sous capsule posée de biais pèse sur les deux colonnes, et une
+    méthode qui la rate perd sur les deux."""
+    from bench.gold_crop.fetch import etiquettes_famille
+
+    colonnes = ["facile", *FAMILLES, "(non étiquetée)"]
+    lignes = ["| bras | " + " | ".join(colonnes) + " |",
+              "|---|" + "|".join(["---:"] * len(colonnes)) + "|"]
+    for r in runs:
+        vals = []
+        for col in colonnes:
+            cs = [c for c in r["cases"] if not c.get("absent")
+                  and col in etiquettes_famille(c.get("familles"))]
+            res = resume(r, cs)
+            vals.append("—" if not res["n"] else f"{res['amputation_pct']:.0f} % ({res['n']})")
         lignes.append(f"| `{r['arm']}` | " + " | ".join(vals) + " |")
     return "\n".join(lignes)
 
@@ -250,7 +272,9 @@ def main(argv=None) -> int:
         print(f"  {nom:24s} → run_{nom}.json")
 
     print("\n" + tableau(runs))
-    print("\nPar strate (taux d'amputation) :\n" + tableau_par_strate(runs))
+    print("\nPar famille (taux d'amputation, n) :\n" + tableau_par_famille(runs))
+    print("\nPar strate unique — découpage d'avant D16, gardé tant que les "
+          "familles ne sont pas toutes posées :\n" + tableau_par_strate(runs))
 
     base = next((r for r in runs if r["arm"] == "baseline_prod"), None)
     if base:

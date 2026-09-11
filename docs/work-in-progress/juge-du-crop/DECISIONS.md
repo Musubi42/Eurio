@@ -458,3 +458,57 @@ Ce qui sépare, et fort : la **position** du cercle par rapport à l'or. Boundar
 **Réserves.** Dix rejets, deux strates à une seule image rejetée (S2, S4) : aucune lecture par strate côté rejet. La réserve (24 images, 6 par strate tirée, 3 accept + 3 reject chacune) rapporte ~17 utilisables et **ne ramène ni S2 ni S3 à 15**. Un v3 avec un vivier de rejets `crop`-motivés (les lignes L1 du recadrage manuel) restera probablement nécessaire.
 
 **Ce qui attend le PO** : (a) valider l'amendement du juge (point 2) et la règle de τ (point 3) ; (b) les trois clics de D14 ; (c) la passe 2 ; (d) la réserve — la page doit d'abord savoir la servir (`?role=reserve`, trois lignes de front, en cours).
+
+## D16 — L'or juge des **méthodes**, pas des crops : seuil ancré sur la main, `baseline_prod` remplacé par le pipeline natif · 2026-09-11 · ✅ TRANCHÉ (PO)
+
+> **Tranché par le PO le 2026-09-11** : points 1 à 3 validés, **oui aux étiquettes multiples** (point 5) — « capsule, oblique et même multi sur une seule image ». Livré le jour même : migration `0021_crop_gold_familles`, page d'annotation à étiquettes, et **la navigation n'écrit plus en passant** (← → réécrivaient l'image quittée : les 16 indécidables de v2 portent le pré-remplissage comme ellipse — sans effet sur le banc, qui les écarte). Restent à coder : le critère τ et le bras `pipeline_natif` (points 1 à 3).
+
+**Ce qui l'a déclenché.** La passe 2 (10 images, `GET /crop-gold/v2`, 2026-09-11 12:46→12:55 UTC) et les notes du PO : « 4/10 un dessin et multi », « capsule et multi » (8/10, et une autre en 5, 6 ou 7 — non identifiée).
+
+**Ce que l'or n'est pas.** Il ne re-juge pas le parc. 60 ellipses ne disent rien des 9 715 autres crops : elles ne jugent que ce qui se passe **sur ces 60 raws**. Leur rôle est d'être la **règle graduée d'une méthode** : on fait tourner une méthode de crop sur les 60 raws, on la compare à l'or, et si elle bat le pipeline actuel dans le bruit de la main, **c'est elle qui re-cropera le parc**. Le parc s'améliore par la méthode gagnante, jamais par l'or directement.
+
+### Mesuré
+
+**1. La main est reproductible — et `m = 0` est sous son bruit.** `human_2nd_pass` sur les 8 images tracées aux deux passes (copie de travail, `fetch --passe 2` puis `harness`) :
+
+| | valeur |
+|---|---:|
+| Δcentre | 0,4 – 2,7 px |
+| Δrayon | ≤ 1,5 % |
+| BIoU médiane / **p10** | 0,782 / **0,482** |
+| IoU masque médiane | 0,981 |
+| Hausdorff p90 | 0,062·a |
+| **amputation à `m = 0`** | **87,5 %** |
+
+Ta propre passe 2 est « amputée » par ta passe 1 sept fois sur huit : **le critère binaire de D4/D9 mesure le bruit de la main**. Cela explique à lui seul l'inversion de D15. Sur les acceptés propres, BIoU inter-passe 0,78–0,95 ; sur les rejets 0,42–0,65 (images ambiguës en elles-mêmes).
+
+**2. RE-4 comparait la main de la review à l'algorithme.** **26 des 32 acceptés portent `detection_method = 'manual'`** : leur `bbox_json` est le cercle retracé dans l'éditeur de review (`ml/serving/crop_edit.py:406`). « Acceptés contre rejetés » valait « main humaine contre détecteur ». Le −2 % de marge des acceptés (D15) est la **convention de la main de review** — elle trace à l'intérieur du listel, déjà vu en D6 (Δrayon médian 0,976, 555 rétrécis / 253 agrandis) — contre l'or tracé sur le listel.
+
+Le détecteur **avant retouche** sur ces 26 images (`source_images.detections_json`, réplique du 2026-09-08 ; candidat choisi **par l'or**, le plus proche — donc borne optimiste, pas un bras) :
+
+| | valeur |
+|---|---:|
+| BIoU médiane (max) | **~0,09** (0,30) |
+| images dans le bruit de la main (BIoU ≥ 0,48) | **0 / 26** |
+| aucun candidat sur la pièce | **7 / 26** — dont 4 S1 faciles écartées par `gated_fragment` / `radius_too_small` |
+| rayon quand le centre est juste | faux de 5 à 20 % (`r/a` 0,90–1,22) ; 1,73 sur une capsule (le bord de capsule pris pour la pièce) |
+
+Réserve de D6 : `detections_json` a pu être réécrit après coup. L'indication va dans le même sens que les 11 rejets non retouchés (BIoU médiane 0,05). **Au standard de l'or, le pipeline ne produit presque aucun crop acceptable ; la review en a sauvé ~3 sur 4.**
+
+**3. Les familles ne sont pas une partition.** Strate confirmée identique aux deux passes : **3 / 8**. Les images portent deux familles (capsule *et* multi). La décidabilité flotte aussi : 2 indécidables de la passe 1 ont été tracés en passe 2 (dont `f4c4d269`, le dessin de la 4/10, après 226 s).
+
+### Ce qui est proposé
+
+1. **Critère du juge : « indiscernable de la main ».** Un crop est bon si **BIoU(or, crop) ≥ τ**, avec **τ = p10 de `human_2nd_pass`** — provisoirement **0,48**. Hausdorff (≤ 0,062·a au p90 humain) est publiée à côté. Ce τ se fixe **sans lire un seul verdict accept/reject** : RE-1 tenu par construction, et la réserve reste un vrai jeu tenu à l'écart. **Remplace la règle de τ de D15 point 3** (maximiser la séparation sur la passe 1, qui lisait les verdicts). L'amputation à `m = 0` reste publiée, hors verdict (D15 point 2 inchangé).
+   *Fragilité* : n = 8. τ est recalculé au gel ; si l'on veut le durcir, la passe 2 s'étend (le hachage de `sousEnsemblePasse2` le permet) plutôt que d'être réinterprétée.
+2. **Nouveau bras `pipeline_natif`**, la vraie prod : le détecteur actuel (`yolo+hough+…+rimrefine`, `score_recover`) rejoué sur le raw, **sans lire `bbox_json`** — c'est lui qu'une méthode doit battre (RE-6). `baseline_prod` est renommé en borne **« crop final après review »**, hors classement : il mesure la main de review, pas un algorithme.
+3. **RE-4 change d'objet.** Le verdict humain ne falsifie plus le juge par `baseline_prod` (contaminé). Il est rejoué sur `pipeline_natif`, en sachant qu'il est faible : seuls 17 cas (6 acceptés / 11 rejetés) n'ont pas été retouchés. La falsification principale devient les **bornes** : `gold_replay` doit passer τ hors cadres tronqués, `human_2nd_pass` le passe par construction — un juge qui rejetterait la main serait faux.
+4. **Un dessin est indécidable** (PO, 2026-09-11) : il n'entre pas dans l'or, même s'il montre plusieurs pièces. Juger le cadrage d'un dessin n'a pas de sens. Applique D14 (44, 45, 59) et vaut règle pour la réserve.
+5. **Les familles deviennent des étiquettes multiples.** Une image capsule *et* multi compte dans les deux pour RE-6. Coût : la page d'annotation passe de `1…4` exclusif à des bascules, et les 44 images utilisables se ré-étiquettent (aucune ellipse à retoucher). À faire **avant** la réserve pour ne pas étiqueter deux fois.
+6. **Les leviers de L5, par ordre de coût**, lus dans les données ci-dessus — hypothèses à passer au banc, pas des décisions :
+   1. le **filtrage des candidats** (`gated_fragment`, `radius_too_small`) jette la bonne pièce sur des S1 faciles — des seuils ;
+   2. l'**ajustement du bord** : centre juste, rayon à 5–20 % du listel — quelques paramètres calibrés sur la passe 1, validés sur la réserve, **sans que la méthode voie l'or** (RE-2) ;
+   3. **capsule et multi** : le bord de capsule pris pour la pièce, ou la mauvaise pièce choisie.
+7. **Le gisement, c'est la review.** `crop_edit_observations` = 0 ligne (réplique 2026-09-08). Avec le biais de la main de review désormais mesurable contre l'or (≈ −2 % sur les 26 recouvrements), les recadrages de review deviennent une étiquette corrigible à grande échelle. D6 les cantonne à la calibration — **à rediscuter**, pas tranché ici.
+
+**Ce qui attend le PO** : (a) valider les points 1 à 3 (critère « indiscernable de la main », `pipeline_natif`, nouveau rôle de RE-4) ; (b) marquer indécidables les dessins 44, 45, 59 (`9c7025e9`, `17c70842`, `d439819d` — toujours à `indecidable = 0` au 2026-09-11) ; (c) dire s'il veut les étiquettes multiples (point 5) avant la réserve ; (d) la réserve.

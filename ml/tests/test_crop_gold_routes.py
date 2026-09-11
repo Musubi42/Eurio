@@ -310,3 +310,24 @@ def test_un_tirage_absent_ne_plante_pas(env):
     app, cli, _ = env
     assert cli.get("/crop-gold/jamais-creee/tirage").json() == {
         "gold_version": "jamais-creee", "n": 0, "images": []}
+
+
+def test_les_familles_font_l_aller_retour_en_liste(env):
+    """D16 : le front envoie une liste, il doit relire une liste — pas le texte
+    JSON rangé en base, sur lequel `includes('multi')` répondrait par accident."""
+    _, client, _ = env
+    corps = {"annotations": [{"asset_id": "ia0", "ellipse": dict(ELL),
+                              "familles": ["oblique", "capsule"]}]}
+    assert client.put("/crop-gold/v2/annotations", json=corps).status_code == 200
+    (ligne,) = client.get("/crop-gold/v2").json()["annotations"]
+    assert ligne["familles"] == ["capsule", "oblique"]
+
+
+def test_une_famille_inconnue_ne_rend_pas_422_au_lot_entier(env):
+    _, client, _ = env
+    corps = {"annotations": [
+        {"asset_id": "ia0", "ellipse": dict(ELL), "familles": ["dessin"]},
+        {"asset_id": "ia1", "ellipse": dict(ELL), "familles": ["multi"]}]}
+    r = client.put("/crop-gold/v2/annotations", json=corps)
+    assert r.status_code == 200
+    assert r.json()["comptes"] == {"invalide": 1, "ecrit": 1}

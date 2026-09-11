@@ -28,10 +28,10 @@ import {
   type AnnotationOr,
   type EllipseEdition,
   type EtatAnnotation,
+  type Famille,
   type ImageTirage,
   EDITEUR_WEB,
-  STRATES,
-  TAILLE_TIRAGE,
+  FAMILLES,
   ellipseDepuisPrefill,
   etatDepuisAnnotation,
   expliquerEchec,
@@ -65,6 +65,8 @@ const gele = ref<string | null>(null)
 /** L'ellipse en cours, et celle proposée au départ (pour `prefill_modifie`). */
 const ell = ref<EllipseEdition>({ cx: 0, cy: 0, a: 1, b: 1, theta: 0 })
 const prefill = ref<EllipseEdition>({ cx: 0, cy: 0, a: 1, b: 1, theta: 0 })
+/** L'ellipse telle qu'elle était en ARRIVANT sur l'image — pour savoir si on l'a touchée. */
+const ellDepart = ref<EllipseEdition>({ cx: 0, cy: 0, a: 1, b: 1, theta: 0 })
 
 const vue = ref({ k: 1, tx: 0, ty: 0 })
 const taille = ref({ w: 900, h: 700 })
@@ -132,6 +134,7 @@ function charger() {
   prefill.value = ellipseDepuisPrefill(r)
   const e = etats.value[r.asset_id]
   ell.value = e?.ellipse ? { ...e.ellipse } : { ...prefill.value }
+  ellDepart.value = { ...ell.value }
   loupeActive.value = null
   debut = performance.now()
   mesurer()
@@ -514,20 +517,29 @@ function surClavier(ev: KeyboardEvent) {
     // Une loupe choisie confisque les flèches : elles poussent son bord au lieu
     // de changer d'image. Échap rend la navigation.
     pousserBord(loupeActive.value, fleche, ev.shiftKey ? 2 : 0.5)
-  } else if (ev.key === 'Enter' || ev.key === 'ArrowRight') {
-    valider()
+  } else if (ev.key === 'Enter') {
+    // Entrée VALIDE. Une image pas encore faite s'écrit telle quelle — accepter
+    // le pré-remplissage est un geste. Une image déjà faite ne se réécrit que si
+    // l'ellipse a bougé : la revoir n'est pas la retracer.
+    if (!faite() || touchee()) valider()
     aller(+1)
-  } else if (ev.key === 'ArrowLeft') {
-    valider()
-    aller(-1)
+  } else if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+    // Les flèches NAVIGUENT, elles n'écrivent que ce qu'on a modifié. Avant le
+    // 2026-09-11 elles validaient en passant : les 16 indécidables de v2 ont
+    // reçu le pré-remplissage comme ellipse, et une image non tracée sautée
+    // par → serait entrée dans l'or avec l'ellipse de `measure_tilt` (D16).
+    if (touchee()) valider()
+    aller(ev.key === 'ArrowRight' ? +1 : -1)
   } else if (ev.key === 'r') {
     ell.value = { ...prefill.value }
   } else if (ev.key === 'f') {
     recadrer()
   } else if (ev.key === 'i') {
     basculerIndecidable()
-  } else if (['1', '2', '3', '4'].includes(ev.key)) {
-    poserStrate(STRATES[Number(ev.key) - 1])
+  } else if (ev.key === '1') {
+    poserFacile()
+  } else if (['2', '3', '4'].includes(ev.key)) {
+    basculerFamille(FAMILLES[Number(ev.key) - 2])
   } else return
   ev.preventDefault()
 }
@@ -542,6 +554,7 @@ function entree(): EtatAnnotation {
     asset_id: r.asset_id,
     strate_tiree: r.strate_tiree,
     strate_confirmee: null,
+    familles: null,
     indecidable: false,
     secondes: 0,
     ellipse: null,
@@ -551,14 +564,39 @@ function entree(): EtatAnnotation {
   return neuf
 }
 
-function poserStrate(s: string) {
+/** L'image est-elle déjà faite (tracée ou indécidable) ? */
+function faite(): boolean {
+  const e = etatCourant.value
+  return !!(e && (e.ellipse || e.indecidable))
+}
+
+/** L'ellipse a-t-elle bougé depuis l'arrivée sur l'image ? */
+function touchee(): boolean {
+  return !memeEllipse(ell.value, ellDepart.value)
+}
+
+// Des familles seules ne s'écrivent pas : le canonique ne retient que les
+// annotations tracées ou déclarées indécidables (même filtre que `serve.py`).
+// Sur une image déjà faite, elles s'écrivent tout de suite — c'est la séance de
+// ré-étiquetage de D16, qui ne retouche aucune ellipse.
+function poserFamilles(familles: Famille[]) {
   if (!courante.value) return
   const a = entree()
-  a.strate_confirmee = a.strate_confirmee === s ? null : s
+  a.familles = familles
   etats.value = { ...etats.value }
-  // Une strate seule ne s'écrit pas : le canonique ne retient que les
-  // annotations tracées ou déclarées indécidables (même filtre que `serve.py`).
   if (a.ellipse || a.indecidable) enregistrer(a)
+}
+
+/** « facile » = aucune des trois. Il n'y a pas de retour à « non étiquetée ». */
+function poserFacile() {
+  poserFamilles([])
+}
+
+function basculerFamille(f: Famille) {
+  const s = new Set(etatCourant.value?.familles ?? [])
+  if (s.has(f)) s.delete(f)
+  else s.add(f)
+  poserFamilles(FAMILLES.filter((x) => s.has(x)))
 }
 
 function basculerIndecidable() {
@@ -601,6 +639,7 @@ function corpsEnvoi(a: EtatAnnotation): AnnotationEnvoi {
     passe,
     strate_tiree: a.strate_tiree,
     strate_confirmee: a.strate_confirmee,
+    familles: a.familles,
     secondes: a.secondes || null,
     prefill_modifie: a.prefill_modifie,
     editor_version: EDITEUR_WEB,
@@ -660,7 +699,7 @@ const etatImage = computed(() => {
   if (e?.ellipse)
     return {
       classe: 'acc',
-      texte: e.strate_confirmee ? 'validée' : 'validée · strate non confirmée',
+      texte: e.familles != null ? 'validée' : 'validée · familles à poser',
     }
   return { classe: 'todo', texte: 'à faire — Entrée pour valider' }
 })
@@ -765,12 +804,15 @@ onBeforeUnmount(() => {
         <div v-if="chargement" class="vide">chargement…</div>
         <div v-else-if="erreur" class="vide erreur">{{ erreur }}</div>
         <div v-else-if="!images.length" class="vide">
-          <b>Le tirage n'est pas encore publié au canonique.</b>
+          <b>Aucun tirage sous la version « {{ version }} ».</b>
           <p class="doux">
-            Ce n'est pas une panne : il n'y a rien à annoter tant que les 60 images
-            n'ont pas été tirées et publiées. Depuis la machine du ML :
+            Vérifie d'abord l'adresse : un caractère de trop dans
+            <code>?version=</code> (un point, une espace) suffit à tomber ici, et le
+            canonique ne distingue pas une version mal tapée d'une version dont le
+            tirage n'est pas encore publié. Si la version est neuve, son tirage se
+            publie depuis la machine du ML, <b>dans <code>ml/</code></b> :
           </p>
-          <pre>python -m bench.gold_crop.publier_tirage --out state/gold_crop/{{ version }}</pre>
+          <pre>cd ml &amp;&amp; python -m bench.gold_crop.publier_tirage --out state/gold_crop/{{ version }}</pre>
         </div>
       </div>
 
@@ -856,28 +898,33 @@ onBeforeUnmount(() => {
       </section>
 
       <section class="bloc">
-        <h2>Cette image, c'est laquelle des quatre ?</h2>
+        <h2>Ce qui rend cette image difficile</h2>
         <div class="rangee">
           <button
-            v-for="(s, i) in STRATES" :key="s" class="strate"
-            :class="{ actif: etatCourant?.strate_confirmee === s }"
-            @click="poserStrate(s)"
+            class="strate" :class="{ actif: etatCourant?.familles?.length === 0 }"
+            @click="poserFacile()"
           >
-            {{ s.slice(0, 2) }} <kbd>{{ i + 1 }}</kbd>
+            facile <kbd>1</kbd>
+          </button>
+          <button
+            v-for="(f, i) in FAMILLES" :key="f" class="strate"
+            :class="{ actif: etatCourant?.familles?.includes(f) }"
+            @click="basculerFamille(f)"
+          >
+            {{ f }} <kbd>{{ i + 2 }}</kbd>
           </button>
         </div>
         <dl class="strates-aide">
-          <dt>S1 facile</dt><dd>une seule pièce, nette, vue quasi de face, fond simple</dd>
-          <dt>S2 capsule</dt><dd>sous plastique — blister, coffret, slab gradé. Reflets et halo</dd>
-          <dt>S3 multi</dt><dd>plusieurs pièces dans l'image, ou un lot, ou un coffret</dd>
-          <dt>S4 oblique</dt><dd>la pièce est nettement de biais — elle paraît ovale</dd>
+          <dt>facile</dt><dd>aucune des trois : une seule pièce, nette, de face, fond simple</dd>
+          <dt>capsule</dt><dd>sous plastique — blister, coffret, slab gradé. Reflets et halo</dd>
+          <dt>multi</dt><dd>plusieurs pièces dans l'image, ou un lot, ou un coffret</dd>
+          <dt>oblique</dt><dd>la pièce est nettement de biais — elle paraît ovale</dd>
         </dl>
         <p class="doux">
-          Les {{ TAILLE_TIRAGE }} images ont été tirées 15 par famille, pour qu'une
-          méthode qui marche sur les photos faciles et rate les pièces de biais se
-          voie. Mais le tirage s'est fait sur le <b>texte de l'annonce</b>, qui
-          ment : cette image a été tirée comme
-          <b>{{ courante?.strate_tiree || '—' }}</b>. Si ce n'est pas ça, corrige.
+          <b>Plusieurs à la fois, c'est normal</b> : une pièce sous capsule, de
+          biais, dans un lot, est les trois. Le tirage s'est fait sur le
+          <b>texte de l'annonce</b>, qui ment : cette image a été tirée comme
+          <b>{{ courante?.strate_tiree || '—' }}</b>.
         </p>
       </section>
 
@@ -892,7 +939,8 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <p class="doux">
-          Pièce coupée par le bord, floue, masquée. Un cas non annotable sort
+          Pièce coupée par le bord, floue, masquée — ou <b>un dessin</b> : on ne
+          juge pas le cadrage d'une illustration (D16). Un cas non annotable sort
           explicitement — il ne s'annote pas au jugé. La réserve le remplace.
         </p>
       </section>
@@ -901,12 +949,13 @@ onBeforeUnmount(() => {
         <h2>Clavier</h2>
         <div class="aide">
           <kbd>Entrée</kbd><span>valider et suivante</span>
-          <kbd>← →</kbd><span>naviguer — <em>sauf</em> si une loupe est choisie</span>
+          <kbd>← →</kbd><span>naviguer sans rien écrire — sauf une ellipse que tu as bougée ; <em>et</em> pas si une loupe est choisie</span>
           <kbd>flèches</kbd><span>loupe choisie : pousser le bord ±0,5 px</span>
           <kbd>Maj + flèche</kbd><span>±2 px</span>
           <kbd>molette</kbd><span>sur une loupe : ±0,25 px</span>
           <kbd>Échap</kbd><span>lâcher la loupe et rendre les flèches</span>
-          <kbd>1…4</kbd><span>confirmer la strate</span>
+          <kbd>1</kbd><span>facile</span>
+          <kbd>2 3 4</kbd><span>capsule · multi · oblique, cumulables</span>
           <kbd>i</kbd><span>indécidable</span>
           <kbd>r</kbd><span>revenir au pré-remplissage</span>
           <kbd>f</kbd><span>recadrer la vue</span>

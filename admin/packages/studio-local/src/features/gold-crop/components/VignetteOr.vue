@@ -9,7 +9,7 @@ import { computed } from 'vue'
 
 import CalqueCrop from './CalqueCrop.vue'
 import type { AnnotationOr } from '../composables/useGoldCropApi'
-import { strateRetenue } from '../composables/useGoldCropApi'
+import { etiquettesFamille } from '../composables/useGoldCropApi'
 
 const props = defineProps<{
   annotation: AnnotationOr
@@ -37,7 +37,7 @@ const obliquite = computed(() =>
       :ellipse="ellipse" :montrer-bande="montrerBande"
     />
     <figcaption>
-      <span class="strate">{{ strateRetenue(a) }}</span>
+      <span class="strate">{{ etiquettesFamille(a).join(' · ') }}</span>
       <span :class="['verdict', a.resolution_status === 'manual' ? 'acc' : 'rej']">
         {{ a.resolution_status === 'manual' ? 'accepté' : 'rejeté' }}
       </span>

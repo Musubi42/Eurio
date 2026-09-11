@@ -86,6 +86,11 @@ DEPASSES: dict[str, set[str]] = {
     # est gardé nommément par
     # test_les_deux_colonnes_de_0015_sont_dans_les_deux_fichiers.
     "0009_encoder_bench.sql": {"encoder_bench_runs"},
+    # `crop_gold_annotations` a gagné `familles` en 0021 (ALTER, D16).
+    # `crop_gold_versions` et les index de 0019 restent comparés. La colonne
+    # est gardée nommément par
+    # test_la_colonne_familles_de_0021_est_dans_les_deux_fichiers.
+    "0019_crop_gold_annotations.sql": {"crop_gold_annotations"},
 }
 
 
@@ -189,6 +194,10 @@ def test_toute_migration_neuve_est_declaree_ou_exclue_sciemment():
         "0004_dino_predictions_run_id.sql",
         "0005_iteration_origin_summary.sql",
         "0007_dino_reference_traceability.sql",
+        # 0021 ajoute `familles` par ALTER à `crop_gold_annotations` (D16) : non
+        # rejouable sur une base vide. Gardée par
+        # test_la_colonne_familles_de_0021_est_dans_les_deux_fichiers.
+        "0021_crop_gold_familles.sql",
         # 0012 n'ajoute qu'un INDEX à `peer_review_decisions`, table déclarée par
         # `state/schema.sql` et non par une migration. Elle n'est donc pas
         # applicable sur une base vide, ce que la comparaison de miroir exige —
@@ -250,4 +259,29 @@ def test_toute_migration_neuve_est_declaree_ou_exclue_sciemment():
         f"migration(s) non classée(s) : {sorted(inconnues)} — décider si leur "
         "DDL doit être miroir dans state/schema.sql, puis compléter "
         "MIROIR_ATTENDU ou la liste des exclusions de ce test."
+    )
+
+
+def test_la_colonne_familles_de_0021_est_dans_les_deux_fichiers(objets_schema):
+    """0021 ajoute `familles` par ALTER — hors du test paramétré, et
+    `crop_gold_annotations` sort de la comparaison de 0019 (`DEPASSES`). Sans
+    cette garde nommée, le miroir pourrait perdre la colonne : une base locale
+    ne l'aurait jamais, et le writer lèverait « no column named familles ».
+    """
+    sql = (MIGRATIONS / "0021_crop_gold_familles.sql").read_text(encoding="utf-8")
+    assert "ADD COLUMN familles TEXT" in sql
+    assert "familles" in objets_schema["crop_gold_annotations"]
+
+    migre = sqlite3.connect(":memory:")
+    migre.executescript(
+        (MIGRATIONS / "0019_crop_gold_annotations.sql").read_text(encoding="utf-8"))
+    migre.executescript(sql)
+    apres = [r[1] for r in migre.execute("PRAGMA table_info(crop_gold_annotations)")]
+    neuve = sqlite3.connect(":memory:")
+    neuve.executescript(SCHEMA.read_text(encoding="utf-8"))
+    assert [
+        r[1] for r in neuve.execute("PRAGMA table_info(crop_gold_annotations)")
+    ] == apres, (
+        "l'ordre des colonnes diverge entre une base migrée (0019 puis 0021) "
+        "et une base neuve (schema.sql)"
     )

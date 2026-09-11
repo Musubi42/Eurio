@@ -388,6 +388,15 @@ class StoreBase:
             # est une propriété du schéma, pas un rite manuel (F05 #3).
             from .source_registry_seed import seed_source_registry
             seed_source_registry(conn)
+            # Migration 0021 (D16) : `crop_gold_annotations.familles`. APRÈS
+            # executescript — aucun index ne la cite, et une base fraîche la
+            # reçoit déjà de schema.sql. Sans elle, une base locale créée avant
+            # 0021 garderait l'ancienne table pour toujours (`CREATE TABLE IF NOT
+            # EXISTS` ne reconstruit rien) et le writer lèverait « no column
+            # named familles ».
+            self._ensure_column(
+                conn, table="crop_gold_annotations", column="familles", decl="TEXT",
+            )
             self._ensure_column(
                 conn,
                 table="training_runs",
