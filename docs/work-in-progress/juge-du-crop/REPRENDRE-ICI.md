@@ -24,24 +24,29 @@ impeccable — un verdict qu'aucun juge du crop ne peut prédire, donc RE-4 faus
 sur deux images que v2 reprend à l'identique : **les 2 ellipses sont à
 retracer**, rien d'autre n'est perdu (51 des 60 images sont les mêmes).
 
-## ⏱️ État au 2026-09-11 (soir) — passe 2 jouée, le banc change de règle ([D16](./DECISIONS.md))
+## ⏱️ État au 2026-09-11 (fin de journée) — D16 tranchée, familles et navigation déployées (`401a7aee`)
 
 **Ce que l'or est, en une ligne :** une règle graduée pour **juger une méthode de crop** sur 60 raws. Il ne re-juge pas le parc ; c'est la méthode gagnante qui re-cropera le parc.
 
-La passe 2 (10 images) a dit trois choses :
+La passe 2 (10 images) a dit trois choses ([D16](./DECISIONS.md), ✅ tranchée par le PO) :
 
-1. **La main est précise** (Δcentre ≤ 2,7 px, Δrayon ≤ 1,5 %, BIoU p10 0,48) — **et le critère `m = 0` est sous son bruit** : ta passe 2 est « amputée » par ta passe 1 à 87,5 %. D'où l'inversion de D15 ;
-2. **RE-4 comparait la main de la review à l'algorithme** : 26 des 32 acceptés sont des crops `manual`. Le détecteur *avant retouche* n'atteint le niveau de la main sur **aucune** de ces 26 images (BIoU médiane ~0,09) ;
-3. **les familles ne se reproduisent pas** (3/8) : une image est souvent capsule *et* multi.
+1. **La main est précise** (Δcentre ≤ 2,7 px, Δrayon ≤ 1,5 %, BIoU p10 0,48) — **et le critère `m = 0` est sous son bruit** : la passe 2 est « amputée » par la passe 1 à 87,5 %. D'où l'inversion de D15 ;
+2. **RE-4 comparait la main de la review à l'algorithme** : 26 des 32 acceptés sont des crops `manual`. Le détecteur *avant retouche* n'atteint le niveau de la main sur **aucune** de ces 26 images ;
+3. **les familles ne se reproduisent pas** (3/8) : une image est souvent capsule *et* multi *et* oblique.
 
-**Proposé (D16, 🟡)** : juge = BIoU ≥ τ avec **τ = p10 de la main (0,48)**, sans lire les verdicts ; nouveau bras **`pipeline_natif`** (la vraie prod rejouée sur le raw) à la place de `baseline_prod` ; **un dessin est indécidable** ; familles en étiquettes multiples.
+**Livré et vérifié en prod le 2026-09-11** :
+* **familles en étiquettes** — migration `0021_crop_gold_familles` (appliquée au démarrage, log `applied 1 migration(s)`) ; `GET /crop-gold/v2` rend `familles` sur les 70 lignes (toutes `null`) ; aller-retour réel sur `SMOKE-d16-familles-2026-09-11` → `["capsule","multi"]` trié ;
+* **la navigation n'écrit plus en passant** — ← → n'écrivent qu'une ellipse bougée, Entrée ne réécrit une image faite que si elle a bougé. *Trouvé en route* : les 16 indécidables de v2 portent le pré-remplissage comme ellipse, et `7a072305` / `986ada7d` ont été réécrites en les revoyant (11/09 12:45). **Sans effet sur le banc**, qui écarte les indécidables et relit la même ellipse pour les autres ;
+* **une version sans tirage** (`?version=v2.`, un point de trop) nomme la version et dit de lancer `publier_tirage` **depuis `ml/`**. Le tirage v2 est publié : **ne pas relancer `publier_tirage`**.
 
-**Gestes PO, dans cet ordre :**
-1. **valider D16** (points 1 à 3, et oui/non au point 5 — étiquettes multiples — *avant* la réserve) ;
-2. **les trois dessins → indécidable** : `9c7025e9`, `17c70842`, `d439819d` (positions 44, 45, 59 de la page), sur `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2` — toujours à `indecidable = 0` ;
-3. **la réserve**, 24 images : `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2&role=reserve`.
+Tests : 2 808 py, 55 vitest, typecheck ; 9 mutations rouges.
 
-**Côté code, une fois D16 validée** : le bras `pipeline_natif` ; le critère τ dans `judge.py`/`harness.py` (l'amputation reste publiée, hors verdict) ; si oui au point 5, les bascules de famille sur la page d'annotation. Puis L5 : filtrage des candidats → ajustement du bord → capsule/multi.
+**Gestes PO, dans cet ordre** — tous sur `https://eurio-admin.musubi.dev/gold-crop/annoter?version=v2` :
+1. **les trois dessins → indécidable** (touche <kbd>i</kbd>) : `9c7025e9`, `17c70842`, `d439819d` — l'`asset` s'affiche dans le panneau « Image » ; ← → pour y aller, **sans risque désormais** ;
+2. **poser les familles** sur les images tracées : tout étant tracé, la page rouvre d'elle-même la **première image sans familles**. <kbd>1</kbd> facile · <kbd>2</kbd> capsule · <kbd>3</kbd> multi · <kbd>4</kbd> oblique, **cumulables** ; chaque touche **s'écrit tout de suite** (ligne « écrit » verte), l'ellipse n'est pas retouchée ; <kbd>→</kbd> pour la suivante. Le hub `/gold-crop?version=v2` compte « familles posées » ;
+3. **la réserve**, 24 images : `…/annoter?version=v2&role=reserve` — familles et ellipse en même temps.
+
+**Côté code, reste de D16** : le critère τ (BIoU ≥ p10 de la main) dans `judge.py`/`harness.py`, et le bras **`pipeline_natif`** (le détecteur actuel rejoué sur le raw) ; RE-4 rejoué dessus. Puis L5 : filtrage des candidats → ajustement du bord → capsule/multi.
 
 ## ⏱️ État au 2026-09-11 (matin, historique) — la passe 1 est jouée, RE-4 préliminaire dit « à l'envers »
 
